@@ -10,7 +10,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     authClient.getSession().then((result) => {
-      setUser(result.data?.user ? (result.data.user as unknown as SessionUser) : null);
+      setUser(result.data?.user ? (result.data.user as SessionUser) : null);
       setLoading(false);
     }).catch(() => {
       setUser(null);

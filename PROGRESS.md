@@ -841,8 +841,11 @@ This upgrade changed UI rendering behavior in non-trivial ways (React 19 transit
 ### Open follow-ups
 
 - `react-native-css-interop` augmentation upstream: when the maintainer ships a fix for RN 0.85's restructured types, the manual `nativewind-env.d.ts` augmentations can be deleted.
-- `auth-client.ts`: configure Better Auth client with matching `additionalFields` so the `as unknown as SessionUser` casts can become plain `as SessionUser`.
 - `npm audit fix --force` on the 4 remaining moderate `postcss` advisories — these resolve only when Expo/RN ship updated CLI dependencies; nothing to do locally.
+
+### Follow-ups landed (since this section was first written)
+
+- **Better Auth client `additionalFields`** — `apps/web/lib/auth-client.ts` now configures `inferAdditionalFields({ user: { tier, homeLatitude, homeLongitude } })` (all three with `input: false` mirroring the server). The four `as unknown as SessionUser` casts in `app/_layout.tsx`, `app/(app)/_layout.tsx`, `app/(auth)/login.tsx`, and `app/(auth)/register.tsx` are now plain `as SessionUser`. `SessionUser.createdAt/updatedAt` retyped `string` → `Date` to match Better Auth's client deserialization. Entry chunk grew ~8 KB gzipped from the new plugin (405 → 413 KB, still under target).
 
 ---
 
