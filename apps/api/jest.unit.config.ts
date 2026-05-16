@@ -11,7 +11,10 @@ const config: Config = {
   coverageDirectory: '../coverage/unit',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@nodescope/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+    '^@nodescope/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
+    '^better-auth/node$': '<rootDir>/../__mocks__/better-auth-node.ts',
+    '^better-auth$': '<rootDir>/../__mocks__/better-auth.ts',
+    '^better-auth/adapters/prisma$': '<rootDir>/../__mocks__/better-auth-prisma.ts',
   },
 };
 

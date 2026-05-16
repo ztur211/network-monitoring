@@ -46,6 +46,7 @@ const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   publishEntityUpdate: jest.fn(),
+  emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 describe('ConnectionsService', () => {
@@ -137,7 +138,7 @@ describe('ConnectionsService', () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeConnection());
       mockConflict.buildUpdatePayload.mockReturnValue({ notes: 'new note' });
       mockRepo.updateWithVersion.mockResolvedValue(makeConnection({ notes: 'new note', version: 2 }));
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       const result = await service.updateConnection('user-1', 'conn-1', {
         baseVersion: 1,
@@ -151,7 +152,7 @@ describe('ConnectionsService', () => {
     it('deletes and publishes event', async () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeConnection());
       mockRepo.deleteByIdAndUserId.mockResolvedValue(undefined);
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       await service.deleteConnection('user-1', 'conn-1');
       expect(mockRepo.deleteByIdAndUserId).toHaveBeenCalledWith('conn-1', 'user-1');

@@ -1,6 +1,6 @@
 export type SourceType = 'browser' | 'agent' | 'router';
 
-export interface MetricsDto {
+export interface MetricRowDto {
   userId: string;
   sourceType: SourceType;
   bandwidthDown: number | null;

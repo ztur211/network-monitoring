@@ -3,6 +3,8 @@ import { UsersService } from '../users.service';
 import { UsersRepository } from '../users.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { GEOCODING_PROVIDER } from '../../map/geocoding/geocoding.interface';
+import { DataSourcesService } from '../../data-sources/data-sources.service';
+import { AccountTier } from '@prisma/client';
 
 const mockUser = {
   id: 'user-1',
@@ -10,7 +12,7 @@ const mockUser = {
   emailVerified: false,
   name: 'Test User',
   image: null,
-  tier: 'PERSONAL_FREE',
+  tier: AccountTier.PERSONAL_FREE,
   homeLatitude: null,
   homeLongitude: null,
   createdAt: new Date('2026-01-01'),
@@ -28,6 +30,13 @@ const mockGeocoding = {
   geocode: jest.fn(),
 };
 
+const mockDataSources = {
+  getDataSourceStatus: jest.fn().mockResolvedValue([]),
+  getLatestMetric: jest.fn().mockResolvedValue(null),
+  getLatestMetrics: jest.fn().mockResolvedValue(new Map()),
+  ingest: jest.fn(),
+};
+
 describe('UsersService', () => {
   let service: UsersService;
 
@@ -37,6 +46,7 @@ describe('UsersService', () => {
         UsersService,
         { provide: UsersRepository, useValue: mockRepository },
         { provide: GEOCODING_PROVIDER, useValue: mockGeocoding },
+        { provide: DataSourcesService, useValue: mockDataSources },
       ],
     }).compile();
 

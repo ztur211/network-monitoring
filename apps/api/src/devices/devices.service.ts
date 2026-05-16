@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Device } from '@prisma/client';
-import { DeviceDto, PaginatedResponse } from '@nodescope/shared';
+import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { TiersService } from '../tiers/tiers.service';
@@ -76,8 +76,13 @@ export class DevicesService {
       throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     }
 
-    await this.conflictService.publishEntityUpdate('Device', deviceId, userId);
-    return this.toDto(updated);
+    const dto = this.toDto(updated);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.DEVICE_UPDATED,
+      { deviceId, device: dto, changes: patch.changes, updatedBy: userId },
+      userId,
+    );
+    return dto;
   }
 
   async deleteDevice(userId: string, deviceId: string): Promise<void> {
@@ -86,7 +91,7 @@ export class DevicesService {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.devicesRepository.deleteByIdAndUserId(deviceId, userId);
-    await this.conflictService.publishEntityUpdate('Device', deviceId, userId);
+    this.conflictService.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId }, userId);
   }
 
   private toDto(device: Device): DeviceDto {

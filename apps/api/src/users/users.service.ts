@@ -2,6 +2,8 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { UserDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocoding.interface';
+import { DataSourcesService } from '../data-sources/data-sources.service';
+import { DataSourceStatus } from '../data-sources/data-sources.interface';
 import { UpdateMeDto, SetLocationDto } from './users.dto';
 import { UsersRepository } from './users.repository';
 import { User } from '@prisma/client';
@@ -11,6 +13,7 @@ export class UsersService {
   constructor(
     private readonly usersRepository: UsersRepository,
     @Inject(GEOCODING_PROVIDER) private readonly geocodingProvider: GeocodingProvider,
+    private readonly dataSourcesService: DataSourcesService,
   ) {}
 
   async getMe(userId: string): Promise<UserDto> {
@@ -67,6 +70,11 @@ export class UsersService {
       longitude: updated.homeLongitude as number,
       address: null,
     };
+  }
+
+  async getDataSources(userId: string): Promise<{ sources: DataSourceStatus[] }> {
+    const sources = await this.dataSourcesService.getDataSourceStatus(userId);
+    return { sources };
   }
 
   private toDto(user: User): UserDto {

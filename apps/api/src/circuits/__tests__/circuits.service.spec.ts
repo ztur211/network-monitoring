@@ -46,6 +46,7 @@ const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   publishEntityUpdate: jest.fn(),
+  emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 describe('CircuitsService', () => {
@@ -67,7 +68,8 @@ describe('CircuitsService', () => {
 
   describe('listCircuits', () => {
     it('returns paginated circuits with nextCursor when more exist', async () => {
-      const circuits = [makeCircuit({ id: 'cir-1' }), makeCircuit({ id: 'cir-2' })];
+      // findWithCursor is called with limit+1 to detect hasMore; return limit+1 items
+      const circuits = [makeCircuit({ id: 'cir-1' }), makeCircuit({ id: 'cir-2' }), makeCircuit({ id: 'cir-3' })];
       mockRepo.findWithCursor.mockResolvedValue(circuits);
       mockRepo.countByUserId.mockResolvedValue(5);
 
@@ -134,7 +136,7 @@ describe('CircuitsService', () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeCircuit());
       mockConflict.buildUpdatePayload.mockReturnValue({ ispName: 'Verizon' });
       mockRepo.updateWithVersion.mockResolvedValue(makeCircuit({ ispName: 'Verizon', version: 2 }));
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       const result = await service.updateCircuit('user-1', 'cir-1', {
         baseVersion: 1,
@@ -148,7 +150,7 @@ describe('CircuitsService', () => {
     it('deletes and publishes event', async () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeCircuit());
       mockRepo.deleteByIdAndUserId.mockResolvedValue(undefined);
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       await service.deleteCircuit('user-1', 'cir-1');
       expect(mockRepo.deleteByIdAndUserId).toHaveBeenCalledWith('cir-1', 'user-1');

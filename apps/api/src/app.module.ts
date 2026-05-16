@@ -20,6 +20,9 @@ import { FiberRunsModule } from './fiber-runs/fiber-runs.module';
 import { ConnectionsModule } from './connections/connections.module';
 import { CircuitsModule } from './circuits/circuits.module';
 import { MapModule } from './map/map.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { DataSourcesModule } from './data-sources/data-sources.module';
+import { ClientsModule } from './clients/clients.module';
 
 @Module({
   imports: [
@@ -57,6 +60,9 @@ import { MapModule } from './map/map.module';
     FiberRunsModule,
     ConnectionsModule,
     CircuitsModule,
+    DataSourcesModule,
+    RealtimeModule,
+    ClientsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
