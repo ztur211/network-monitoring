@@ -27,6 +27,8 @@ Edit `.env` and set:
 - `BETTER_AUTH_SECRET` — minimum 32 characters; the placeholder works for local dev
 - `SEED_PASSWORD` — password for the seeded dev user
 
+`.env` is read by the backend. The web app reads its config from environment variables at build/start time — `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_MAP_TILE_STYLE_URL`. Local defaults (in `.env.example`) point at `http://localhost:3000` and OpenFreeMap respectively, which is what `npm run dev --workspace=apps/web` expects.
+
 ### 3. Start local services
 
 ```bash
@@ -144,7 +146,7 @@ Web entry bundle is split via `React.lazy` in `apps/web/app/(app)/map.tsx`:
 
 | Chunk | Raw | Gzipped | When loaded |
 |---|---|---|---|
-| `entry-*.js` | 1.44 MB | **396 KB** | Initial paint |
+| `entry-*.js` | 1.44 MB | **413 KB** | Initial paint |
 | `MapView-*.js` | 793 KB | 209 KB | First visit to the map screen |
 
 The 500 KB gzipped initial-paint target from `CLAUDE.md` is met by the entry chunk. If a future change pushes the entry chunk over budget, the source-map attribution recipe is in `progress.md` Phase 9b under "Web bundler config + code splitting".
