@@ -1,0 +1,67 @@
+name: Deploy
+
+# Triggered only on merge to main/master after CI passes. Runs Prisma migrations
+# against production, then triggers a DigitalOcean App Platform deployment.
+#
+# Required GitHub Actions secrets:
+#   - PROD_DATABASE_URL          PgBouncer-fronted production DATABASE_URL
+#   - DIGITALOCEAN_ACCESS_TOKEN  doctl token with apps:write scope
+#   - DO_APP_ID                  DigitalOcean App Platform app UUID
+#
+# Cloud-side prerequisites (one-time, manual — see README.md):
+#   - DigitalOcean Managed PostgreSQL with TimescaleDB + PostGIS extensions enabled
+#   - DigitalOcean Managed Redis
+#   - Spaces bucket (for floor plans / Agent installers, post-MVP)
+#   - All env vars in .env.example set on the App Platform app
+#   - Anthropic console: spend cap configured before first real traffic
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  wait-for-ci:
+    name: Wait for CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: Build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+
+  migrate:
+    name: Apply DB Migrations
+    runs-on: ubuntu-latest
+    needs: wait-for-ci
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+
+  deploy:
+    name: Deploy to DigitalOcean App Platform
+    runs-on: ubuntu-latest
+    needs: migrate
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Trigger deployment
+        run: doctl apps create-deployment ${{ secrets.DO_APP_ID }} --wait
