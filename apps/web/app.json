@@ -6,7 +6,7 @@
     "scheme": "nodescope",
     "web": {
       "bundler": "metro",
-      "output": "single",
+      "output": "static",
       "name": "NodeScope",
       "shortName": "NodeScope",
       "lang": "en",

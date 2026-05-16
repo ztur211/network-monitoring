@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,14 @@ import {
 } from 'react-native';
 import { DeviceDto } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
-import { MapView } from '../../components/map/MapView';
 import { DeviceDetailPanel } from '../../components/map/DeviceDetailPanel';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
 import { DeviceForm } from '../../components/DeviceForm';
 import { Timestamp } from '../../components/Timestamp';
+
+// Lazy-loaded so maplibre-gl (~780KB raw / ~200KB gzipped) lives in a separate
+// chunk and only loads when the map screen is reached.
+const MapView = lazy(() => import('../../components/map/MapView'));
 
 type FormMode = 'create' | 'edit' | null;
 
@@ -106,11 +109,20 @@ export default function MapScreen() {
 
   return (
     <View className="flex-1">
-      {/* Map fills the screen */}
-      <MapView
-        onDeviceClick={handleDeviceClick}
-        selectedDeviceId={selectedDevice?.id}
-      />
+      {/* Map fills the screen. Lazy boundary keeps maplibre-gl out of the entry bundle. */}
+      <Suspense
+        fallback={
+          <View className="absolute inset-0 items-center justify-center bg-slate-50">
+            <ActivityIndicator size="large" color="#0f172a" />
+            <Text className="mt-2 text-sm text-slate-500">Loading map…</Text>
+          </View>
+        }
+      >
+        <MapView
+          onDeviceClick={handleDeviceClick}
+          selectedDeviceId={selectedDevice?.id}
+        />
+      </Suspense>
 
       {/* Device limit banner */}
       {!limitBannerDismissed && (
