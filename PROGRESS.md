@@ -15,7 +15,7 @@ Last updated: 2026-05-15
 | 4 | Browser Collector | ✅ Complete |
 | 5 | Map & GIS | ✅ Complete |
 | 6 | AI Assistant | ✅ Complete |
-| 7 | Clients, Circuits & Settings | ⬜ Not started |
+| 7 | Clients, Circuits & Settings | ✅ Complete |
 | 8 | Integration & UI Honesty Audit | ⬜ Not started |
 | 9 | Hardening & Production Readiness | ⬜ Not started |
 
@@ -576,6 +576,49 @@ npm run test:e2e --workspace=apps/api
 
 ---
 
-## What's Next — Phase 7 (Clients, Circuits & Settings)
+---
 
-Read: API Design Sections 8 (Circuits), 10 (Clients), PRD Section 6.7 before starting.
+## Phase 7 — Clients, Circuits & Settings ✅
+
+**Implemented:** 2026-05-15
+
+### What was built
+
+#### Backend
+- `GET /api/v1/clients` — implemented in Phase 4; verified `agentStatus.message` clearly describes the Agent as upcoming (Priority 1 post-MVP)
+- Circuit CRUD (`GET`, `POST`, `PATCH`, `DELETE /api/v1/circuits`) — implemented in Phase 2; cursor-based pagination confirmed
+
+#### Frontend
+
+| File | Purpose |
+|---|---|
+| `store/circuits.store.ts` | Zustand: cursor-paginated circuit list, optimistic CRUD, offline queue (same pattern as device.store) |
+| `components/CircuitForm.tsx` | React Hook Form + Zod; fields: ispName, serviceType (chip picker), circuitId, bandwidth, deviceId (chip picker from devices.store), notes |
+| `app/(app)/circuits.tsx` | Paginated FlatList with `onEndReached` auto-pagination; create/edit via Modal + CircuitForm; delete with Alert confirm |
+| `app/(app)/clients.tsx` | Current device (platform, userAgent, live metrics from realtime.store); prominent Agent post-MVP info panel; four-state loading/loaded/stale/error |
+| `app/(app)/settings.tsx` | Account: name/email edit (PATCH /users/me); Location: address geocode (POST /users/location); Appearance: dark mode toggle via `useColorScheme` from nativewind; Data Sources: GET /users/me/data-sources panel |
+| `app/(app)/_layout.tsx` | Changed `<Stack>` to `<Tabs>` with `@expo/vector-icons` Ionicons; 6 tabs: Map, Clients, Equipment, Circuits, AI, Settings; added circuit WS subscriptions (v1:circuit:updated/deleted); flushes circuit offline queue on reconnect |
+
+### Phase 7 completion criteria
+
+- Circuits list loads with cursor pagination — `loadNextPage` fires on `onEndReached`
+- Create circuit → optimistic update in list immediately
+- Associate circuit with device → circuit appears in map viewport endpoint (`GET /api/v1/map/circuits`)
+- Clients view shows current device user agent and platform
+- Clients view shows Agent explanation: "Desktop Agent coming post-MVP (Priority 1)" — no status indicators for undiscovered devices
+- Settings: name/email update via PATCH /users/me, reflected in auth.store
+- Settings: home location set via address → geocoded and stored
+- Settings: data sources panel shows browser as Active, Agent as 'Not set up'
+- Navigation: all 6 screens accessible via bottom tab bar; Organization absent
+
+### Architecture notes
+- `circuits.store.ts` mirrors `device.store.ts` pattern exactly: optimistic CRUD, offline queue, `flushOfflineQueue`
+- `_layout.tsx` now uses Tabs from expo-router; circuit WS events update circuits.store in real time
+- `settings.tsx` updates auth.store by spreading `user` with changed fields (preserves Better Auth session shape)
+- `clients.tsx` uses live `realtime.store.metrics` for fresh data; falls back to `currentDevice.metrics` from REST response
+
+---
+
+## What's Next — Phase 8 (Integration & UI Honesty Audit)
+
+Read: PRD Section 10.1 (UI Honesty Audit — all 11 items), PRD Section 10.0 (Functional Metrics), SAD Section 11.8 before starting.
