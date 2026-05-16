@@ -53,6 +53,7 @@ const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   publishEntityUpdate: jest.fn(),
+  emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 describe('FiberRunsService', () => {
@@ -141,7 +142,7 @@ describe('FiberRunsService', () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeFiberRun());
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Updated' });
       mockRepo.updateWithVersion.mockResolvedValue(makeFiberRun({ name: 'Updated', version: 2 }));
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       const result = await service.updateFiberRun('user-1', 'run-1', {
         baseVersion: 1,
@@ -155,7 +156,7 @@ describe('FiberRunsService', () => {
     it('deletes fiber run', async () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeFiberRun());
       mockRepo.deleteByIdAndUserId.mockResolvedValue(undefined);
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
+      
 
       await service.deleteFiberRun('user-1', 'run-1');
       expect(mockRepo.deleteByIdAndUserId).toHaveBeenCalledWith('run-1', 'user-1');

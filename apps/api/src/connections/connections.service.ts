@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { DeviceConnection } from '@prisma/client';
-import { DeviceConnectionDto, PaginatedResponse } from '@nodescope/shared';
+import { DeviceConnectionDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -84,8 +84,13 @@ export class ConnectionsService {
       throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     }
 
-    await this.conflictService.publishEntityUpdate('DeviceConnection', connectionId, userId);
-    return this.toDto(updated);
+    const dto = this.toDto(updated);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.CONNECTION_UPDATED,
+      { connectionId, connection: dto, changes: patch.changes, updatedBy: userId },
+      userId,
+    );
+    return dto;
   }
 
   async deleteConnection(userId: string, connectionId: string): Promise<void> {
@@ -94,7 +99,7 @@ export class ConnectionsService {
       throw new NodeScopeException('CONN_001', 'CONNECTION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.connectionsRepository.deleteByIdAndUserId(connectionId, userId);
-    await this.conflictService.publishEntityUpdate('DeviceConnection', connectionId, userId);
+    this.conflictService.emitEntityEvent(WS_EVENTS.CONNECTION_DELETED, { connectionId }, userId);
   }
 
   private toDto(connection: DeviceConnection): DeviceConnectionDto {

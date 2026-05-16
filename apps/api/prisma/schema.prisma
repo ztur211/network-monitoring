@@ -84,7 +84,7 @@ model User {
   connections DeviceConnection[]
   changeLogs ChangeLog[]
 
-  orgMember OrganizationMember?
+  // orgMember OrganizationMember?  // Post-MVP: uncomment when OrganizationMember model is activated
 }
 
 model Account {
@@ -158,7 +158,6 @@ model Device {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  metrics         DeviceMetric[]
   connectionsFrom DeviceConnection[] @relation("sourceDevice")
   connectionsTo   DeviceConnection[] @relation("targetDevice")
   fiberRunsFrom   FiberRun[]         @relation("startDevice")

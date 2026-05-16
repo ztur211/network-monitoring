@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Circuit } from '@prisma/client';
-import { CircuitDto, CursorPaginatedResponse } from '@nodescope/shared';
+import { CircuitDto, CursorPaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -91,8 +91,13 @@ export class CircuitsService {
       throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     }
 
-    await this.conflictService.publishEntityUpdate('Circuit', circuitId, userId);
-    return this.toDto(updated);
+    const dto = this.toDto(updated);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.CIRCUIT_UPDATED,
+      { circuitId, circuit: dto, changes: patch.changes, updatedBy: userId },
+      userId,
+    );
+    return dto;
   }
 
   async deleteCircuit(userId: string, circuitId: string): Promise<void> {
@@ -101,7 +106,7 @@ export class CircuitsService {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.circuitsRepository.deleteByIdAndUserId(circuitId, userId);
-    await this.conflictService.publishEntityUpdate('Circuit', circuitId, userId);
+    this.conflictService.emitEntityEvent(WS_EVENTS.CIRCUIT_DELETED, { circuitId }, userId);
   }
 
   private toDto(circuit: Circuit): CircuitDto {

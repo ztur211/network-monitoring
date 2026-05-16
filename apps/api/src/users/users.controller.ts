@@ -25,4 +25,10 @@ export class UsersController {
     const data = await this.usersService.setLocation(user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
+
+  @Get('me/data-sources')
+  async getDataSources(@CurrentUser() user: AuthenticatedUser) {
+    const data = await this.usersService.getDataSources(user.id);
+    return { success: true, data, timestamp: new Date().toISOString() };
+  }
 }

@@ -41,6 +41,7 @@ const mockTiers: jest.Mocked<TiersService> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   publishEntityUpdate: jest.fn(),
+  emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 describe('DevicesService', () => {
@@ -131,8 +132,6 @@ describe('DevicesService', () => {
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Updated Router' });
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
       mockRepo.updateWithVersion.mockResolvedValue(updated);
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
-
       const result = await service.updateDevice('user-1', 'dev-1', {
         baseVersion: 1,
         changes: [{ field: 'name', oldValue: 'Router', newValue: 'Updated Router' }],
@@ -140,7 +139,11 @@ describe('DevicesService', () => {
 
       expect(result.name).toBe('Updated Router');
       expect(result.version).toBe(2);
-      expect(mockConflict.publishEntityUpdate).toHaveBeenCalledWith('Device', 'dev-1', 'user-1');
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:device:updated',
+        expect.objectContaining({ deviceId: 'dev-1' }),
+        'user-1',
+      );
     });
 
     it('throws SYNC_001 when concurrent update causes version conflict at DB level', async () => {
@@ -160,14 +163,18 @@ describe('DevicesService', () => {
   });
 
   describe('deleteDevice', () => {
-    it('deletes device and publishes event', async () => {
+    it('deletes device and emits WS event', async () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(makeDevice());
       mockRepo.deleteByIdAndUserId.mockResolvedValue(undefined);
-      mockConflict.publishEntityUpdate.mockResolvedValue(undefined);
 
       await service.deleteDevice('user-1', 'dev-1');
 
       expect(mockRepo.deleteByIdAndUserId).toHaveBeenCalledWith('dev-1', 'user-1');
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:device:deleted',
+        expect.objectContaining({ deviceId: 'dev-1' }),
+        'user-1',
+      );
     });
 
     it('throws DEVICE_001 when device not found', async () => {
