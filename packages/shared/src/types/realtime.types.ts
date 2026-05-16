@@ -32,14 +32,3 @@ export interface MetricsDto {
   connectionQuality: string | null;
   timestamp: string;
 }
-
-export interface ConnectionStatusPayload {
-  status: ConnectionStatus;
-  message: string | null;
-}
-
-export interface WsErrorPayload {
-  code: string;
-  message: string;
-  context: string | null;
-}
