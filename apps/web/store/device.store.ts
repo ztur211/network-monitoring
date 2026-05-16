@@ -35,6 +35,7 @@ interface DeviceStore {
   devices: DeviceDto[];
   isLoading: boolean;
   loaded: boolean;
+  loadedAt: string | null;
   error: string | null;
   offlineQueue: OfflineOp[];
 
@@ -55,6 +56,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   devices: [],
   isLoading: false,
   loaded: false,
+  loadedAt: null,
   error: null,
   offlineQueue: [],
 
@@ -81,7 +83,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
       const res = await api.get<{ success: true; data: { items: DeviceDto[]; total: number } }>(
         '/devices',
       );
-      set({ devices: res.data.data.items, isLoading: false, loaded: true });
+      set({ devices: res.data.data.items, isLoading: false, loaded: true, loadedAt: new Date().toISOString() });
     } catch {
       set({ isLoading: false, error: 'Failed to load devices' });
     }

@@ -1,8 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+
+const API_VERSION = (JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8')) as { version: string }).version;
 
 @Controller('health')
 @Public()
@@ -24,7 +28,7 @@ export class HealthController {
 
     return {
       status,
-      version: '0.1.0',
+      version: API_VERSION,
       timestamp: new Date().toISOString(),
       services: {
         database: dbOk ? 'ok' : 'degraded',

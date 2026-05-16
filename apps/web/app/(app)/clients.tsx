@@ -115,7 +115,10 @@ export default function ClientsScreen() {
                   {device.userAgent}
                 </Text>
               </View>
-              <View className="w-2.5 h-2.5 rounded-full bg-green-500 ml-3" />
+              {/* Neutral live-data indicator — PRD §10.1 #1 forbids status colors. */}
+              {liveMetrics && !stale && (
+                <View className="w-2.5 h-2.5 rounded-full bg-blue-500 ml-3" />
+              )}
             </View>
 
             {liveMetrics ? (

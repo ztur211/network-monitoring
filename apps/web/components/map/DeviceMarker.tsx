@@ -1,17 +1,20 @@
 import { DeviceDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
 
+// Non-status palette — PRD §10.1 honesty item #1 forbids green/amber/red on
+// documented-only markers because those colors imply health status NodeScope
+// cannot monitor for devices without a live data source.
 const CATEGORY_COLORS: Record<DeviceCategory, string> = {
   RAD: '#1d4ed8',
   ONT: '#1d4ed8',
   DSLAM: '#1d4ed8',
-  ROUTER: '#ea580c',
-  MODEM: '#ea580c',
-  FIBER_MEDIA_CONVERTER: '#ea580c',
-  FIREWALL: '#dc2626',
-  SWITCH: '#16a34a',
-  ACCESS_POINT: '#16a34a',
-  WIFI_EXTENDER: '#16a34a',
-  WIRELESS_BRIDGE: '#16a34a',
+  ROUTER: '#4f46e5',
+  MODEM: '#4f46e5',
+  FIBER_MEDIA_CONVERTER: '#4f46e5',
+  FIREWALL: '#1f2937',
+  SWITCH: '#0d9488',
+  ACCESS_POINT: '#0d9488',
+  WIFI_EXTENDER: '#0d9488',
+  WIRELESS_BRIDGE: '#0d9488',
   SERVER_RACK: '#7c3aed',
   PATCH_PANEL: '#7c3aed',
   UPS: '#7c3aed',

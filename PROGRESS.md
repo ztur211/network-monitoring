@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-15
+Last updated: 2026-05-16
 
 ---
 
@@ -16,7 +16,7 @@ Last updated: 2026-05-15
 | 5 | Map & GIS | ✅ Complete |
 | 6 | AI Assistant | ✅ Complete |
 | 7 | Clients, Circuits & Settings | ✅ Complete |
-| 8 | Integration & UI Honesty Audit | ⬜ Not started |
+| 8 | Integration & UI Honesty Audit | ✅ Complete |
 | 9 | Hardening & Production Readiness | ⬜ Not started |
 
 ---
@@ -619,6 +619,66 @@ npm run test:e2e --workspace=apps/api
 
 ---
 
-## What's Next — Phase 8 (Integration & UI Honesty Audit)
+## Phase 8 — Integration & UI Honesty Audit ✅
 
-Read: PRD Section 10.1 (UI Honesty Audit — all 11 items), PRD Section 10.0 (Functional Metrics), SAD Section 11.8 before starting.
+**Implemented:** 2026-05-16
+
+### What was built
+
+#### Graceful-degradation test suite (`apps/api/src/__tests__/graceful-degradation/`)
+
+| File | Covers (SAD §11.8) |
+|---|---|
+| `backend-health.e2e.ts` | Health endpoint reports `ok` / `degraded` correctly when Prisma or Redis fails; version from package.json; ISO8601 timestamp |
+| `ai-fallback.e2e.ts` | `AiService` returns 200 with `providerStatus: 'unavailable'`, `tokensUsed: 0`, and fallback content when adapter throws; still propagates rate-limit `NodeScopeException`s |
+| `websocket-reconnect.e2e.ts` | Gateway rejects unauthenticated handshakes; joins user/tier rooms on valid session; Redis presence add/remove; pre-auth disconnect doesn't throw; `getConnectionStatus` reflects Redis set cardinality |
+
+All 17 graceful-degradation tests + 99 unit tests pass (16 suites total).
+
+#### UI Honesty Audit — 11/11 items pass
+
+| # | Checkpoint | Where verified |
+|---|---|---|
+| 1 | Documented markers — no green/amber/red | `DeviceMarker.tsx` — palette switched to neutral indigo/teal/slate/violet/blue/gray; comment cites PRD §10.1 |
+| 2 | Current device marker visually distinct | `LiveMarker.tsx` — pulsing blue ring with `@keyframes ns-pulse`, unique vs. flat documented markers |
+| 3 | Clients view: current device only, Agent described as upcoming | `clients.tsx` — info panel "Full client discovery coming post-MVP" |
+| 4 | No live status indicators on equipment without live data | `equipment.tsx DeviceCard` — text only, no status pip |
+| 5 | Universal timestamps on data displays | `Timestamp` component on map, equipment, circuits, clients (live metrics), settings (data sources) |
+| 6 | Stale data visually distinguished | `Timestamp` turns amber past threshold; `StaleDataOverlay` dims to 40% opacity |
+| 7 | AI "your device" vs "your network" | `context-builder.service.ts SYSTEM_PREAMBLE` + `realtime-context.provider.ts` note browser-only scope |
+| 8 | AI "planned"/"coming soon" language | `account-context.provider.ts PLANNED_FEATURES` list; preamble forbids "available for purchase" |
+| 9 | Upgrade messaging contextual, not aggressive | Only `clients.tsx` mentions post-MVP — single contextual panel |
+| 10 | Outage state visible within 5s, cached data persists | `ui.store.connectionStatus` defaults to `'offline'`; WS `disconnect` → `'reconnecting'`; `OfflineBanner` always mounted; Zustand stores retain data; offline queue flushes on reconnect |
+| 11 | Floor selector honesty | `FloorSelector.tsx` — connection mode renamed "Manual", blue notice "Connections are manually documented — not auto-discovered" |
+
+#### Backend integration
+
+- `health.controller.ts` reads version from `package.json` via `readFileSync` (replaces hardcoded `'0.1.0'`)
+- All API Design §2.7 error codes flow through `GlobalExceptionFilter` via `NodeScopeException` — verified via grep audit of all service throws
+- `nominatim.adapter.ts` sends `User-Agent: ${GEOCODING_USER_AGENT ?? 'NodeScope/1.0'}` on every geocode call
+- Test import fixes: `import request from 'supertest'` (was `* as request`); `auth.api.getSession as unknown as jest.Mock` casts to satisfy TS strict mode
+
+#### Frontend honesty additions
+
+- `Timestamp` integrated into `map.tsx` (floating pill, top-left), `equipment.tsx` (header), `circuits.tsx` (header), `clients.tsx` (per metrics), with `loadedAt` tracked in `device.store` and `circuits.store`
+- `MapView.tsx` listens for `error` events from MapLibre; renders amber tile-unavailable banner if `Failed to fetch` or tile error — markers still render
+- `clients.tsx` — replaced always-green status dot with neutral blue indicator only when live metrics present and not stale
+- `ai-assistant.tsx` subtitle clarifies scope: "Knows your documented devices & current browser metrics — not undiscovered devices"
+
+### Architecture notes
+
+- **No live status pips on documented entities** — only `Timestamp` and `StaleDataOverlay` communicate freshness. Status colors (green/amber/red) reserved for transport-level signals (OfflineBanner, tile error).
+- **Graceful-degradation tests live at `apps/api/src/__tests__/graceful-degradation/`** — outside feature modules per SAD §11.8 ("they span both frontend and backend"). They run under `npm run test:e2e` (testRegex `*.e2e.ts`) but use mocks rather than real Postgres/Redis, so they execute in the unit timeframe.
+
+### Open items deferred to Phase 9
+
+- **Prisma migration not yet generated**: `apps/api/prisma/migrations/` is empty. Phase 0 migration order (`prisma migrate dev --name init --create-only` → edit SQL to add `CREATE EXTENSION postgis`, `device_location_sync` trigger, `ChangeLog entityType` check → apply) must be completed before first run. PostGIS geometry trigger verification deferred until migration exists.
+- Cross-browser testing (Chrome, Firefox, Safari, iOS Safari, Android Chrome) — manual step; not blocking code.
+- Bundle size measurement (target < 500KB gzipped) — manual step.
+- Map-load performance (< 3s on broadband) — manual step.
+
+---
+
+## What's Next — Phase 9 (Hardening & Production Readiness)
+
+Read: SAD Section 13 (Deployment Architecture), SAD Section 12 (Cross-Cutting Concerns — security hardening) before starting.

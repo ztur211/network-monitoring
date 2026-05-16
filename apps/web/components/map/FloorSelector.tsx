@@ -36,6 +36,15 @@ export function FloorSelector({ floors, floorLabels }: FloorSelectorProps) {
         ))}
       </View>
 
+      {/* Connection mode notice — honesty audit item #11 */}
+      {floorDisplayMode === 'connection' && (
+        <View className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 border-b border-blue-100 dark:border-blue-800">
+          <Text className="text-xs text-blue-600 dark:text-blue-400">
+            Connections are manually documented — not auto-discovered
+          </Text>
+        </View>
+      )}
+
       {/* Floor list */}
       <View>
         <TouchableOpacity
@@ -82,7 +91,7 @@ export function FloorSelector({ floors, floorLabels }: FloorSelectorProps) {
 const MODE_LABEL: Record<FloorDisplayMode, string> = {
   all: 'All',
   single: 'One',
-  connection: 'Conn',
+  connection: 'Manual',
 };
 
 function formatFloorLabel(floor: number): string {
