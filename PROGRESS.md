@@ -17,7 +17,7 @@ Last updated: 2026-05-16
 | 6 | AI Assistant | ✅ Complete |
 | 7 | Clients, Circuits & Settings | ✅ Complete |
 | 8 | Integration & UI Honesty Audit | ✅ Complete |
-| 9 | Hardening & Production Readiness | ⬜ Not started |
+| 9 | Hardening & Production Readiness | 🟡 Code complete — cloud setup pending |
 
 ---
 
@@ -679,6 +679,87 @@ All 17 graceful-degradation tests + 99 unit tests pass (16 suites total).
 
 ---
 
-## What's Next — Phase 9 (Hardening & Production Readiness)
+## Phase 9 — Hardening & Production Readiness 🟡
 
-Read: SAD Section 13 (Deployment Architecture), SAD Section 12 (Cross-Cutting Concerns — security hardening) before starting.
+**Implemented:** 2026-05-16 (code-side complete; cloud setup pending)
+
+### What was built (local code)
+
+#### Prisma initial migration (`apps/api/prisma/migrations/20260516000000_init/`)
+- `migration.sql` — full schema generation: all 4 enums (AccountTier, DeviceCategory, ConnectionType, OrgRole), all 10 MVP tables, 22 indexes, 11 foreign keys
+- PostGIS extension `CREATE EXTENSION IF NOT EXISTS postgis;` at top of migration
+- `Device.location geometry(Point, 4326)` column added after `CREATE TABLE "Device"`
+- `device_location_idx` GiST index on `location`
+- `sync_device_location()` trigger function + `device_location_sync` BEFORE INSERT OR UPDATE trigger — keeps `location` in sync with `latitude`/`longitude` automatically
+- `ChangeLog.entityType` check constraint: `IN ('Device', 'Circuit', 'FiberRun', 'DeviceConnection')`
+- `migration_lock.toml` with `provider = "postgresql"`
+
+#### Helmet CSP (`apps/api/src/main.ts`)
+- Replaced default `helmet()` with explicit CSP directives per SAD §12.4:
+  - `default-src 'self'`
+  - `img-src 'self' data: blob: https://tiles.openfreemap.org`
+  - `connect-src 'self' https://tiles.openfreemap.org https://nominatim.openstreetmap.org`
+  - `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `worker-src 'self' blob:`
+  - `frame-ancestors 'none'`
+- Anthropic API intentionally **not** in `connect-src` — server-to-server only, never called from the browser
+- `crossOriginEmbedderPolicy: false` — required for MapLibre tile fetches
+- Bootstrap now throws if `FRONTEND_URL` is missing (was silently letting CORS reject everything)
+
+#### Security audit
+- **Secret scan:** No real API keys committed (no `sk-ant-`, no AWS keys, no inline tokens). No `.env` files in git history. Only "secret" in history is `BETTER_AUTH_SECRET=local-dev-secret-minimum-32-characters-long` which is the labeled placeholder in `.env.example`
+- **`$queryRawUnsafe` audit:** confirmed never used in `apps/api/`
+- **`npm audit` (production deps only):** 39 vulnerabilities (1 low, 18 moderate, 20 high). All fixes require `--force` breaking changes:
+  - `expo@55.0.24` upgrade (affects @expo/cli, @expo/config, @expo/plist, @xmldom/xmldom, tar, send, @mapbox/node-pre-gyp) — high-severity vulns in dev-time tooling, do not ship in production web bundle
+  - `@nestjs/core@11.1.21` upgrade — moderate-severity injection CVE in production NestJS
+  - **Deferred to a follow-up**: breaking upgrades need staged adoption with Phase 8 test re-run
+
+#### Deploy pipeline (`.github/workflows/deploy.yml`)
+- Triggers on push to `main`/`master` after CI completes
+- `concurrency: deploy-production` — only one production deploy at a time
+- `wait-for-ci` job — uses `lewagon/wait-on-check-action` to gate on the `Build` check
+- `migrate` job — runs `npx prisma migrate deploy` against `PROD_DATABASE_URL` (GitHub Actions secret), guarded by `environment: production`
+- `deploy` job — uses `digitalocean/action-doctl` + `doctl apps create-deployment --wait` to trigger App Platform rolling deploy
+- Required secrets documented in workflow header: `PROD_DATABASE_URL`, `DIGITALOCEAN_ACCESS_TOKEN`, `DO_APP_ID`
+
+#### PWA manifest (`apps/web/app.json`)
+- Added to `expo.web`: `name`, `shortName`, `lang`, `scope`, `themeColor #0f172a`, `backgroundColor #ffffff`, `display: standalone`, `orientation: any`, `description`
+- Expo's static export now emits a proper webmanifest for "Add to Home Screen" on iOS Safari and Android Chrome
+
+#### Production API URL config
+- Verified all 4 frontend files (`api.service.ts`, `auth-client.ts`, `browser-collector.service.ts`, `websocket.service.ts`) already read `EXPO_PUBLIC_API_URL` from env with `localhost:3000` fallback — no changes needed; production builds point at production API when `EXPO_PUBLIC_API_URL` is set in the build environment
+
+#### `README.md`
+- Local setup: install → env → docker → migrate → seed → dev servers → tests
+- Production deployment: DigitalOcean App Platform one-time setup (managed PG with PostGIS + Timescale extensions, managed Redis, Spaces, App Platform services, PgBouncer DATABASE_URL, Anthropic spend cap)
+- GitHub Actions secrets table
+- Deploy flow walkthrough
+- Breaking schema change protocol (two-phase deploy)
+- Monitoring alerts recommendations
+
+### What's NOT done (cloud-side manual steps)
+
+These require provisioning real cloud resources and cannot be automated from this repo:
+
+1. **DigitalOcean App Platform app created** — 2 API instances, web static site
+2. **DigitalOcean Managed PostgreSQL** — TimescaleDB + PostGIS extensions enabled
+3. **DigitalOcean Managed Redis** — provisioned and connection string set in App Platform env
+4. **DigitalOcean Spaces bucket** — for post-MVP floor plans / Agent installers
+5. **All production env vars** set on App Platform service per `.env.example`
+6. **Anthropic console spend cap** — set before first real production traffic
+7. **GitHub Actions secrets** added to repo: `PROD_DATABASE_URL`, `DIGITALOCEAN_ACCESS_TOKEN`, `DO_APP_ID`
+8. **First production deployment** — verify `GET https://app.nodescope.io/api/health` returns `ok`
+9. **DNS + HTTPS** — domain pointed at App Platform load balancer, HTTPS enforced
+10. **DigitalOcean monitoring alerts** — CPU >80%, memory >85%, DB connections >80%
+11. **Cross-browser + bundle size + map load-time testing** — deferred manual measurement steps from Phase 8
+
+### Architecture notes
+
+- **CSP is intentionally restrictive.** No CDN scripts, no inline scripts. If a feature needs to fetch from a new domain, add it to `connect-src` in `main.ts` and update the SAD §12.4 list in the same PR.
+- **Migration adoption.** On a fresh clone, `prisma migrate dev` will detect the manually-authored `20260516000000_init/migration.sql` and apply it. Against existing test or production databases that already have the schema applied (e.g. previously via `prisma db push`), use `npx prisma migrate resolve --applied 20260516000000_init` to mark it as already-applied without re-running.
+- **`deploy.yml` waits on CI rather than chaining via `needs`** so the two workflows stay independently re-runnable (cancel/retry deploy without rerunning the full test matrix).
+
+---
+
+## MVP Complete (code-side)
+
+All Phase 0–9 code is in the repo. Remaining work is operational: cloud provisioning, secret configuration, first production deploy, and manual cross-browser/performance verification.
