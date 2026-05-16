@@ -14,6 +14,8 @@ MVP scope is browser-only, personal-use, single-network. See `docs/PRD.md` for f
 npm install
 ```
 
+`.npmrc` at the repo root sets `legacy-peer-deps=true`. This is required because React Native 0.85's strict `react@^19.2.3` peer conflicts with Better Auth's flexible peer ranges, and because some companion packages (`expo-router`, `react-native-worklets`) are listed as root devDependencies purely to force them to hoist to the root `node_modules` — Expo's `babel-preset-expo` calls `require.resolve('expo-router')` from its own hoisted location and won't find workspace-local installs.
+
 ### 2. Copy environment file
 
 ```bash
@@ -72,6 +74,8 @@ npm run test:e2e --workspace=apps/api
 
 ## Production Deployment — DigitalOcean App Platform
 
+The platform topology is codified in [`.do/app.yaml`](./.do/app.yaml) — that file is the source of truth for which services run, how they're built, what env vars they read, and how the two domains (`api.nodescope.io`, `app.nodescope.io`) route via host-based ingress.
+
 ### One-time cloud setup
 
 1. **Managed PostgreSQL** — create a DigitalOcean Managed PostgreSQL cluster. Enable extensions:
@@ -79,14 +83,25 @@ npm run test:e2e --workspace=apps/api
    CREATE EXTENSION IF NOT EXISTS postgis;
    CREATE EXTENSION IF NOT EXISTS timescaledb;
    ```
-2. **Managed Redis** — create a DigitalOcean Managed Redis instance.
-3. **App Platform app** — create a new app pointing at this repo.
-   - Service 1: NestJS API (`apps/api`), 2 instances for zero-downtime deploy.
-   - Service 2: Static site for the Expo web build (or a separate static-site app).
-4. **Spaces bucket** — create a bucket (used post-MVP for floor plans / Agent installers).
-5. **DATABASE_URL** — use the PgBouncer connection string from the managed PostgreSQL panel so the API connects through the pooler.
-6. **Environment variables** — set every variable in `.env.example` on the App Platform service. `FRONTEND_URL` must be the production web URL or CORS will reject every request.
+   Use the PgBouncer connection string from the managed panel for `DATABASE_URL`.
+2. **Managed Redis** — create a DigitalOcean Managed Redis instance, copy the connection string for `REDIS_URL`.
+3. **Spaces bucket** — create a bucket (used post-MVP for floor plans / Agent installers).
+4. **Create the App Platform app from the spec:**
+   ```bash
+   doctl apps create --spec .do/app.yaml
+   ```
+   This creates two components in one app: the NestJS API (2 × `basic-xxs`) and the Expo Web static site. Note the returned app UUID for `DO_APP_ID`.
+5. **Attach the secrets** (DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, ANTHROPIC_API_KEY) via the DO console or `doctl apps update <APP_ID> --spec -`. The spec declares them with empty values so the file round-trips without leaking them, but they must be set once per app.
+6. **DNS** — CNAME `api.nodescope.io` and `app.nodescope.io` to the App Platform default ingress hostname (visible in the DO console after the first deploy).
 7. **Anthropic spend cap** — set a hard spend cap in the Anthropic console **before** the first production deploy. This is the sixth layer of AI rate limiting and the only one that lives outside this codebase.
+
+### Updating the platform spec
+
+When `.do/app.yaml` changes (new env var, instance count change, routing tweak), push to `master` and the deploy workflow re-applies the spec automatically. To force an immediate spec update without a code change:
+
+```bash
+doctl apps update <APP_ID> --spec .do/app.yaml
+```
 
 ### GitHub Actions secrets
 
@@ -100,11 +115,12 @@ Configure these in repo settings → Secrets and variables → Actions → Produ
 
 ### Deploy flow
 
-1. PR merged to `main` → CI (`.github/workflows/ci.yml`) runs: lint, unit, integration, E2E, build.
-2. On CI green, `.github/workflows/deploy.yml` runs:
-   - `prisma migrate deploy` against `PROD_DATABASE_URL`
-   - `doctl apps create-deployment --wait` triggers the App Platform deploy.
-3. App Platform performs a rolling deploy across both instances. Health check (`GET /api/health`) gates traffic shift. Total time: ~3–5 minutes.
+1. PR merged to `main` / `master` → CI (`.github/workflows/ci.yml`) runs: lint, unit, integration, E2E, build.
+2. On CI green, `.github/workflows/deploy.yml` runs four sequential jobs:
+   - **wait-for-ci** — gates on the CI `Build` check passing for this SHA.
+   - **migrate** — `prisma migrate deploy` against `PROD_DATABASE_URL`.
+   - **deploy** — `doctl apps create-deployment --wait` triggers the App Platform rolling deploy.
+   - **smoke** — `node scripts/smoke.mjs <API_URL> <WEB_URL>` exercises the auth session, CORS preflight, Socket.io handshake, web SPA shell, and SPA catchall against the freshly deployed app. Workflow fails (and surfaces the broken deploy in commit status) if any check fails. Health check is retried for ~30s to cover cold-start.
 
 ### Breaking schema change protocol
 
@@ -121,6 +137,17 @@ Recommended alerts:
 - CPU > 80% sustained 5 min
 - Memory > 85% sustained 5 min
 - Database connection pool > 80% utilization
+
+### Bundle size budget
+
+Web entry bundle is split via `React.lazy` in `apps/web/app/(app)/map.tsx`:
+
+| Chunk | Raw | Gzipped | When loaded |
+|---|---|---|---|
+| `entry-*.js` | 1.44 MB | **396 KB** | Initial paint |
+| `MapView-*.js` | 793 KB | 209 KB | First visit to the map screen |
+
+The 500 KB gzipped initial-paint target from `CLAUDE.md` is met by the entry chunk. If a future change pushes the entry chunk over budget, the source-map attribution recipe is in `progress.md` Phase 9b under "Web bundler config + code splitting".
 
 ---
 

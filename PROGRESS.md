@@ -18,7 +18,8 @@ Last updated: 2026-05-16
 | 7 | Clients, Circuits & Settings | ✅ Complete |
 | 8 | Integration & UI Honesty Audit | ✅ Complete |
 | 9 | Hardening & Production Readiness | 🟡 Code complete — cloud setup pending |
-| 9b | Dependency Currency (Expo 55 / RN 0.85 / argon2 0.44) | 🟡 Code complete — needs in-browser smoke test |
+| 9b | Dependency Currency (Expo 55 / RN 0.85 / argon2 0.44) | 🟡 Code complete + bundle under target — needs in-browser smoke test |
+| 9c | Deployment Hardening (.do/app.yaml + post-deploy smoke test) | 🟢 Code complete |
 
 ---
 
@@ -771,7 +772,7 @@ These require provisioning real cloud resources and cannot be automated from thi
 
 ## Phase 9b — Dependency Currency 🟡
 
-**Implemented:** 2026-05-16 (code-side complete; needs in-browser smoke test)
+**Implemented:** 2026-05-16 (code-side complete + bundle under target; needs in-browser smoke test)
 
 ### What was built
 
@@ -814,35 +815,80 @@ Fixed by:
 - Four `setUser(result.data.user as SessionUser)` cast sites — now cast through `unknown` (`as unknown as SessionUser`). Better Auth's client doesn't propagate server-side `additionalFields` (`tier`, `homeLatitude`, `homeLongitude`) into its inferred session type. Functional but loses type safety on those three fields — proper fix is to configure the client with matching `additionalFields`, deferred.
 - `apps/web/components/map/MapView.tsx` — `StyleSheet.absoluteFillObject` → `StyleSheet.absoluteFill` (RN 0.85 dropped `absoluteFillObject` from the type definition; `absoluteFill` is the documented replacement).
 
-#### Web bundler config
+#### Web bundler config + code splitting
 
-- `apps/web/app.json` — `expo.web.output` changed from `"static"` to `"single"`. NodeScope is auth-gated SPA with no SEO benefit from per-route static pre-rendering, and the static pipeline's SSR pass was breaking on `expo-router/_ctx.web.js` before all other fixes landed. `"single"` produces a single `index.html` + bundled JS which is the right shape for this app.
+- `apps/web/app.json` — `expo.web.output` is `"static"` (per-route pre-rendered HTML + a shared JS bundle). Was briefly switched to `"single"` while debugging the EXPO_ROUTER_APP_ROOT substitution, then restored once the hoisting fix landed. `"static"` is also what enables real code splitting via dynamic `import()`.
+- `apps/web/app/(app)/_layout.tsx` — `import { Ionicons } from '@expo/vector-icons'` replaced with `import Ionicons from '@expo/vector-icons/Ionicons'`. The barrel import was pulling in MaterialIcons, FontAwesome, and ~10 other unused icon families; the targeted import shaved 514 KB raw / ~135 KB gzipped.
+- `apps/web/app/(app)/map.tsx` + `apps/web/components/map/MapView.tsx` — MapView is now lazy-loaded via `React.lazy(() => import(...))` behind a `<Suspense fallback>`. Metro emits a separate `MapView-*.js` chunk that downloads only when the map screen renders. `MapView.tsx` got a `export default MapView` so React.lazy can consume it.
+- `experiments.asyncRoutes.web` was tested and found to have no effect on production export (Expo CLI bundles statically regardless of the flag), so it is **not** retained in `app.json`. React.lazy is the only mechanism that triggers Metro to emit a separate chunk in production builds.
 
 ### Verification
 
 - `npm audit`: **26 → 4 moderate** (no high, no critical, no low). All 4 are dev-time `postcss` transitive via `@expo/cli` / `@expo/metro-config` — not in the production browser bundle.
 - API: `nest build` clean; 118/118 unit tests pass (13 suites); 17/17 graceful-degradation e2e tests pass (3 suites).
-- Web: `npx expo export --platform web` succeeds. Bundle output: `index.html` 1.5KB, `entry-*.js` 2.8MB raw (~700–900KB expected gzipped — significantly larger than the original <500KB target in CLAUDE.md, driven by React 19 + reanimated/worklets/safe-area-context companions; needs measurement and possibly code-splitting investigation).
-- TypeScript: `tsc --noEmit -p apps/web/tsconfig.json` passes with zero errors.
+- TypeScript: `tsc --noEmit` clean on both `apps/web` and `apps/api`.
+- Web bundle: `entry-*.js` **1.44 MB raw / 396 KB gzipped** (initial paint) + `MapView-*.js` **793 KB raw / 209 KB gzipped** (lazy on map route). Initial-paint chunk is **under the CLAUDE.md <500 KB gzipped target**.
 
 ### Not verified — needs in-browser smoke test
 
-This upgrade changed UI rendering behavior in non-trivial ways (React 19 transitions, NativeWind augmentation path, Nominatim/MapLibre versions unchanged). The dev server has not been started against a real browser. Before declaring this phase done, walk through:
+This upgrade changed UI rendering behavior in non-trivial ways (React 19 transitions, NativeWind augmentation path). The dev server has not been started against a real browser. Before declaring this phase done, walk through:
 
 1. `npm run dev --workspace=apps/web` boots without runtime errors.
 2. Login → map → device CRUD → AI chat → settings paths all render and behave.
 3. Class-based styling (NativeWind `className`) actually applies at runtime (not just typechecks).
-4. Bundle size measurement in production build (gzipped). If >1 MB gzipped, code-split.
+4. MapView Suspense fallback briefly shows on first map load, then the map renders (cached on subsequent visits).
 
 ### Open follow-ups
 
 - `react-native-css-interop` augmentation upstream: when the maintainer ships a fix for RN 0.85's restructured types, the manual `nativewind-env.d.ts` augmentations can be deleted.
 - `auth-client.ts`: configure Better Auth client with matching `additionalFields` so the `as unknown as SessionUser` casts can become plain `as SessionUser`.
-- Bundle size: investigate code-splitting `expo-router` routes if measured gzipped size exceeds the original <500KB target.
 - `npm audit fix --force` on the 4 remaining moderate `postcss` advisories — these resolve only when Expo/RN ship updated CLI dependencies; nothing to do locally.
+
+---
+
+## Phase 9c — Deployment Hardening 🟢
+
+**Implemented:** 2026-05-16
+
+### What was built
+
+#### `.do/app.yaml` — DigitalOcean App Platform spec
+
+Codifies the App Platform deployment. Created once with `doctl apps create --spec .do/app.yaml`; subsequent pushes to `master` auto-deploy with the spec from the new commit (no console clicks required to change platform config).
+
+- **api service** — NestJS, 2 × `basic-xxs`, healthcheck on `/api/health`. Build runs `npm ci --legacy-peer-deps`, `prisma generate`, `nest build`. Plain env vars baked into the spec; secrets (`DATABASE_URL`, `REDIS_URL`, `BETTER_AUTH_SECRET`, `ANTHROPIC_API_KEY`) declared with `type: SECRET, value: ""` so the spec round-trips without leaking them.
+- **web static_site** — Expo Web export, `catchall_document: index.html` so unknown paths fall through to the SPA shell for expo-router to handle client-side.
+- **Host-based ingress** — top-level `ingress.rules` block (the per-component `routes:` form is deprecated) pins each domain to exactly one component via `match.authority.exact`:
+  - `api.nodescope.io/*` → api service (`preserve_path_prefix: true` so NestJS's `setGlobalPrefix('api')` still sees the `/api` prefix)
+  - `app.nodescope.io/*` → web static site
+  - API is **unreachable** from `app.nodescope.io`, matching the CORS posture in `main.ts` (only `FRONTEND_URL` is allowed as origin).
+
+#### `scripts/smoke.mjs` + `deploy.yml` integration
+
+Post-deploy smoke test runs as a new `smoke` job sequenced after `deploy`. App Platform's own healthcheck only hits `/api/health`; a 200 there does not catch broken auth, broken CORS, broken WebSocket transport, or the web SPA failing to serve. The smoke script exercises six paths:
+
+1. `GET /api/health` → 200 with `status=ok|degraded` (retried 6 × 5s for cold-start grace)
+2. `GET /api/auth/get-session` → 200 with empty session (Better Auth reachable)
+3. `OPTIONS /api/v1/devices` → CORS preflight echoes `Origin` and sets `Access-Control-Allow-Credentials: true`
+4. `GET /socket.io/?EIO=4&transport=polling` → handshake returns `sid`
+5. `GET /` (web) → 200 with `<html>` containing "NodeScope"
+6. `GET /__catchall_smoke` (web) → 200, SPA catchall returns the index shell
+
+Self-contained (only native `fetch`, no external deps), arg- or env-driven, exits 0 on all-pass / 1 on any failure. Smoke failure fails the workflow run so the broken deploy is visible in commit status.
+
+URLs are hardcoded in both `.do/app.yaml` and `deploy.yml`; the workflow header notes the two files must be updated together when domains change.
+
+#### `apps/web/app.json` — drop dangling favicon reference
+
+`./assets/favicon.png` never existed; the build was warning on every web export. Removed the reference for now; add back when a real favicon asset exists at that path.
+
+### Architecture notes
+
+- `routes:` on components is deprecated in App Platform; `ingress.rules` is the modern shape. Mixing them is allowed but discouraged — components in this spec have no `routes:` and rely entirely on the top-level `ingress` block.
+- `preserve_path_prefix` lives under `ingress.rules[].component`, not under `match.path`. Without it, App Platform trims the matched prefix from the upstream request, which would break NestJS's `setGlobalPrefix('api')` (the API would only see `/health` instead of `/api/health`).
 
 ---
 
 ## MVP Complete (code-side)
 
-All Phase 0–9 code is in the repo. Phase 9b dependency upgrade landed code-side but needs the manual browser smoke test described above before being considered fully verified. Remaining work is operational: cloud provisioning, secret configuration, first production deploy, and manual cross-browser/performance verification.
+All Phase 0–9c code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target, but needs the manual browser smoke test described in its section. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), and manual cross-browser verification.
