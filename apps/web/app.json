@@ -6,7 +6,7 @@
     "scheme": "nodescope",
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/favicon.png",
       "name": "NodeScope",
       "shortName": "NodeScope",

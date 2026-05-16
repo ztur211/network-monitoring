@@ -296,9 +296,9 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
   }, [devices]);
 
   return (
-    <View style={StyleSheet.absoluteFillObject}>
+    <View style={StyleSheet.absoluteFill}>
       {/* MapLibre container */}
-      <View nativeID={MAP_CONTAINER_ID} style={StyleSheet.absoluteFillObject} />
+      <View nativeID={MAP_CONTAINER_ID} style={StyleSheet.absoluteFill} />
 
       {/* Tile unavailability banner — device markers still render without tiles */}
       {tileError && (

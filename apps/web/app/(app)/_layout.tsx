@@ -23,7 +23,7 @@ export default function AppLayout() {
   useEffect(() => {
     authClient.getSession().then((result) => {
       if (result.data?.user) {
-        setUser(result.data.user as SessionUser);
+        setUser(result.data.user as unknown as SessionUser);
         websocketService.connect();
         browserCollectorService.start();
       } else {

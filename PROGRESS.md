@@ -18,6 +18,7 @@ Last updated: 2026-05-16
 | 7 | Clients, Circuits & Settings | ✅ Complete |
 | 8 | Integration & UI Honesty Audit | ✅ Complete |
 | 9 | Hardening & Production Readiness | 🟡 Code complete — cloud setup pending |
+| 9b | Dependency Currency (Expo 55 / RN 0.85 / argon2 0.44) | 🟡 Code complete — needs in-browser smoke test |
 
 ---
 
@@ -768,6 +769,80 @@ These require provisioning real cloud resources and cannot be automated from thi
 
 ---
 
+## Phase 9b — Dependency Currency 🟡
+
+**Implemented:** 2026-05-16 (code-side complete; needs in-browser smoke test)
+
+### What was built
+
+#### Backend
+- `argon2` 0.31.2 → 0.44.0 (`apps/api/package.json`). 0.44 drops `@mapbox/node-pre-gyp` and `tar` from the native-build chain in favour of `node-addon-api` + `node-gyp-build`. Removes the only `tar`-via-argon2 audit path. API surface (`hash`, `verify`, `argon2id` constant) unchanged — single import site in `better-auth.config.ts` works as-is.
+
+#### Frontend major upgrade (`apps/web/package.json`)
+
+| Package | Before | After |
+|---|---|---|
+| expo | ~51.0.28 | ~55.0.24 |
+| expo-router | ~3.5.23 | ~55.0.14 |
+| expo-linking | ~6.3.1 | ~55.0.15 |
+| expo-constants | ~16.0.2 | ~55.0.16 |
+| expo-status-bar | ~1.12.1 | ~55.0.6 |
+| @expo/metro-runtime | ~3.2.3 | ~55.0.11 |
+| react | 18.2.0 | 19.2.6 |
+| react-dom | 18.2.0 | 19.2.6 |
+| react-native | 0.74.5 | 0.85.3 |
+| react-native-web | ~0.19.10 | ~0.21.2 |
+| nativewind | ^4.0.36 | ^4.2.4 |
+| `@types/react` | ~18.2.79 | ~19.1.1 |
+| `@types/react-native` | ^0.73.0 | **removed** (RN 0.74+ ships its own types) |
+
+New direct deps added for expo-router 55 peer requirements: `react-native-worklets@0.8.3`, `react-native-safe-area-context@5.7.0`, `react-native-screens@4.25.0`, `react-native-gesture-handler@2.31.2`, `react-native-reanimated@4.3.1`.
+
+#### Monorepo hoisting fixes
+
+Expo SDK 55's `babel-preset-expo` calls `hasModule('expo-router')` via plain `require.resolve` from the hoisted preset's location. With workspace-local resolution it returned false, silently disabling the expo-router babel plugin and breaking `process.env.EXPO_ROUTER_APP_ROOT` substitution. Same shape for `react-native-worklets/plugin` referenced by `react-native-reanimated`'s babel plugin.
+
+Fixed by:
+- Adding `expo-router` and `react-native-worklets` as root `devDependencies` in workspace root `package.json` — forces hoist to root `node_modules` where the preset can find them.
+- New `.npmrc` with `legacy-peer-deps=true` — required because RN 0.85's strict `react@^19.2.3` peer and Better Auth's flexible peer ranges conflict during workspace resolution.
+- New `apps/web/metro.config.js` — sets `projectRoot=__dirname`, `workspaceRoot=../..`, and `resolver.nodeModulesPaths` to both `node_modules` locations so Metro walks the monorepo correctly.
+
+#### Type system fixes
+
+- New `apps/web/nativewind-env.d.ts` — `/// <reference types="nativewind/types" />` plus explicit `declare module 'react-native'` augmentations for `ViewProps`, `TextProps`, `ImagePropsBase`, `TextInputProps`, `ScrollViewProps`, `SwitchProps`, `TouchableWithoutFeedbackProps`, `PressableProps`, `FlatListProps`, `ActivityIndicatorProps`. RN 0.85's types restructure moved `ViewProps` out of `types/index.d.ts` into `Libraries/Components/View/ViewPropTypes.d.ts`, so `react-native-css-interop@0.2.4`'s default augmentation no longer reaches the right interface. The local augmentation works around it until css-interop ships a fix.
+- `apps/web/tsconfig.json` — added `paths` entry for `@nodescope/shared` pointing at TS source (matching the api jest configs); added `nativewind-env.d.ts` to `include`.
+- Four `setUser(result.data.user as SessionUser)` cast sites — now cast through `unknown` (`as unknown as SessionUser`). Better Auth's client doesn't propagate server-side `additionalFields` (`tier`, `homeLatitude`, `homeLongitude`) into its inferred session type. Functional but loses type safety on those three fields — proper fix is to configure the client with matching `additionalFields`, deferred.
+- `apps/web/components/map/MapView.tsx` — `StyleSheet.absoluteFillObject` → `StyleSheet.absoluteFill` (RN 0.85 dropped `absoluteFillObject` from the type definition; `absoluteFill` is the documented replacement).
+
+#### Web bundler config
+
+- `apps/web/app.json` — `expo.web.output` changed from `"static"` to `"single"`. NodeScope is auth-gated SPA with no SEO benefit from per-route static pre-rendering, and the static pipeline's SSR pass was breaking on `expo-router/_ctx.web.js` before all other fixes landed. `"single"` produces a single `index.html` + bundled JS which is the right shape for this app.
+
+### Verification
+
+- `npm audit`: **26 → 4 moderate** (no high, no critical, no low). All 4 are dev-time `postcss` transitive via `@expo/cli` / `@expo/metro-config` — not in the production browser bundle.
+- API: `nest build` clean; 118/118 unit tests pass (13 suites); 17/17 graceful-degradation e2e tests pass (3 suites).
+- Web: `npx expo export --platform web` succeeds. Bundle output: `index.html` 1.5KB, `entry-*.js` 2.8MB raw (~700–900KB expected gzipped — significantly larger than the original <500KB target in CLAUDE.md, driven by React 19 + reanimated/worklets/safe-area-context companions; needs measurement and possibly code-splitting investigation).
+- TypeScript: `tsc --noEmit -p apps/web/tsconfig.json` passes with zero errors.
+
+### Not verified — needs in-browser smoke test
+
+This upgrade changed UI rendering behavior in non-trivial ways (React 19 transitions, NativeWind augmentation path, Nominatim/MapLibre versions unchanged). The dev server has not been started against a real browser. Before declaring this phase done, walk through:
+
+1. `npm run dev --workspace=apps/web` boots without runtime errors.
+2. Login → map → device CRUD → AI chat → settings paths all render and behave.
+3. Class-based styling (NativeWind `className`) actually applies at runtime (not just typechecks).
+4. Bundle size measurement in production build (gzipped). If >1 MB gzipped, code-split.
+
+### Open follow-ups
+
+- `react-native-css-interop` augmentation upstream: when the maintainer ships a fix for RN 0.85's restructured types, the manual `nativewind-env.d.ts` augmentations can be deleted.
+- `auth-client.ts`: configure Better Auth client with matching `additionalFields` so the `as unknown as SessionUser` casts can become plain `as SessionUser`.
+- Bundle size: investigate code-splitting `expo-router` routes if measured gzipped size exceeds the original <500KB target.
+- `npm audit fix --force` on the 4 remaining moderate `postcss` advisories — these resolve only when Expo/RN ship updated CLI dependencies; nothing to do locally.
+
+---
+
 ## MVP Complete (code-side)
 
-All Phase 0–9 code is in the repo. Remaining work is operational: cloud provisioning, secret configuration, first production deploy, and manual cross-browser/performance verification.
+All Phase 0–9 code is in the repo. Phase 9b dependency upgrade landed code-side but needs the manual browser smoke test described above before being considered fully verified. Remaining work is operational: cloud provisioning, secret configuration, first production deploy, and manual cross-browser/performance verification.

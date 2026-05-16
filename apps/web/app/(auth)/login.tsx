@@ -41,7 +41,7 @@ export default function LoginScreen() {
 
     if (result.data?.user) {
       setLoading(false);
-      setUser(result.data.user as SessionUser);
+      setUser(result.data.user as unknown as SessionUser);
       router.replace('/(app)/map');
     }
   };

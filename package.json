@@ -18,5 +18,9 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "expo-router": "55.0.14",
+    "react-native-worklets": "0.8.3"
   }
 }
