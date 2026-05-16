@@ -713,6 +713,14 @@ All 17 graceful-degradation tests + 99 unit tests pass (16 suites total).
   - `@nestjs/core@11.1.21` upgrade — moderate-severity injection CVE in production NestJS
   - **Deferred to a follow-up**: breaking upgrades need staged adoption with Phase 8 test re-run
 
+#### NestJS 10 → 11 upgrade (deferred follow-up, now landed)
+- All `@nestjs/*` packages bumped to 11.x (`@nestjs/core@11.1.21` resolves the moderate-severity injection CVE); `@nestjs/config` 3 → 4, `@nestjs/throttler` 5 → 6, `@nestjs/terminus` 10 → 11, `@types/express` 4 → 5
+- `apps/api/src/main.ts` — `import * as compression from 'compression'` → `import compression from 'compression'` (Express 5 / TS 5 ESM-interop fix; `* as` no longer callable at runtime)
+- `apps/api/src/clients/clients.service.ts` — `ClientsResponseDto` now exported (consumed by type-only imports under stricter NestJS 11 type resolution)
+- `apps/api/src/realtime/__tests__/realtime.gateway.e2e.ts` — `@socket.io/redis-adapter` mock rewritten to return the real `socket.io-adapter` `Adapter` class. Reason: socket.io 4.8+ (pulled in transitively by `@nestjs/platform-socket.io@11`) instantiates the adapter via `new MockAdapter(namespace)` and calls `.init()`/`.close()` on it. The old mock returned a plain object and broke the runtime contract.
+- **Verification:** `nest build` clean; 118/118 unit tests pass; 17/17 graceful-degradation e2e tests pass. The remaining e2e tests (devices, circuits, fiber-runs, connections, map, users, clients, realtime gateway) fail with `Environment variable not found: DATABASE_URL` — same failure mode under NestJS 10; they require the test DB (`docker compose -f docker-compose.test.yml up -d` + `.env`), not an upgrade regression.
+- **`npm audit` after upgrade:** 39 → 26 vulnerabilities (1 low, 9 moderate, 16 high). ~13 vulns eliminated, all in the NestJS dependency chain. Remaining 26 are overwhelmingly in the Expo / React Native build tooling (`@expo/cli`, `@expo/config-plugins`, `@react-native-community/cli-*`, `@xmldom/xmldom`, `postcss`, `send`) plus `tar`/`@mapbox/node-pre-gyp` via `argon2`'s native-module build step — none of these ship in the production browser bundle. Fix path is still `expo@55.0.24` / `react-native@0.85.3` (both semver-major), kept as a separate follow-up.
+
 #### Deploy pipeline (`.github/workflows/deploy.yml`)
 - Triggers on push to `main`/`master` after CI completes
 - `concurrency: deploy-production` — only one production deploy at a time
