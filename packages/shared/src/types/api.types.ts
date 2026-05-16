@@ -1,6 +1,9 @@
-export type AccountTier = 'PERSONAL_FREE' | 'PERSONAL_PAID' | 'MULTI_PROPERTY' | 'ENTERPRISE';
-
-export type ConnectionType = 'ETHERNET' | 'FIBER' | 'WIFI' | 'LOGICAL';
+// Enums are the source-of-truth Prisma generations re-exported as types.
+// Type-only import means the @prisma/client runtime is NOT bundled into the
+// web app — Metro tree-shakes the empty import. CLAUDE.md Rule #6 forbids
+// hand-written types that duplicate Prisma-generated ones, hence this shape.
+import type { AccountTier, ConnectionType } from '@prisma/client';
+export type { AccountTier, ConnectionType };
 
 export interface UserDto {
   id: string;
