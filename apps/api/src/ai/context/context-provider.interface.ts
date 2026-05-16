@@ -1,0 +1,8 @@
+export const NETWORK_CONTEXT_PROVIDER = Symbol('NETWORK_CONTEXT_PROVIDER');
+export const REALTIME_CONTEXT_PROVIDER = Symbol('REALTIME_CONTEXT_PROVIDER');
+export const ACCOUNT_CONTEXT_PROVIDER = Symbol('ACCOUNT_CONTEXT_PROVIDER');
+export const PRODUCT_CONTEXT_PROVIDER = Symbol('PRODUCT_CONTEXT_PROVIDER');
+
+export interface ContextProvider {
+  getContext(userId: string, extra?: string): Promise<string>;
+}

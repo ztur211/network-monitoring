@@ -14,7 +14,7 @@ Last updated: 2026-05-15
 | 3 | Real-Time Infrastructure | ✅ Complete |
 | 4 | Browser Collector | ✅ Complete |
 | 5 | Map & GIS | ✅ Complete |
-| 6 | AI Assistant | ⬜ Not started |
+| 6 | AI Assistant | ✅ Complete |
 | 7 | Clients, Circuits & Settings | ⬜ Not started |
 | 8 | Integration & UI Honesty Audit | ⬜ Not started |
 | 9 | Hardening & Production Readiness | ⬜ Not started |
@@ -497,6 +497,85 @@ npm run test:e2e --workspace=apps/api
 
 ---
 
-## What's Next — Phase 6 (AI Assistant) or Phase 7 (Clients, Circuits & Settings)
+---
 
-Phases 6 and 7 can be built in parallel or sequentially. Recommended order: 6 → 7.
+## Phase 6 — AI Assistant ✅
+
+**Implemented:** 2026-05-15
+
+### What was built
+
+#### Shared types (`packages/shared/src/types/ai.types.ts`)
+- `AiMessageResponseDto`, `AiUsageDto`, `ConversationMessage`
+
+#### Product knowledge (`docs/product-knowledge/`)
+- `devices.md`, `map.md`, `circuits.md`, `ai-assistant.md`, `roadmap.md`
+- Loaded at startup by `ProductContextProvider`, cached in memory
+
+#### AiModule (`src/ai/`)
+
+**Adapters:**
+- `AiProviderAdapter` interface + `AI_PROVIDER_TOKEN` injection token
+- `ClaudeAdapter` — uses `@anthropic-ai/sdk` `messages.stream()` + `finalMessage()` for streaming; `messages.create()` for sync
+- `OpenAICompatibleAdapter` — uses native fetch for OpenAI-compatible endpoints (Ollama, LM Studio)
+- Selected by `AI_PROVIDER` env var (`claude` default, `openai-compatible` for self-hosted)
+
+**Context providers (4 sources):**
+- `NetworkContextProvider` — queries devices, connections, fiber runs, circuits via PrismaService
+- `RealtimeContextProvider` — gets latest DeviceMetric via DataSourcesService
+- `AccountContextProvider` — reads user tier, lists available vs. planned features
+- `ProductContextProvider` — loads `docs/product-knowledge/*.md` at OnModuleInit, caches
+- `ContextBuilderService` — assembles all 4 sources + honesty system prompt preamble
+
+**Rate limiting (6 layers):**
+- `AiRateLimiterService` — 4 Redis checks in parallel (hourly, daily, monthly tokens, per-IP)
+- Redis keys: `ai:rate:hourly:{userId}:{hour}`, `ai:rate:daily:{userId}:{date}`, `ai:rate:monthly_tokens:{userId}:{month}`, `ai:rate:ip:{ip}:{hour}`
+- `buildUsageWarning` — warns at 80% of any limit
+- `incrementUsage` — pipeline with incr/incrby + expire per counter
+- Throws AI_001 (hourly/IP), AI_002 (daily), AI_003 (monthly tokens)
+
+**Conversation management:**
+- `ConversationService` — Redis key `ai:conv:{id}`, 24h TTL, max 20 message pairs
+- `createConversationId()` uses `crypto.randomUUID()`
+
+**Service and HTTP API:**
+- `AiService.sendMessageHttp` — sync path: rate check → context assembly → adapter.complete() → history + usage increment → response
+- `AiService.sendMessageStream` — streaming path: same flow but adapter.stream() with token callback
+- Graceful fallback: catches adapter errors, builds response from assembled context, `providerStatus: 'unavailable'`
+- History trimmed to fit 8000-token budget (oldest pairs dropped first)
+- `GET /api/v1/ai/usage` — returns hourly/daily/monthly counts
+- `DELETE /api/v1/ai/conversation/:id` — clears Redis history
+
+**WebSocket (RealtimeGateway update):**
+- `handleAiMessage` — `@SubscribeMessage(v1:ai:message)`, extracts userId from `socket.data` (never from payload)
+- Emits `v1:ai:token` per chunk, `v1:ai:complete` when done
+- Rate limit errors emitted as `v1:error` with code and `context: 'ai'`
+
+#### Frontend
+- `ai.store.ts` — Zustand: messages, conversationId, isStreaming, usage, providerAvailable; sendMessage, appendTokenToCurrentMessage, completeCurrentMessage
+- `AiMessage.tsx` — user/assistant bubbles, streaming indicator, provider-unavailable badge, usage warning
+- `AiStatusBanner.tsx` — shows when unavailable, at limit, or approaching limit
+- `AiChatWindow.tsx` — message list, suggested prompts when empty, send input, usage counter
+- `app/(app)/ai-assistant.tsx` — full screen wrapper
+- `_layout.tsx` updated — subscribes to `v1:ai:token`, `v1:ai:complete`, `v1:error` (context: ai)
+
+#### Tests (written before implementation)
+- `ai-rate-limiter.service.spec.ts` — 10 unit tests
+- `context-builder.service.spec.ts` — 4 unit tests
+- `ai.service.spec.ts` — 11 unit tests
+- `ai.controller.e2e.ts` — 11 E2E tests (uses overrideProvider to mock ClaudeAdapter)
+
+#### All 99 unit tests pass (13 suites)
+
+### Architecture notes
+- `AiModule` imports PrismaModule, RedisModule, DataSourcesModule — no circular dependency
+- `RealtimeModule` imports `AiModule` to give the gateway access to `AiService` for WS handling
+- `AppModule` imports `AiModule` directly for HTTP endpoints
+- `AI_PROVIDER_TOKEN` follows same pattern as `GEOCODING_PROVIDER` in MapModule
+- Context providers injected via Symbol tokens (NETWORK_CONTEXT_PROVIDER etc.) matching the `@Inject()` decorators in ContextBuilderService
+
+---
+
+## What's Next — Phase 7 (Clients, Circuits & Settings)
+
+Read: API Design Sections 8 (Circuits), 10 (Clients), PRD Section 6.7 before starting.

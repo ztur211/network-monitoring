@@ -7,6 +7,7 @@ import { websocketService } from '../../lib/websocket.service';
 import { browserCollectorService, subscribeToMetricsUpdates } from '../../lib/browser-collector.service';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { useDeviceStore } from '../../store/device.store';
+import { useAiStore } from '../../store/ai.store';
 import { WS_EVENTS, DeviceDto, FiberRunDto, DeviceConnectionDto } from '@nodescope/shared';
 import type { SessionUser } from '@nodescope/shared';
 
@@ -14,6 +15,7 @@ export default function AppLayout() {
   const router = useRouter();
   const { isAuthenticated, isLoading, setUser, setLoading } = useAuthStore();
   const { upsertDevice, removeDevice, flushOfflineQueue } = useDeviceStore();
+  const { appendTokenToCurrentMessage, completeCurrentMessage, setError: setAiError } = useAiStore();
 
   useEffect(() => {
     authClient.getSession().then((result) => {
@@ -34,6 +36,11 @@ export default function AppLayout() {
 
     const unsubscribeMetrics = subscribeToMetricsUpdates();
     const unsubscribeEntities = subscribeToEntityEvents({ upsertDevice, removeDevice });
+    const unsubscribeAi = subscribeToAiEvents({
+      appendToken: appendTokenToCurrentMessage,
+      complete: completeCurrentMessage,
+      setError: setAiError,
+    });
 
     // Flush offline queue on reconnect
     const handleReconnect = () => void flushOfflineQueue();
@@ -43,6 +50,7 @@ export default function AppLayout() {
       browserCollectorService.stop();
       unsubscribeMetrics();
       unsubscribeEntities();
+      unsubscribeAi();
       websocketService.off('reconnect', handleReconnect);
       websocketService.disconnect();
     };
@@ -66,6 +74,62 @@ export default function AppLayout() {
       <Stack screenOptions={{ headerShown: false }} />
     </View>
   );
+}
+
+function subscribeToAiEvents(handlers: {
+  appendToken: (token: string) => void;
+  complete: (
+    finalContent: string,
+    conversationId: string,
+    meta: {
+      tokensUsed: number;
+      monthlyBudgetRemaining: number;
+      usageWarning: string | null;
+      providerStatus: 'ok' | 'unavailable';
+    },
+  ) => void;
+  setError: (error: string | null) => void;
+}): () => void {
+  const handleToken = (data: { token: string; conversationId: string }) => {
+    handlers.appendToken(data.token);
+  };
+
+  const handleComplete = (data: {
+    content: string;
+    conversationId: string;
+    tokensUsed: number;
+    monthlyBudgetRemaining: number;
+    usageWarning: string | null;
+    providerStatus: 'ok' | 'unavailable';
+  }) => {
+    handlers.complete(data.content, data.conversationId, {
+      tokensUsed: data.tokensUsed,
+      monthlyBudgetRemaining: data.monthlyBudgetRemaining,
+      usageWarning: data.usageWarning,
+      providerStatus: data.providerStatus,
+    });
+  };
+
+  const handleError = (data: { code: string; message: string; context?: string }) => {
+    if (data.context === 'ai') {
+      const messages: Record<string, string> = {
+        AI_001: 'Hourly message limit reached. Try again next hour.',
+        AI_002: 'Daily message limit reached. Try again tomorrow.',
+        AI_003: 'Monthly token budget exhausted.',
+      };
+      handlers.setError(messages[data.code] ?? 'Something went wrong. Please try again.');
+    }
+  };
+
+  websocketService.on<{ token: string; conversationId: string }>(WS_EVENTS.AI_TOKEN, handleToken);
+  websocketService.on(WS_EVENTS.AI_COMPLETE, handleComplete as never);
+  websocketService.on(WS_EVENTS.ERROR, handleError as never);
+
+  return () => {
+    websocketService.off(WS_EVENTS.AI_TOKEN, handleToken as never);
+    websocketService.off(WS_EVENTS.AI_COMPLETE, handleComplete as never);
+    websocketService.off(WS_EVENTS.ERROR, handleError as never);
+  };
 }
 
 function subscribeToEntityEvents(store: {

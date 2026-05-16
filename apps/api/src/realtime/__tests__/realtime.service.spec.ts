@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from '../realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
+import { AiService } from '../../ai/ai.service';
 
 const mockRoom = { emit: jest.fn() };
 const mockServer = {
@@ -31,11 +32,16 @@ describe('RealtimeGateway — service interface', () => {
       getDataSourceStatus: jest.fn(),
     };
 
+    const mockAiService = {
+      sendMessageStream: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
+        { provide: AiService, useValue: mockAiService },
       ],
     }).compile();
 
