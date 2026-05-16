@@ -63,6 +63,38 @@ describe('ConflictResolutionService', () => {
       };
       expect(() => service.buildUpdatePayload(changeset, writableFields, 1)).toThrow(NodeScopeException);
     });
+
+    it('returns empty payload when changeset has no changes', () => {
+      const changeset: ChangesetDto = { baseVersion: 1, changes: [] };
+      const result = service.buildUpdatePayload(changeset, writableFields, 1);
+      expect(result).toEqual({});
+    });
+
+    it('uses last value when changeset contains duplicate field entries', () => {
+      const changeset: ChangesetDto = {
+        baseVersion: 1,
+        changes: [
+          { field: 'name', oldValue: null, newValue: 'First' },
+          { field: 'name', oldValue: 'First', newValue: 'Last' },
+        ],
+      };
+      const result = service.buildUpdatePayload(changeset, writableFields, 1);
+      expect(result).toEqual({ name: 'Last' });
+    });
+
+    it('rejects mixed changeset on the first non-writable field encountered', () => {
+      const changeset: ChangesetDto = {
+        baseVersion: 1,
+        changes: [
+          { field: 'name', oldValue: 'Old', newValue: 'New' },
+          { field: 'createdAt', oldValue: '2026-01-01', newValue: '2027-01-01' },
+          { field: 'notes', oldValue: null, newValue: 'never reached' },
+        ],
+      };
+      expect(() => service.buildUpdatePayload(changeset, writableFields, 1)).toThrow(
+        /createdAt/,
+      );
+    });
   });
 
   describe('publishEntityUpdate', () => {
