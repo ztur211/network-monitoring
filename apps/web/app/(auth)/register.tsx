@@ -43,7 +43,7 @@ export default function RegisterScreen() {
 
     if (result.data?.user) {
       setLoading(false);
-      setUser(result.data.user as unknown as SessionUser);
+      setUser(result.data.user as SessionUser);
       router.replace('/(app)/map');
     }
   };
