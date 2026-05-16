@@ -12,6 +12,7 @@ datasource db {
 enum AccountTier {
   PERSONAL_FREE
   PERSONAL_PAID
+  MULTI_PROPERTY
   ENTERPRISE
 }
 
