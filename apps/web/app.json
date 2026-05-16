@@ -7,7 +7,6 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/favicon.png",
       "name": "NodeScope",
       "shortName": "NodeScope",
       "lang": "en",
