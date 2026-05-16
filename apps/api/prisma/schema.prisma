@@ -1,0 +1,321 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AccountTier {
+  PERSONAL_FREE
+  PERSONAL_PAID
+  ENTERPRISE
+}
+
+enum DeviceCategory {
+  // ISP Equipment - minZoom 10
+  RAD
+  ONT
+  DSLAM
+
+  // Core Infrastructure - minZoom 13
+  ROUTER
+  MODEM
+  FIBER_MEDIA_CONVERTER
+  FIREWALL
+
+  // Network Equipment - minZoom 16
+  SWITCH
+  ACCESS_POINT
+  WIFI_EXTENDER
+  WIRELESS_BRIDGE
+  SERVER_RACK
+  PATCH_PANEL
+  UPS
+
+  // End-User Devices - minZoom 18
+  COMPUTER
+  PHONE
+  TABLET
+  PRINTER
+  IOT_DEVICE
+
+  // Other - minZoom 16
+  CUSTOM
+}
+
+enum ConnectionType {
+  ETHERNET
+  FIBER
+  WIFI
+  LOGICAL
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ─── Better Auth Models ───────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String?
+  image         String?
+
+  tier          AccountTier @default(PERSONAL_FREE)
+  homeLatitude  Float?
+  homeLongitude Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts   Account[]
+  sessions   Session[]
+  devices    Device[]
+  circuits   Circuit[]
+  fiberRuns  FiberRun[]
+  connections DeviceConnection[]
+  changeLogs ChangeLog[]
+
+  orgMember OrganizationMember?
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ─── Device & Network Models ──────────────────────────────────────────────────
+
+model Device {
+  id         String         @id @default(uuid())
+  userId     String
+  name       String
+  category   DeviceCategory
+  latitude   Float?
+  longitude  Float?
+  floor      Int?
+  floorLabel String?
+  ipAddress  String?
+  macAddress String?
+  notes      String?
+  version    Int            @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  metrics         DeviceMetric[]
+  connectionsFrom DeviceConnection[] @relation("sourceDevice")
+  connectionsTo   DeviceConnection[] @relation("targetDevice")
+  fiberRunsFrom   FiberRun[]         @relation("startDevice")
+  fiberRunsTo     FiberRun[]         @relation("endDevice")
+  circuits        Circuit[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, category])
+  @@index([userId, floor])
+}
+
+model DeviceConnection {
+  id             String         @id @default(uuid())
+  userId         String
+  sourceDeviceId String
+  targetDeviceId String
+  connectionType ConnectionType
+  notes          String?
+  version        Int            @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDevice Device @relation("sourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Cascade)
+  targetDevice Device @relation("targetDevice", fields: [targetDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceDeviceId, targetDeviceId, connectionType])
+  @@index([userId, sourceDeviceId])
+  @@index([userId, targetDeviceId])
+}
+
+model FiberRun {
+  id            String  @id @default(uuid())
+  userId        String
+  name          String
+  startDeviceId String
+  endDeviceId   String
+  cableType     String?
+  lengthMeters  Float?
+  notes         String?
+  version       Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDevice Device @relation("startDevice", fields: [startDeviceId], references: [id], onDelete: Cascade)
+  endDevice   Device @relation("endDevice", fields: [endDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, startDeviceId])
+  @@index([userId, endDeviceId])
+}
+
+model Circuit {
+  id          String  @id @default(uuid())
+  userId      String
+  ispName     String
+  circuitId   String?
+  serviceType String
+  bandwidth   Float?
+  deviceId    String?
+  notes       String?
+  version     Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, deviceId])
+}
+
+// ─── Metrics & Audit Models ───────────────────────────────────────────────────
+
+model DeviceMetric {
+  id                String  @id @default(uuid())
+  userId            String
+  sourceType        String
+  bandwidthDown     Float?
+  bandwidthUp       Float?
+  latency           Float?
+  connectionQuality String?
+  time              DateTime @default(now())
+
+  // No @updatedAt — metrics are immutable once written
+  // No version column — metrics are append-only
+  // No User relation — avoids Prisma overhead on hypertable
+
+  @@index([userId, time(sort: Desc)])
+  @@index([userId, sourceType, time(sort: Desc)])
+}
+
+model ChangeLog {
+  id         String  @id @default(uuid())
+  userId     String
+  entityType String
+  entityId   String
+  field      String
+  oldValue   String?
+  newValue   String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, entityType, entityId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([entityId])
+}
+
+// ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
+
+// POST-MVP Priority 4 — uncomment when Enterprise ships
+// model Organization {
+//   id        String   @id @default(uuid())
+//   name      String
+//   orgCode   String   @unique
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+//
+//   members OrganizationMember[]
+// }
+
+// model OrganizationMember {
+//   id             String   @id @default(uuid())
+//   userId         String   @unique
+//   organizationId String
+//   role           OrgRole  @default(MEMBER)
+//   createdAt      DateTime @default(now())
+//   updatedAt      DateTime @updatedAt
+//
+//   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+//
+//   @@index([organizationId])
+// }
+
+// POST-MVP Personal Paid — uncomment when floor plan feature ships
+// model FloorPlan {
+//   id              String   @id @default(uuid())
+//   userId          String
+//   organizationId  String?
+//   floor           Int
+//   imageUrl        String
+//   originalFileUrl String?
+//   opacity         Float    @default(0.7)
+//   coordinates     Json
+//   version         Int      @default(1)
+//   createdAt       DateTime @default(now())
+//   updatedAt       DateTime @updatedAt
+//
+//   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+//
+//   @@index([userId, floor])
+// }
