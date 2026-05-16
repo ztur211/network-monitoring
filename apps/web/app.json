@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "NodeScope",
+    "slug": "nodescope",
+    "version": "0.1.0",
+    "scheme": "nodescope",
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
