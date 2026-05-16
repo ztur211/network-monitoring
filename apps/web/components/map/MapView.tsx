@@ -391,3 +391,5 @@ function buildFiberGeoJson(
     ];
   });
 }
+
+export default MapView;

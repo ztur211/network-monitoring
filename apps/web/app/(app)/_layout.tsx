@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { authClient } from '../../lib/auth-client';
 import { useAuthStore } from '../../store/auth.store';
 import { websocketService } from '../../lib/websocket.service';
