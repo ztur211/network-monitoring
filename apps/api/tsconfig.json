@@ -18,8 +18,11 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@nodescope/shared": ["../../packages/shared/src/index.ts"]
+    }
   },
-  "include": ["src/**/*", "prisma/seed.ts"],
+  "include": ["src/**/*", "src/types/**/*.d.ts", "prisma/seed.ts"],
   "exclude": ["node_modules", "dist"]
 }
