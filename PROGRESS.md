@@ -827,7 +827,7 @@ Fixed by:
 - `npm audit`: **26 → 4 moderate** (no high, no critical, no low). All 4 are dev-time `postcss` transitive via `@expo/cli` / `@expo/metro-config` — not in the production browser bundle.
 - API: `nest build` clean; 118/118 unit tests pass (13 suites); 17/17 graceful-degradation e2e tests pass (3 suites).
 - TypeScript: `tsc --noEmit` clean on both `apps/web` and `apps/api`.
-- Web bundle: `entry-*.js` **1.44 MB raw / 396 KB gzipped** (initial paint) + `MapView-*.js` **793 KB raw / 209 KB gzipped** (lazy on map route). Initial-paint chunk is **under the CLAUDE.md <500 KB gzipped target**.
+- Web bundle: `entry-*.js` **1.44 MB raw / 413 KB gzipped** (initial paint) + `MapView-*.js` **793 KB raw / 209 KB gzipped** (lazy on map route). Initial-paint chunk is **under the CLAUDE.md <500 KB gzipped target**. (The first measurement after the perf commit was 405 KB; +8 KB came from adding the `inferAdditionalFields` plugin to drop the unknown casts — see "Follow-ups landed" below.)
 
 ### Not verified — needs in-browser smoke test
 

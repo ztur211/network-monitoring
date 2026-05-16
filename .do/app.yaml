@@ -78,9 +78,6 @@ services:
       - key: AI_PROVIDER
         scope: RUN_TIME
         value: claude
-      - key: MAP_TILE_STYLE_URL
-        scope: RUN_TIME
-        value: https://tiles.openfreemap.org/styles/liberty
       - key: GEOCODING_USER_AGENT
         scope: RUN_TIME
         value: NodeScope/1.0 (ops@nodescope.io)
