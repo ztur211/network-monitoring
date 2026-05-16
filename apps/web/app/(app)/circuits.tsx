@@ -16,11 +16,12 @@ import {
 } from '../../store/circuits.store';
 import { useDeviceStore } from '../../store/device.store';
 import { CircuitForm } from '../../components/CircuitForm';
+import { Timestamp } from '../../components/Timestamp';
 
 type FormMode = 'create' | 'edit' | null;
 
 export default function CircuitsScreen() {
-  const { circuits, isLoading, loaded, error, loadCircuits, nextCursor, total, loadNextPage, createCircuit, updateCircuit, deleteCircuit } =
+  const { circuits, isLoading, loaded, loadedAt, error, loadCircuits, nextCursor, total, loadNextPage, createCircuit, updateCircuit, deleteCircuit } =
     useCircuitStore();
   const { loadDevices, loaded: devicesLoaded } = useDeviceStore();
 
@@ -127,6 +128,7 @@ export default function CircuitsScreen() {
                 {total} {total === 1 ? 'circuit' : 'circuits'}
               </Text>
             )}
+            <Timestamp isoTimestamp={loadedAt} staleThresholdMs={300_000} />
           </View>
           <TouchableOpacity
             onPress={() => setFormMode('create')}

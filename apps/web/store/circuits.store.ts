@@ -29,6 +29,7 @@ interface CircuitStore {
   circuits: CircuitDto[];
   isLoading: boolean;
   loaded: boolean;
+  loadedAt: string | null;
   error: string | null;
   nextCursor: string | null;
   total: number;
@@ -53,6 +54,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
   circuits: [],
   isLoading: false,
   loaded: false,
+  loadedAt: null,
   error: null,
   nextCursor: null,
   total: 0,
@@ -84,6 +86,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
         total: res.data.data.total,
         isLoading: false,
         loaded: true,
+        loadedAt: new Date().toISOString(),
       });
     } catch {
       set({ isLoading: false, error: 'Failed to load circuits' });

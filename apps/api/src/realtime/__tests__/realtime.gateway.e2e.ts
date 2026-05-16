@@ -65,7 +65,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('connection with valid session', () => {
     it('connects and Redis records the socket', (done) => {
-      (auth.api.getSession as jest.Mock).mockResolvedValue(VALID_SESSION);
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -93,7 +93,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('connection with missing/invalid session', () => {
     it('is rejected — socket disconnects immediately', (done) => {
-      (auth.api.getSession as jest.Mock).mockResolvedValue(null);
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(null);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -115,7 +115,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('v1:ping → v1:pong heartbeat', () => {
     it('responds to ping with pong', (done) => {
-      (auth.api.getSession as jest.Mock).mockResolvedValue(VALID_SESSION);
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -142,7 +142,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('disconnect', () => {
     it('removes the socket from Redis on disconnect', (done) => {
-      (auth.api.getSession as jest.Mock).mockResolvedValue(VALID_SESSION);
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,

@@ -12,11 +12,12 @@ import { MapView } from '../../components/map/MapView';
 import { DeviceDetailPanel } from '../../components/map/DeviceDetailPanel';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
 import { DeviceForm } from '../../components/DeviceForm';
+import { Timestamp } from '../../components/Timestamp';
 
 type FormMode = 'create' | 'edit' | null;
 
 export default function MapScreen() {
-  const { devices, isLoading, loadDevices, createDevice, updateDevice, deleteDevice } =
+  const { devices, isLoading, loadedAt, loadDevices, createDevice, updateDevice, deleteDevice } =
     useDeviceStore();
 
   const [selectedDevice, setSelectedDevice] = useState<DeviceDto | null>(null);
@@ -120,6 +121,15 @@ export default function MapScreen() {
           />
         </View>
       )}
+
+      {/* Data freshness indicator */}
+      <View className="absolute top-2 left-2" style={{ pointerEvents: 'none' }}>
+        <Timestamp
+          isoTimestamp={loadedAt}
+          staleThresholdMs={300_000}
+          className="bg-white/80 dark:bg-gray-900/80 rounded-full px-2 py-0.5"
+        />
+      </View>
 
       {/* Add device FAB */}
       {!formMode && !selectedDevice && (

@@ -12,6 +12,7 @@ import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
 import { DeviceForm } from '../../components/DeviceForm';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
+import { Timestamp } from '../../components/Timestamp';
 
 const CATEGORY_GROUPS: { label: string; values: DeviceCategory[] }[] = [
   { label: 'All', values: [] },
@@ -28,7 +29,7 @@ const CATEGORY_GROUPS: { label: string; values: DeviceCategory[] }[] = [
 type FormMode = 'create' | 'edit' | null;
 
 export default function EquipmentScreen() {
-  const { devices, isLoading, error, loadDevices, createDevice, updateDevice, deleteDevice } =
+  const { devices, isLoading, loadedAt, error, loadDevices, createDevice, updateDevice, deleteDevice } =
     useDeviceStore();
 
   const [search, setSearch] = useState('');
@@ -143,7 +144,10 @@ export default function EquipmentScreen() {
       {/* Header */}
       <View className="px-4 pt-12 pb-2 border-b border-gray-200 dark:border-gray-700">
         <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-2xl font-bold text-gray-900 dark:text-white">Equipment</Text>
+          <View>
+            <Text className="text-2xl font-bold text-gray-900 dark:text-white">Equipment</Text>
+            <Timestamp isoTimestamp={loadedAt} staleThresholdMs={300_000} />
+          </View>
           <TouchableOpacity
             onPress={() => setFormMode('create')}
             className="bg-blue-600 px-4 py-2 rounded-lg"

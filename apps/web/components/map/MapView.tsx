@@ -1,7 +1,7 @@
 // Only file in the codebase that imports maplibre-gl.
 // All other components access map functionality through this component's props.
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import maplibregl from 'maplibre-gl';
 
 import { DeviceDto, FiberRunDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
@@ -40,6 +40,7 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
   const [currentZoom, setCurrentZoom] = useState(13);
   const [mapBounds, setMapBounds] = useState<maplibregl.LngLatBounds | null>(null);
   const [fiberRuns, setFiberRuns] = useState<FiberRunDto[]>([]);
+  const [tileError, setTileError] = useState(false);
 
   const { devices, upsertDevice } = useDeviceStore();
   const { mapCenter, mapZoom, layerToggles, selectedFloor, floorDisplayMode, setMapCenter, setMapZoom } =
@@ -91,6 +92,12 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
 
     mapRef.current.on('zoom', () => {
       setCurrentZoom(mapRef.current!.getZoom());
+    });
+
+    mapRef.current.on('error', (e) => {
+      if (e.error?.message?.includes('Failed to fetch') || (e as { tile?: unknown }).tile) {
+        setTileError(true);
+      }
     });
 
     // Live marker via geolocation
@@ -293,6 +300,15 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
       {/* MapLibre container */}
       <View nativeID={MAP_CONTAINER_ID} style={StyleSheet.absoluteFillObject} />
 
+      {/* Tile unavailability banner — device markers still render without tiles */}
+      {tileError && (
+        <View style={styles.tileErrorBanner}>
+          <Text style={styles.tileErrorText}>
+            Map tiles unavailable — device markers still shown
+          </Text>
+        </View>
+      )}
+
       {/* Floor selector — right side */}
       {availableFloors.length > 0 && (
         <View style={styles.floorSelector}>
@@ -318,6 +334,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     bottom: 24,
+  },
+  tileErrorBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(245, 158, 11, 0.9)',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  tileErrorText: {
+    fontSize: 12,
+    color: '#78350f',
+    fontWeight: '500',
   },
 });
 
