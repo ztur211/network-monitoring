@@ -1,24 +1,8 @@
-export type DeviceCategory =
-  | 'RAD'
-  | 'ONT'
-  | 'DSLAM'
-  | 'ROUTER'
-  | 'MODEM'
-  | 'FIBER_MEDIA_CONVERTER'
-  | 'FIREWALL'
-  | 'SWITCH'
-  | 'ACCESS_POINT'
-  | 'WIFI_EXTENDER'
-  | 'WIRELESS_BRIDGE'
-  | 'SERVER_RACK'
-  | 'PATCH_PANEL'
-  | 'UPS'
-  | 'COMPUTER'
-  | 'PHONE'
-  | 'TABLET'
-  | 'PRINTER'
-  | 'IOT_DEVICE'
-  | 'CUSTOM';
+// DeviceCategory mirrors the Prisma enum (apps/api/prisma/schema.prisma).
+// Type-only re-export erases at compile time — no Prisma runtime in the web
+// bundle. CLAUDE.md Rule #6 forbids hand-written duplicates of Prisma types.
+import type { DeviceCategory } from '@prisma/client';
+export type { DeviceCategory };
 
 export interface DeviceCategoryConfig {
   minZoom: number;
