@@ -23,6 +23,7 @@ import { MapModule } from './map/map.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { DataSourcesModule } from './data-sources/data-sources.module';
 import { ClientsModule } from './clients/clients.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { ClientsModule } from './clients/clients.module';
     DataSourcesModule,
     RealtimeModule,
     ClientsModule,
+    AiModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

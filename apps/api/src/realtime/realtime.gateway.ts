@@ -16,6 +16,8 @@ import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
+import { AiService } from '../ai/ai.service';
+import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
 import {
   IRealtimeService,
@@ -54,6 +56,7 @@ export class RealtimeGateway
   constructor(
     private readonly redis: RedisService,
     private readonly dataSourcesService: DataSourcesService,
+    private readonly aiService: AiService,
   ) {}
 
   async afterInit(server: Server): Promise<void> {
@@ -173,6 +176,59 @@ export class RealtimeGateway
         metrics,
         sourceTypes: ['browser'],
       } satisfies { metrics: MetricsDto; sourceTypes: string[] });
+    }
+  }
+
+  @SubscribeMessage(WS_EVENTS.AI_MESSAGE)
+  async handleAiMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { content?: string; conversationId?: string },
+  ): Promise<void> {
+    const user = client.data.user as { id: string; tier: string } | undefined;
+    if (!user) return;
+
+    const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
+    if (!content || content.length > 2000) return;
+
+    const ip = client.handshake.address ?? '0.0.0.0';
+
+    const onToken = (token: string, conversationId: string) => {
+      this.pushToUser(user.id, WS_EVENTS.AI_TOKEN, { token, conversationId });
+    };
+
+    try {
+      const result = await this.aiService.sendMessageStream(
+        user.id,
+        user.tier,
+        ip,
+        { content, conversationId: payload.conversationId },
+        onToken,
+      );
+
+      this.pushToUser(user.id, WS_EVENTS.AI_COMPLETE, {
+        content: result.content,
+        conversationId: result.conversationId,
+        tokensUsed: result.tokensUsed,
+        monthlyBudgetRemaining: result.monthlyBudgetRemaining,
+        usageWarning: result.usageWarning,
+        providerStatus: result.providerStatus,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      if (err instanceof NodeScopeException) {
+        this.pushToUser(user.id, WS_EVENTS.ERROR, {
+          code: err.code,
+          message: String((err.getResponse() as { message?: string }).message ?? err.message),
+          context: 'ai',
+        });
+      } else {
+        this.logger.error({ err }, 'Unexpected error in AI WS handler');
+        this.pushToUser(user.id, WS_EVENTS.ERROR, {
+          code: 'GEN_003',
+          message: 'INTERNAL_ERROR',
+          context: 'ai',
+        });
+      }
     }
   }
 
