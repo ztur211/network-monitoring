@@ -5,9 +5,15 @@ import { RealtimeModule } from '../realtime.module';
 import { RedisService } from '../../redis/redis.service';
 import { WS_EVENTS } from '@nodescope/shared';
 
-jest.mock('@socket.io/redis-adapter', () => ({
-  createAdapter: jest.fn().mockReturnValue(() => ({ rooms: new Map() })),
-}));
+jest.mock('@socket.io/redis-adapter', () => {
+  // socket.io@4.8+ instantiates the adapter via `new MockAdapter(namespace)`
+  // and calls .init() / .close() on it. Provide a minimal shape that satisfies
+  // the runtime — we don't actually need Redis pub/sub in unit-style e2e tests.
+  const { Adapter } = jest.requireActual('socket.io-adapter');
+  return {
+    createAdapter: jest.fn().mockReturnValue(Adapter),
+  };
+});
 
 jest.mock('../../auth/better-auth.config', () => ({
   auth: {

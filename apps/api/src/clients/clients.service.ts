@@ -13,7 +13,7 @@ interface AgentStatusDto {
   message: string;
 }
 
-interface ClientsResponseDto {
+export interface ClientsResponseDto {
   currentDevice: CurrentDeviceDto;
   agentStatus: AgentStatusDto;
 }
