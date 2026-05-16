@@ -1,0 +1,122 @@
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { Circuit } from '@prisma/client';
+import { CircuitDto, CursorPaginatedResponse } from '@nodescope/shared';
+import { NodeScopeException } from '../common/filters/global-exception.filter';
+import { ConflictResolutionService } from '../conflict/conflict.service';
+import { DevicesRepository } from '../devices/devices.repository';
+import { CIRCUIT_WRITABLE_FIELDS, CreateCircuitDto, ListCircuitsQueryDto, PatchCircuitDto } from './circuits.dto';
+import { CircuitsRepository } from './circuits.repository';
+
+const DEFAULT_LIMIT = 50;
+
+@Injectable()
+export class CircuitsService {
+  constructor(
+    private readonly circuitsRepository: CircuitsRepository,
+    private readonly devicesRepository: DevicesRepository,
+    private readonly conflictService: ConflictResolutionService,
+  ) {}
+
+  async listCircuits(userId: string, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
+    const limit = query.limit ?? DEFAULT_LIMIT;
+    const [items, total] = await Promise.all([
+      this.circuitsRepository.findWithCursor(userId, limit + 1, query.cursor),
+      this.circuitsRepository.countByUserId(userId),
+    ]);
+
+    const hasMore = items.length > limit;
+    const page = hasMore ? items.slice(0, limit) : items;
+
+    const nextCursor = hasMore
+      ? Buffer.from(
+          JSON.stringify({
+            createdAt: page[page.length - 1].createdAt.toISOString(),
+            id: page[page.length - 1].id,
+          }),
+        ).toString('base64')
+      : null;
+
+    return { items: page.map((c) => this.toDto(c)), nextCursor, total };
+  }
+
+  async createCircuit(userId: string, dto: CreateCircuitDto): Promise<CircuitDto> {
+    if (dto.deviceId) {
+      const device = await this.devicesRepository.findByIdAndUserId(dto.deviceId, userId);
+      if (!device) {
+        throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+      }
+    }
+
+    const circuit = await this.circuitsRepository.create({ userId, ...dto });
+    return this.toDto(circuit);
+  }
+
+  async getCircuit(userId: string, circuitId: string): Promise<CircuitDto> {
+    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+    if (!circuit) {
+      throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    return this.toDto(circuit);
+  }
+
+  async updateCircuit(userId: string, circuitId: string, patch: PatchCircuitDto): Promise<CircuitDto> {
+    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+    if (!circuit) {
+      throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+
+    const updatePayload = this.conflictService.buildUpdatePayload(
+      patch,
+      CIRCUIT_WRITABLE_FIELDS,
+      circuit.version,
+    );
+
+    if (updatePayload.deviceId !== undefined && updatePayload.deviceId !== null) {
+      const device = await this.devicesRepository.findByIdAndUserId(
+        updatePayload.deviceId as string,
+        userId,
+      );
+      if (!device) {
+        throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+      }
+    }
+
+    const updated = await this.circuitsRepository.updateWithVersion(
+      circuitId,
+      userId,
+      updatePayload,
+      patch.baseVersion,
+    );
+    if (!updated) {
+      throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
+    }
+
+    await this.conflictService.publishEntityUpdate('Circuit', circuitId, userId);
+    return this.toDto(updated);
+  }
+
+  async deleteCircuit(userId: string, circuitId: string): Promise<void> {
+    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+    if (!circuit) {
+      throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    await this.circuitsRepository.deleteByIdAndUserId(circuitId, userId);
+    await this.conflictService.publishEntityUpdate('Circuit', circuitId, userId);
+  }
+
+  private toDto(circuit: Circuit): CircuitDto {
+    return {
+      id: circuit.id,
+      userId: circuit.userId,
+      ispName: circuit.ispName,
+      circuitId: circuit.circuitId,
+      serviceType: circuit.serviceType,
+      bandwidth: circuit.bandwidth,
+      deviceId: circuit.deviceId,
+      notes: circuit.notes,
+      version: circuit.version,
+      createdAt: circuit.createdAt.toISOString(),
+      updatedAt: circuit.updatedAt.toISOString(),
+    };
+  }
+}

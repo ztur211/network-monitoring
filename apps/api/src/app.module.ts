@@ -13,6 +13,13 @@ import { TierGuard } from './auth/guards/tier.guard';
 import { RoleGuard } from './auth/guards/role.guard';
 import { UsersModule } from './users/users.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { TiersModule } from './tiers/tiers.module';
+import { ConflictResolutionModule } from './conflict/conflict.module';
+import { DevicesModule } from './devices/devices.module';
+import { FiberRunsModule } from './fiber-runs/fiber-runs.module';
+import { ConnectionsModule } from './connections/connections.module';
+import { CircuitsModule } from './circuits/circuits.module';
+import { MapModule } from './map/map.module';
 
 @Module({
   imports: [
@@ -42,7 +49,14 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     TimescaleModule,
     HealthModule,
     AuthModule,
+    MapModule,
     UsersModule,
+    TiersModule,
+    ConflictResolutionModule,
+    DevicesModule,
+    FiberRunsModule,
+    ConnectionsModule,
+    CircuitsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

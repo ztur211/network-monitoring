@@ -1,8 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { UsersRepository } from '../users.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import { GEOCODING_PROVIDER } from '../../map/geocoding/geocoding.interface';
 
 const mockUser = {
   id: 'user-1',
@@ -24,6 +24,10 @@ const mockRepository: jest.Mocked<UsersRepository> = {
   existsByEmail: jest.fn(),
 } as unknown as jest.Mocked<UsersRepository>;
 
+const mockGeocoding = {
+  geocode: jest.fn(),
+};
+
 describe('UsersService', () => {
   let service: UsersService;
 
@@ -32,6 +36,7 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: UsersRepository, useValue: mockRepository },
+        { provide: GEOCODING_PROVIDER, useValue: mockGeocoding },
       ],
     }).compile();
 
@@ -100,6 +105,31 @@ describe('UsersService', () => {
       expect(result.latitude).toBe(40.7128);
       expect(result.longitude).toBe(-74.006);
       expect(mockRepository.updateLocation).toHaveBeenCalledWith('user-1', 40.7128, -74.006);
+    });
+
+    it('geocodes address and sets location', async () => {
+      mockGeocoding.geocode.mockResolvedValue({
+        latitude: 51.5074,
+        longitude: -0.1278,
+        displayName: 'London, UK',
+      });
+      mockRepository.updateLocation.mockResolvedValue({
+        ...mockUser,
+        homeLatitude: 51.5074,
+        homeLongitude: -0.1278,
+      });
+
+      const result = await service.setLocation('user-1', { address: 'London' });
+
+      expect(result.latitude).toBeCloseTo(51.5074);
+      expect(result.address).toBe('London, UK');
+      expect(mockGeocoding.geocode).toHaveBeenCalledWith('London');
+    });
+
+    it('throws MAP_001 when geocoding returns null', async () => {
+      mockGeocoding.geocode.mockResolvedValue(null);
+
+      await expect(service.setLocation('user-1', { address: 'Nowhere' })).rejects.toThrow(NodeScopeException);
     });
 
     it('throws GEN_001 when neither address nor coordinates provided', async () => {
