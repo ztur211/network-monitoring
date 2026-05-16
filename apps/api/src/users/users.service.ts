@@ -1,13 +1,17 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { UserDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
+import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocoding.interface';
 import { UpdateMeDto, SetLocationDto } from './users.dto';
 import { UsersRepository } from './users.repository';
 import { User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    @Inject(GEOCODING_PROVIDER) private readonly geocodingProvider: GeocodingProvider,
+  ) {}
 
   async getMe(userId: string): Promise<UserDto> {
     const user = await this.usersRepository.findById(userId);
@@ -46,15 +50,16 @@ export class UsersService {
     }
 
     if (dto.address) {
-      // Nominatim geocoding ships in Phase 2 (MapModule).
-      // In Phase 1 this branch is unreachable via the validated DTO,
-      // but the error surface is correct.
-      throw new NodeScopeException('MAP_001', 'GEOCODING_FAILED', HttpStatus.UNPROCESSABLE_ENTITY);
+      const result = await this.geocodingProvider.geocode(dto.address);
+      if (!result) {
+        throw new NodeScopeException('MAP_001', 'GEOCODING_FAILED', HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      await this.usersRepository.updateLocation(userId, result.latitude, result.longitude);
+      return { latitude: result.latitude, longitude: result.longitude, address: result.displayName };
     }
 
     const lat = dto.latitude as number;
     const lng = dto.longitude as number;
-
     const updated = await this.usersRepository.updateLocation(userId, lat, lng);
 
     return {
