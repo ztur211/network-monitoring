@@ -146,7 +146,7 @@ Web entry bundle is split via `React.lazy` in `apps/web/app/(app)/map.tsx`:
 
 | Chunk | Raw | Gzipped | When loaded |
 |---|---|---|---|
-| `entry-*.js` | 1.44 MB | **413 KB** | Initial paint |
+| `entry-*.js` | 1.44 MB | **412 KB** | Initial paint |
 | `MapView-*.js` | 793 KB | 209 KB | First visit to the map screen |
 
 The 500 KB gzipped initial-paint target from `CLAUDE.md` is met by the entry chunk. If a future change pushes the entry chunk over budget, the source-map attribution recipe is in `progress.md` Phase 9b under "Web bundler config + code splitting".
