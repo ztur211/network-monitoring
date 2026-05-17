@@ -20,6 +20,7 @@ Last updated: 2026-05-16
 | 9 | Hardening & Production Readiness | 🟡 Code complete — cloud setup pending |
 | 9b | Dependency Currency (Expo 55 / RN 0.85 / argon2 0.44) | 🟡 Code complete + bundle under target — needs in-browser smoke test |
 | 9c | Deployment Hardening (.do/app.yaml + post-deploy smoke test) | 🟢 Code complete |
+| 9d | Schema-drift fixes + Dead-code sweep (MULTI_PROPERTY, Prisma enum dedupe, unused-export removal) | 🟢 Code complete |
 
 ---
 
@@ -892,6 +893,72 @@ URLs are hardcoded in both `.do/app.yaml` and `deploy.yml`; the workflow header 
 
 ---
 
+## Phase 9d — Schema-drift Fixes + Dead-code Sweep 🟢
+
+**Implemented:** 2026-05-16
+
+### What was built
+
+#### `feat(db): add MULTI_PROPERTY to AccountTier enum` (commit `37e202e`)
+
+The original 4-tier design (FREE → PAID → MULTI_PROPERTY → ENTERPRISE) was documented in CLAUDE.md and reflected in `TierGuard.TIER_ORDER` (MULTI_PROPERTY at position 2), but Prisma's enum had only 3 values — code intent and DB schema were drifted. New migration `20260516010000_add_multi_property_tier`:
+
+```sql
+ALTER TYPE "AccountTier" ADD VALUE 'MULTI_PROPERTY' BEFORE 'ENTERPRISE';
+```
+
+Verified against a throwaway PostgreSQL 16 + TimescaleDB-HA container: MULTI_PROPERTY lands at `pg_enum.enumsortorder = 2.5`, between PERSONAL_PAID (2) and ENTERPRISE (3). Purely additive — no existing rows referenced MULTI_PROPERTY (it was never assignable), so the migration is non-breaking. TierGuard's ordering, TiersService's device-limit logic, and Better Auth's `tier: string` field require no code changes.
+
+#### `refactor(shared): dedupe Prisma enums via type-only re-export` (commit `2e2fd4b`)
+
+CLAUDE.md Rule #6: "No hand-written types that duplicate Prisma-generated types." Three hand-written union types in `packages/shared` duplicated Prisma enums:
+- `AccountTier` (had silently drifted from Prisma — included MULTI_PROPERTY, Prisma didn't, until 9d's earlier commit)
+- `ConnectionType`
+- `DeviceCategory`
+
+All three now re-exported type-only from `@prisma/client`:
+
+```ts
+// packages/shared/src/types/api.types.ts
+import type { AccountTier, ConnectionType } from '@prisma/client';
+export type { AccountTier, ConnectionType };
+```
+
+The separate `import type` is needed because `export type { X } from 'pkg'` re-exports without bringing X into local scope — `UserDto.tier` and `DeviceConnectionDto.connectionType` reference them as values internally.
+
+Bundle impact: **zero**. Type-only imports erase at compile time; Metro tree-shakes the empty import. Verified web bundle still at ~412 KB gzipped entry chunk (vs 413 KB pre-dedupe; within build-hash noise), zero "prisma" / "PrismaClient" strings in the bundle output.
+
+`DEVICE_CATEGORY_CONFIG` (zoom-level metadata map) stays in shared — it's map-rendering config, not Prisma-derived.
+
+#### `chore(shared): remove dead exports` (commit `1991a5f`)
+
+Four types in `packages/shared` had zero consumers anywhere in the codebase (no imports, no inline shape duplicates that should have been refactored to use them). Per CLAUDE.md "don't design for hypothetical future requirements" — dropped:
+
+- `MetricRowDto` — duplicated Prisma's `DeviceMetric`, which is what `data-sources.repository.ts` actually returns.
+- `SourceType` — only used internally by `MetricRowDto`. `realtime.store` / `realtime.gateway` type `sourceTypes` as plain `string[]`.
+- `WsErrorPayload` — never typed against. WS error events constructed inline at emit sites.
+- `ConnectionStatusPayload` — same.
+
+`packages/shared/src/types/metrics.types.ts` became empty after the deletes and was removed entirely; `index.ts` no longer barrels it.
+
+**Kept (deliberate):**
+- `ApiError` — canonical error envelope from API Design §2, symmetric with `ApiSuccess<T>` (which IS used). Deleting one would leave the success/error pair asymmetric.
+- `AuthenticatedUser = SessionUser` alias — two names serve two contexts (`@CurrentUser() user: AuthenticatedUser` reads well in controllers; `SessionUser | null` reads well in `auth.store`). 1-line alias, no harm.
+
+### Verification
+
+- `tsc --noEmit` clean on both `apps/web` and `apps/api`.
+- 118/118 unit tests + 17/17 graceful-degradation e2e tests pass.
+- Web bundle: entry-chunk 412 KB gzipped (within target), MapView lazy chunk 214 KB. Zero Prisma runtime strings in the web bundle.
+- `npm audit` unchanged at 4 moderate (all in `@expo/cli` postcss transitive chain — upstream-blocked).
+
+### Architecture notes
+
+- The MULTI_PROPERTY migration was verified via a throwaway container on port 5436 because the host machine has a native PostgreSQL on 5432 shadowing the Docker port mapping. `docker-compose.yml`'s dev DB (port 5432) is unreachable from the host until either the native Postgres is stopped or `docker-compose.yml` is remapped to a different port.
+- The dedupe sweep means `packages/shared` no longer needs to manually mirror Prisma enum additions. New Prisma enum members propagate to shared via the type-only re-export automatically.
+
+---
+
 ## MVP Complete (code-side)
 
-All Phase 0–9c code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target, but needs the manual browser smoke test described in its section. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), and manual cross-browser verification.
+All Phase 0–9d code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target, but needs the manual browser smoke test described in its section. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Phase 9d cleaned up the drift between code intent (TierGuard, CLAUDE.md) and schema reality (Prisma) and deduped hand-written types that violated Rule #6. Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), and manual cross-browser verification.
