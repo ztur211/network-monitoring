@@ -1,0 +1,103 @@
+diff --git a/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js b/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
+index eb063ab..767e938 100644
+--- a/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
++++ b/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
+@@ -17,26 +17,27 @@ export function ResourceSavingView({
+     , {
+       hidden: !visible,
+       style: [{
+-        display: visible ? 'flex' : 'none'
++        display: visible ? 'flex' : 'none',
++        pointerEvents: visible ? 'auto' : 'none'
+       }, styles.container, style],
+-      pointerEvents: visible ? 'auto' : 'none',
+       ...rest,
+       children: children
+     });
+   }
+   return /*#__PURE__*/_jsx(View, {
+-    style: [styles.container, style]
+     // box-none doesn't seem to work properly on Android
+-    ,
+-    pointerEvents: visible ? 'auto' : 'none',
++    style: [styles.container, style, {
++      pointerEvents: visible ? 'auto' : 'none'
++    }],
+     children: /*#__PURE__*/_jsx(View, {
+       collapsable: false,
+       removeClippedSubviews:
+       // On iOS & macOS, set removeClippedSubviews to true only when not focused
+       // This is an workaround for a bug where the clipped view never re-appears
+       Platform.OS === 'ios' || Platform.OS === 'macos' ? !visible : true,
+-      pointerEvents: visible ? 'auto' : 'none',
+-      style: visible ? styles.attached : styles.detached,
++      style: [visible ? styles.attached : styles.detached, {
++        pointerEvents: visible ? 'auto' : 'none'
++      }],
+       children: children
+     })
+   });
+diff --git a/node_modules/@react-navigation/elements/lib/module/Screen.js b/node_modules/@react-navigation/elements/lib/module/Screen.js
+index e4ff174..9f36da2 100644
+--- a/node_modules/@react-navigation/elements/lib/module/Screen.js
++++ b/node_modules/@react-navigation/elements/lib/module/Screen.js
+@@ -52,7 +52,7 @@ export function Screen(props) {
+         }] : null],
+         children: /*#__PURE__*/_jsx(View, {
+           ref: headerRef,
+-          pointerEvents: "box-none",
++          style: { pointerEvents: "box-none" },
+           onLayout: e => {
+             const {
+               height
+diff --git a/node_modules/@react-navigation/elements/src/ResourceSavingView.tsx b/node_modules/@react-navigation/elements/src/ResourceSavingView.tsx
+index 63e1dc0..9c85876 100644
+--- a/node_modules/@react-navigation/elements/src/ResourceSavingView.tsx
++++ b/node_modules/@react-navigation/elements/src/ResourceSavingView.tsx
+@@ -27,11 +27,10 @@ export function ResourceSavingView({
+         // @ts-expect-error: hidden exists on web, but not in React Native
+         hidden={!visible}
+         style={[
+-          { display: visible ? 'flex' : 'none' },
++          { display: visible ? 'flex' : 'none', pointerEvents: visible ? 'auto' : 'none' },
+           styles.container,
+           style,
+         ]}
+-        pointerEvents={visible ? 'auto' : 'none'}
+         {...rest}
+       >
+         {children}
+@@ -41,9 +40,8 @@ export function ResourceSavingView({
+ 
+   return (
+     <View
+-      style={[styles.container, style]}
+       // box-none doesn't seem to work properly on Android
+-      pointerEvents={visible ? 'auto' : 'none'}
++      style={[styles.container, style, { pointerEvents: visible ? 'auto' : 'none' }]}
+     >
+       <View
+         collapsable={false}
+@@ -52,8 +50,7 @@ export function ResourceSavingView({
+           // This is an workaround for a bug where the clipped view never re-appears
+           Platform.OS === 'ios' || Platform.OS === 'macos' ? !visible : true
+         }
+-        pointerEvents={visible ? 'auto' : 'none'}
+-        style={visible ? styles.attached : styles.detached}
++        style={[visible ? styles.attached : styles.detached, { pointerEvents: visible ? 'auto' : 'none' }]}
+       >
+         {children}
+       </View>
+diff --git a/node_modules/@react-navigation/elements/src/Screen.tsx b/node_modules/@react-navigation/elements/src/Screen.tsx
+index 68455b1..4fee897 100644
+--- a/node_modules/@react-navigation/elements/src/Screen.tsx
++++ b/node_modules/@react-navigation/elements/src/Screen.tsx
+@@ -90,7 +90,7 @@ export function Screen(props: Props) {
+           >
+             <View
+               ref={headerRef}
+-              pointerEvents="box-none"
++              style={{ pointerEvents: 'box-none' }}
+               onLayout={(e) => {
+                 const { height } = e.nativeEvent.layout;
+ 
