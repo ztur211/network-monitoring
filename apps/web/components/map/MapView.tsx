@@ -296,9 +296,12 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
   }, [devices]);
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      {/* MapLibre container */}
-      <View nativeID={MAP_CONTAINER_ID} style={StyleSheet.absoluteFill} />
+    <View style={styles.root}>
+      {/* MapLibre container. Uses flex:1 (not absoluteFill) because MapLibre's
+          own stylesheet forces `.maplibregl-map { position: relative }` and
+          beats RN-Web's class-based absolute positioning on source-order
+          tiebreak — collapsing the box to its intrinsic height. */}
+      <View nativeID={MAP_CONTAINER_ID} style={styles.mapContainer} />
 
       {/* Tile unavailability banner — device markers still render without tiles */}
       {tileError && (
@@ -325,6 +328,12 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  mapContainer: {
+    flex: 1,
+  },
   floorSelector: {
     position: 'absolute',
     right: 12,
