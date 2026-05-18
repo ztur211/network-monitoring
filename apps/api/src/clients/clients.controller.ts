@@ -11,6 +11,7 @@ export class ClientsController {
   @Get()
   async getClients(@CurrentUser() user: SessionUser, @Req() req: Request) {
     const userAgent = req.headers['user-agent'] ?? '';
-    return this.clientsService.getClients(user.id, userAgent);
+    const data = await this.clientsService.getClients(user.id, userAgent);
+    return { success: true, data, timestamp: new Date().toISOString() };
   }
 }
