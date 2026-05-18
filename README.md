@@ -14,7 +14,9 @@ MVP scope is browser-only, personal-use, single-network. See `docs/PRD.md` for f
 npm install
 ```
 
-`.npmrc` at the repo root sets `legacy-peer-deps=true`. This is required because React Native 0.85's strict `react@^19.2.3` peer conflicts with Better Auth's flexible peer ranges, and because some companion packages (`expo-router`, `react-native-worklets`) are listed as root devDependencies purely to force them to hoist to the root `node_modules` — Expo's `babel-preset-expo` calls `require.resolve('expo-router')` from its own hoisted location and won't find workspace-local installs.
+`.npmrc` at the repo root sets `legacy-peer-deps=true`. This is required because React Native 0.85's strict `react@^19.2.3` peer conflicts with Better Auth's flexible peer ranges, and because some companion packages (`expo-router`, `react-native`, `react-native-worklets`) are listed as root devDependencies purely to force them to hoist to the root `node_modules`. `expo-router` and `react-native-worklets` are there so `babel-preset-expo` can `require.resolve` them from its own hoisted location; `react-native` is there because `react-native-css-interop` (NativeWind 4's engine) calls `require("react-native/package.json")` at metro-config load and would otherwise fail with `Cannot find module 'react-native/package.json'`.
+
+`npm install` runs `patch-package` automatically (root `postinstall` script). Patches live in `patches/` and fix upstream deprecation noise in `@react-navigation/bottom-tabs` and `@react-navigation/elements` (both packages still pass `pointerEvents` as a top-level prop, which RN-Web 0.21 deprecated). When react-navigation publishes a release that addresses this upstream, the patches will fail to apply and patch-package will warn loudly — that's the cue to delete them and bump the deps.
 
 ### 2. Copy environment file
 
@@ -146,8 +148,8 @@ Web entry bundle is split via `React.lazy` in `apps/web/app/(app)/map.tsx`:
 
 | Chunk | Raw | Gzipped | When loaded |
 |---|---|---|---|
-| `entry-*.js` | 1.44 MB | **412 KB** | Initial paint |
-| `MapView-*.js` | 793 KB | 209 KB | First visit to the map screen |
+| `entry-*.js` | 1.48 MB | **416 KB** | Initial paint |
+| `MapView-*.js` | 812 KB | 214 KB | First visit to the map screen |
 
 The 500 KB gzipped initial-paint target from `CLAUDE.md` is met by the entry chunk. If a future change pushes the entry chunk over budget, the source-map attribution recipe is in `progress.md` Phase 9b under "Web bundler config + code splitting".
 

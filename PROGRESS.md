@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
 ---
 
@@ -21,6 +21,7 @@ Last updated: 2026-05-16
 | 9b | Dependency Currency (Expo 55 / RN 0.85 / argon2 0.44) | 🟡 Code complete + bundle under target — needs in-browser smoke test |
 | 9c | Deployment Hardening (.do/app.yaml + post-deploy smoke test) | 🟢 Code complete |
 | 9d | Schema-drift fixes + Dead-code sweep (MULTI_PROPERTY, Prisma enum dedupe, unused-export removal) | 🟢 Code complete |
+| 9e | First-run shakedown (map render, /clients crash, browser-collector bandwidth endpoint, RN-Web 0.21 fallout) | 🟢 Code complete |
 
 ---
 
@@ -959,6 +960,110 @@ Four types in `packages/shared` had zero consumers anywhere in the codebase (no 
 
 ---
 
+## Phase 9e — First-run Shakedown 🟢
+
+**Implemented:** 2026-05-18
+
+Phase 9b's dependency upgrade (Expo 51 → 55, RN 0.74 → 0.85, React 18 → 19, RN-Web 0.19 → 0.21) was code-complete with the web bundle under target, but it had never been exercised in a running browser. The first dev-server run produced one outright crash, one fully-broken screen, two console-noise sources, one latent DB bug that would have killed any environment that successfully booted the API, plus a handful of supporting cleanups. This phase captures the full shakedown.
+
+### `fix(web): restore map rendering broken by Expo 55 / RN-Web 0.21 upgrade` (commit `19a1b08`)
+
+The map screen rendered the MapLibre attribution and the bottom-left zoom-label widget but no map tiles. Two stacked regressions, both produced by the same dependency bump:
+
+**Layer 1 — NativeWind CSS wasn't being processed.** `apps/web/metro.config.js` did not wrap with `withNativeWind`. In Expo 51 the default Metro config evidently picked up Tailwind processing implicitly; in Expo 55 it does not. As a result `@tailwind base/components/utilities` shipped to the browser unprocessed — the production CSS file was literally 56 bytes — and every `className="flex-1"` rendered as `<div class="flex-1">` with no matching CSS rule. The flex chain that fed the map container its height collapsed to zero.
+
+Fix: wrap with `withNativeWind(config, { input: './global.css' })`. This pulled in `react-native-css-interop` (NativeWind 4's engine), which calls `require("react-native/package.json")` at metro-config load. Without `react-native` hoisted to the workspace root, the require failed. Added `react-native: 0.85.3` to root `devDependencies` as a hoist hint, following the existing pattern used for `expo-router` and `react-native-worklets`.
+
+**Layer 2 — `StyleSheet.absoluteFill` lost a CSS specificity tie to MapLibre's stylesheet.** Even with the flex chain restored, the map container would have stayed at 44 px tall. RN-Web 0.21 compiles `StyleSheet.absoluteFill` to hashed class rules (`.r-position-…{position:absolute}`) instead of inline styles. MapLibre's runtime-injected `.maplibregl-map { position: relative }` rule loads later in source order and wins the (0,1,0) vs (0,1,0) specificity tiebreak — overriding `position:absolute`, neutralising the `top/right/bottom/left:0` insets, and collapsing the element to its intrinsic content height (the canvas, which MapLibre had auto-sized to 44 px at init time before re-measure could fire).
+
+Fix: changed both `MapView` root and the inner map container from `StyleSheet.absoluteFill` to `flex: 1`. Flex sizing doesn't depend on the `position` property, so MapLibre's CSS can't override it. Left an inline comment in `MapView.tsx` explaining the trap so a future "simplify back to absoluteFill" cleanup doesn't reintroduce the bug.
+
+Bundle impact: entry-chunk **412 KB → 416 KB gzipped** (within target).
+
+### `fix(db): composite PK on DeviceMetric for TimescaleDB compatibility` (commit `f83ec4b`)
+
+TimescaleDB rejects unique constraints on hypertables that don't include the partitioning column. The init migration created `DeviceMetric.id` as a single-column primary key, so when `TimescaleService.initializeHypertable()` ran `SELECT create_hypertable(...)` at boot it failed with `cannot create a unique index without the column 'time'` and `process.exit(1)`'d. The API never successfully started in any environment that had real DB infrastructure — the only reason this hadn't been caught earlier was that prior dev sessions ran against an empty / non-Timescale Postgres.
+
+New migration `20260517210000_devicemetric_composite_pk`:
+
+```sql
+ALTER TABLE "DeviceMetric" DROP CONSTRAINT "DeviceMetric_pkey";
+ALTER TABLE "DeviceMetric" ADD CONSTRAINT "DeviceMetric_pkey" PRIMARY KEY ("id", "time");
+```
+
+Schema change: `id String @default(uuid())` (no `@id`) + `@@id([id, time])`. Additive — no rows existed because the hypertable was never successfully created.
+
+### `chore(api): make dev iteration usable — relaxed throttles + monorepo .env + pino-pretty` (commit `1b8ea1b`)
+
+Three dev-only quality-of-life fixes bundled together:
+
+- `ConfigModule.forRoot` now reads `['.env', '../../.env']` so the monorepo's root `.env` is discovered without each workspace duplicating it.
+- Throttler default scales from 100/min (prod) to 2000/min (dev), and auth from 5/15min to 200/15min. Strict prod limits broke the dev loop because Better Auth's `get-session` shares the same controller as sign-up/sign-in — every page load called it, and after a few refreshes new sign-ins started 429ing. There's a TODO in `auth.controller.ts` noting the proper fix (per-endpoint throttling with `@SkipThrottle` on benign reads), but the env-scaled limits cover the gap until then.
+- `pino-pretty` added as a dev dependency so the existing dev transport in `app.module.ts` has something to render with.
+
+### `chore: tsconfig cleanup` (commit `fe71fd2`)
+
+`apps/api/tsconfig.json`: dropped the unused `@nodescope/shared` path alias (imports resolve via the workspace symlink) and dropped `prisma/seed.ts` from `include` (the seed runs via `ts-node` with its own config).
+
+`apps/web/tsconfig.json`: added `.expo/types/**/*.ts` so Expo's generated route types are picked up by the editor.
+
+### `fix(web): give RHF explicit defaultValues on login/register` (commit `eaea88e`)
+
+Without `defaultValues`, React Hook Form treats the inputs as uncontrolled on first render and warns. On RN-Web 0.21 the inputs could flicker between empty and current value during submit-state changes. Initializing each field to its empty value silences the warning and stabilizes the input lifecycle. Two-line change per form.
+
+### `chore(web): track expo-cli-managed .gitignore` (commit `329cfe5`)
+
+Expo CLI auto-generates `apps/web/.gitignore` on first run to exclude `expo-env.d.ts` (which Expo regenerates on every start). Committing it so the next developer's working tree doesn't immediately diverge.
+
+### `feat(api): /api/bandwidth/echo for browser-collector measurements` (commit `b981929`)
+
+The browser collector measures download (GET) + upload (POST) bandwidth every 30 s. It was previously hitting `/api/health` for both, but `HealthController` only declared `@Get()`, so the POST 404'd on every collection cycle — flooding the dev console *and* turning the upload bandwidth value on `/clients` into a measurement of "how fast does the API return 404". The `docs/API_Design.md` description of `/api/health` even claimed it accepted POST for bandwidth measurement — that intent was never implemented.
+
+New `BandwidthModule` owns this concern so `HealthController` stays single-purpose. `GET /api/bandwidth/echo` returns 1 MB of `crypto.randomBytes` as `application/octet-stream`. Random (not zeros) so any future compression middleware can't silently shrink the payload on the wire and turn bandwidth into latency. Octet-stream is already skipped by the current `compression` middleware's default filter, so the measurement is meaningful as-is. `POST /api/bandwidth/echo` drains the request body via async iteration before responding with 204 — without explicit draining, body-parser doesn't touch `application/octet-stream` and the 204 goes out before the upload finishes; the browser's measured upload time would be TCP RTT, not transfer.
+
+Browser-collector also switched from `response.text().length` to `response.arrayBuffer().byteLength` so the downloaded byte count is the actual byte size (text decoding can collapse multi-byte sequences in binary data).
+
+E2E test: 8 cases covering payload size, headers, body draining, empty-body POST. Boots `BandwidthModule` in isolation (no DB/Redis dependency).
+
+### `chore(web): silence RN-Web 0.21 props.pointerEvents deprecation` (commit `4fe8533`)
+
+RN-Web 0.21 deprecated the prop form `<View pointerEvents="...">` and asks for `style={{ pointerEvents: "..." }}` instead. `@react-navigation/bottom-tabs@7.16.1` and `@react-navigation/elements@2.9.18` (both the latest releases — nothing newer on npm) still use the prop form in 6 spots across 4 files, firing the warning on every navigator render.
+
+Patched via `patch-package` (wired as a root `postinstall` script). The patches edit both `src/*.tsx` source files and the compiled `lib/module/*.js` so the fix survives Metro's resolution regardless of which entry it picks. Files patched: `BottomTabBar`, `BottomTabView`, `ResourceSavingView`, `Screen`. Patches stop applying the moment react-navigation publishes a version that addresses the deprecation upstream — at which point they should be deleted and the deps bumped.
+
+### `chore(web): add placeholder favicon to stop browser /favicon.ico 404s` (commit `3cf44e2`)
+
+App had no `web.favicon` in `app.json` (it was removed in commit `9384f59` when the asset didn't exist yet), so the generated HTML shipped without a `<link rel="icon">` and browsers fell back to auto-requesting `/favicon.ico` from the root — which 404'd on every cold load. Added a 32×32 solid-gray placeholder PNG (154 bytes) at `apps/web/assets/favicon.png` and re-introduced the reference. Generic gray is intentional — should be swapped for real branding when NodeScope has any.
+
+### `fix(api): wrap /v1/clients response in standard success envelope` (commit `125f7c4`)
+
+Clicking the Clients tab crashed with `can't access property "currentDevice", data is undefined` at `apps/web/app/(app)/clients.tsx:73`. `ClientsController` was returning the service result directly while every other controller (users, map, devices, ai, etc.) wraps responses in `{ success: true, data, timestamp }` per API Design §2. The frontend reads `res.data.data` expecting the envelope; without it, `data` was undefined but the screen state still flipped to `'loaded'`, and the next render hit a non-null-asserted access.
+
+The existing e2e test (`clients.controller.e2e.ts`) already asserted the envelope shape — this was a textbook red-state bug where the test was written correctly but the implementation never matched. The test never caught the regression because the e2e suite requires live DB/Redis and isn't part of the default dev loop.
+
+Phase 7 ships marked as "complete" but evidently `/clients` was never actually clicked in a running web app — worth keeping in mind that other screens (Equipment, Circuits, AI Assistant, Settings) haven't been exercised either in this session.
+
+### Verification
+
+- Map renders correctly at `localhost:8081/map` — tiles load, attribution at bottom-right, navigation control top-right, zoom-label overlay bottom-left.
+- `POST /api/health` 404s no longer fire in the dev console; the browser collector now hits `/api/bandwidth/echo` and gets 200 + 204 as expected.
+- `props.pointerEvents is deprecated` warning gone after restarting the dev server with `--clear`.
+- `/favicon.ico` 404 gone — browser now requests the hashed favicon asset from `_expo/static/`.
+- Clients tab renders cleanly — the "This Device" card populates with user-agent, platform, and (after ~30 s) live bandwidth/latency metrics from the collector.
+- Web entry chunk: **416 KB gzipped** (vs 412 KB pre-session). Within 500 KB target.
+- Bandwidth e2e: 8/8 passing.
+- Working tree clean after each commit; all commits pushed to `origin/master`.
+
+### Architecture notes
+
+- The RN-Web 0.21 compilation behavior change (inline-style → hashed-class) is the load-bearing detail behind both the map bug and the pointerEvents deprecation. Any future RN-Web bump worth scrutinising for similar regressions wherever the codebase or its dependencies rely on inline-style specificity.
+- `patch-package` is now part of the toolchain. Patches under `patches/` re-apply on every `npm install` via the root `postinstall` script. When react-navigation ships a release that addresses the pointerEvents deprecation upstream, the patches will fail to apply against the new file contents and patch-package will warn loudly — that's the cue to delete the `.patch` files and bump the deps.
+- This phase did *not* exercise Equipment, Circuits, AI Assistant, or Settings screens. They may carry similar latent bugs to the `/clients` envelope issue, and would be worth a deliberate sweep before declaring the app "user-ready".
+
+---
+
 ## MVP Complete (code-side)
 
-All Phase 0–9d code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target, but needs the manual browser smoke test described in its section. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Phase 9d cleaned up the drift between code intent (TierGuard, CLAUDE.md) and schema reality (Prisma) and deduped hand-written types that violated Rule #6. Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), and manual cross-browser verification.
+All Phase 0–9e code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Phase 9d cleaned up the drift between code intent (TierGuard, CLAUDE.md) and schema reality (Prisma) and deduped hand-written types that violated Rule #6. Phase 9e — the first-run shakedown — caught the dependency-upgrade regressions, the latent DeviceMetric/TimescaleDB bug, and the `/clients` envelope crash that would have been the first thing any new user hit.
+
+Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), manual cross-browser verification, and a deliberate sweep of the four screens that 9e didn't touch (Equipment, Circuits, AI Assistant, Settings).
