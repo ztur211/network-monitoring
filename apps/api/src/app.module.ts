@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { HealthModule } from './health/health.module';
+import { BandwidthModule } from './bandwidth/bandwidth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { TimescaleModule } from './timescale/timescale.module';
@@ -52,6 +53,7 @@ import { AiModule } from './ai/ai.module';
     RedisModule,
     TimescaleModule,
     HealthModule,
+    BandwidthModule,
     AuthModule,
     MapModule,
     UsersModule,

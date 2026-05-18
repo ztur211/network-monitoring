@@ -93,15 +93,15 @@ class BrowserCollectorService {
   private async measureBandwidth(): Promise<{ down: number | null; up: number | null }> {
     try {
       const startDown = Date.now();
-      const res = await fetch(`${API_URL}/api/health`, { cache: 'no-store' });
-      const body = await res.text();
+      const res = await fetch(`${API_URL}/api/bandwidth/echo`, { cache: 'no-store' });
+      const body = await res.arrayBuffer();
       const elapsedDownMs = Date.now() - startDown;
-      const bytesDown = body.length;
+      const bytesDown = body.byteLength;
       const mbpsDown = (bytesDown * 8) / (elapsedDownMs / 1000) / 1_000_000;
 
       const uploadPayload = new Uint8Array(BANDWIDTH_PAYLOAD_BYTES);
       const startUp = Date.now();
-      await fetch(`${API_URL}/api/health`, {
+      await fetch(`${API_URL}/api/bandwidth/echo`, {
         method: 'POST',
         body: uploadPayload,
         cache: 'no-store',
