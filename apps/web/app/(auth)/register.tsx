@@ -26,7 +26,10 @@ export default function RegisterScreen() {
     control,
     handleSubmit,
     formState: { isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: '', email: '', password: '' },
+  });
 
   const onSubmit = async (data: FormData) => {
     setError(null);
