@@ -27,7 +27,7 @@ import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     LoggerModule.forRoot({
       pinoHttp: {
         transport:
@@ -40,12 +40,12 @@ import { AiModule } from './ai/ai.module';
       {
         name: 'default',
         ttl: 60 * 1000,
-        limit: 100,
+        limit: process.env.NODE_ENV === 'production' ? 100 : 2000,
       },
       {
         name: 'auth',
         ttl: 15 * 60 * 1000,
-        limit: 5,
+        limit: process.env.NODE_ENV === 'production' ? 5 : 200,
       },
     ]),
     PrismaModule,
