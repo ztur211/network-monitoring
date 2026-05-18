@@ -239,7 +239,7 @@ model Circuit {
 // ─── Metrics & Audit Models ───────────────────────────────────────────────────
 
 model DeviceMetric {
-  id                String  @id @default(uuid())
+  id                String  @default(uuid())
   userId            String
   sourceType        String
   bandwidthDown     Float?
@@ -251,7 +251,10 @@ model DeviceMetric {
   // No @updatedAt — metrics are immutable once written
   // No version column — metrics are append-only
   // No User relation — avoids Prisma overhead on hypertable
+  // Composite PK: TimescaleDB requires the partitioning column (time) to be
+  // part of every unique constraint on a hypertable.
 
+  @@id([id, time])
   @@index([userId, time(sort: Desc)])
   @@index([userId, sourceType, time(sort: Desc)])
 }
