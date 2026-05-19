@@ -42,6 +42,7 @@ interface UiStore {
   layerToggles: Record<DeviceCategory, boolean>;
   selectedFloor: number | null;
   floorDisplayMode: FloorDisplayMode;
+  buildingsVisible: boolean;
 
   setConnectionStatus: (status: ConnectionStatus) => void;
   setLatency: (latency: number) => void;
@@ -50,6 +51,7 @@ interface UiStore {
   setLayerToggle: (category: DeviceCategory, visible: boolean) => void;
   setSelectedFloor: (floor: number | null) => void;
   setFloorDisplayMode: (mode: FloorDisplayMode) => void;
+  setBuildingsVisible: (visible: boolean) => void;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -59,6 +61,7 @@ export const useUiStore = create<UiStore>((set) => ({
 
   mapCenter: loadFromStorage<[number, number] | null>('ns:mapCenter', null),
   mapZoom: loadFromStorage<number>('ns:mapZoom', 13),
+  buildingsVisible: loadFromStorage<boolean>('ns:buildingsVisible', true),
   layerToggles: loadFromStorage<Record<DeviceCategory, boolean>>(
     'ns:layerToggles',
     DEFAULT_LAYER_TOGGLES,
@@ -94,4 +97,8 @@ export const useUiStore = create<UiStore>((set) => ({
 
   setSelectedFloor: (selectedFloor) => set({ selectedFloor }),
   setFloorDisplayMode: (floorDisplayMode) => set({ floorDisplayMode }),
+  setBuildingsVisible: (buildingsVisible) => {
+    saveToStorage('ns:buildingsVisible', buildingsVisible);
+    set({ buildingsVisible });
+  },
 }));
