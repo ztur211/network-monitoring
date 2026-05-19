@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity } from 'react-native';
-import { useUiStore, FloorDisplayMode } from '../../store/ui.store';
+import { FloorDisplayMode } from '@nodescope/shared';
+import { useUiStore } from '../../store/ui.store';
 
 interface FloorSelectorProps {
   floors: number[];
