@@ -1,7 +1,15 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
   IsEmail,
+  IsIn,
+  IsInt,
   IsLatitude,
   IsLongitude,
+  IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
@@ -39,4 +47,34 @@ export class SetLocationDto {
   @IsOptional()
   @IsLongitude()
   longitude?: number;
+}
+
+export class UpdatePreferencesDto {
+  @IsOptional()
+  @IsBoolean()
+  buildingsVisible?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  layerToggles?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(2)
+  @IsNumber({}, { each: true })
+  mapCenter?: [number, number];
+
+  @IsOptional()
+  @IsNumber()
+  mapZoom?: number;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  selectedFloor?: number | null;
+
+  @IsOptional()
+  @IsIn(['single', 'all', 'connection'])
+  floorDisplayMode?: 'single' | 'all' | 'connection';
 }

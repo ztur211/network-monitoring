@@ -2,6 +2,11 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
+import { PrismaService } from '../../prisma/prisma.service';
+
+/** Fixed ID that the better-auth mock returns for getSession. Keep in sync with __mocks__/better-auth.ts. */
+const MOCK_USER_ID = 'mock-user-id-e2e';
+const MOCK_SESSION_TOKEN = 'mock-session-token-for-e2e-tests';
 
 /**
  * E2E tests for /api/v1/users/* endpoints.
@@ -23,16 +28,39 @@ describe('UsersController (e2e)', () => {
     );
     await app.init();
 
-    // Sign up and capture session cookie
+    // Seed the mock user that the better-auth mock's getSession returns.
+    // The auth controller is mocked (toNodeHandler returns a stub), so sign-up
+    // does not write to the DB. We must create the user row ourselves so that
+    // service methods that call usersRepository.findById / update find a record.
+    const prisma = app.get(PrismaService);
+    await prisma.user.upsert({
+      where: { id: MOCK_USER_ID },
+      create: {
+        id: MOCK_USER_ID,
+        email: 'e2e-users-mock@example.com',
+        name: 'E2E User',
+        emailVerified: true,
+        tier: 'PERSONAL_FREE',
+      },
+      update: {
+        mapPreferences: {},
+      },
+    });
+
+    // Call the mocked sign-up endpoint to get the session cookie.
     const signUpRes = await request(app.getHttpServer())
       .post('/api/auth/sign-up/email')
-      .send({ email: `e2e-users-${Date.now()}@example.com`, password: 'Password123!', name: 'E2E User' });
+      .send({ email: 'e2e-users-mock@example.com', password: 'Password123!', name: 'E2E User' });
 
     const setCookie = signUpRes.headers['set-cookie'];
-    sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    const rawCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    // Supertest .set('Cookie', …) needs just the name=value pair, not the full Set-Cookie directives.
+    sessionCookie = rawCookie?.split(';')[0] ?? `better-auth.session_token=${MOCK_SESSION_TOKEN}`;
   });
 
   afterAll(async () => {
+    const prisma = app.get(PrismaService);
+    await prisma.user.deleteMany({ where: { id: MOCK_USER_ID } });
     await app.close();
   });
 
@@ -98,6 +126,102 @@ describe('UsersController (e2e)', () => {
         .send({});
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/v1/users/me/preferences', () => {
+    it('returns 200 with empty preferences for a fresh user', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({ preferences: {} });
+    });
+
+    it('returns 401 AUTH_002 for unauthenticated request', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/users/me/preferences');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_002');
+    });
+  });
+
+  describe('PUT /api/v1/users/me/preferences', () => {
+    it('round-trips: PUT then GET returns what was written', async () => {
+      const payload = {
+        buildingsVisible: false,
+        mapZoom: 17,
+        mapCenter: [-73.985, 40.748] as [number, number],
+        selectedFloor: 2,
+        floorDisplayMode: 'single' as const,
+      };
+      const putRes = await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send(payload);
+
+      expect(putRes.status).toBe(200);
+
+      const getRes = await request(app.getHttpServer())
+        .get('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie);
+
+      expect(getRes.body.data.preferences).toEqual(payload);
+    });
+
+    it('PUT replaces prior preferences entirely (not merge)', async () => {
+      await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send({ buildingsVisible: false, mapZoom: 17 });
+
+      await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send({ mapZoom: 10 });
+
+      const getRes = await request(app.getHttpServer())
+        .get('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie);
+
+      expect(getRes.body.data.preferences).toEqual({ mapZoom: 10 });
+    });
+
+    it('returns 400 for invalid mapZoom (string instead of number)', async () => {
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send({ mapZoom: 'not-a-number' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for invalid floorDisplayMode (unknown enum value)', async () => {
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send({ floorDisplayMode: 'invalid' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for unknown extra field (whitelist mode)', async () => {
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .set('Cookie', sessionCookie)
+        .send({ buildingsVisible: true, hackerField: 'evil' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 401 AUTH_002 for unauthenticated PUT', async () => {
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/users/me/preferences')
+        .send({ buildingsVisible: true });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_002');
     });
   });
 });
