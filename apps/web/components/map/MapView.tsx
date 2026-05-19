@@ -43,7 +43,7 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
   const [tileError, setTileError] = useState(false);
 
   const { devices, upsertDevice } = useDeviceStore();
-  const { mapCenter, mapZoom, layerToggles, selectedFloor, floorDisplayMode, setMapCenter, setMapZoom } =
+  const { mapCenter, mapZoom, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
     useUiStore();
   const user = useAuthStore((s) => s.user);
 
@@ -264,6 +264,26 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
       });
     }
   }, [fiberRuns, devices, mapReady]);
+
+  // Override OpenFreeMap's near-imperceptible default building paint so the
+  // 'building' layer is actually visible. Liberty's defaults are hsl(35,8%,85%)
+  // fill with a near-identical outline — present in the tiles but invisible
+  // against the basemap.
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return;
+    const map = mapRef.current;
+    if (!map.getLayer('building')) return;
+    map.setPaintProperty('building', 'fill-color', 'hsl(35,12%,78%)');
+    map.setPaintProperty('building', 'fill-outline-color', 'hsl(35,15%,55%)');
+  }, [mapReady]);
+
+  // Show or hide the OpenFreeMap building layer based on the user toggle.
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return;
+    const map = mapRef.current;
+    if (!map.getLayer('building')) return;
+    map.setLayoutProperty('building', 'visibility', buildingsVisible ? 'visible' : 'none');
+  }, [mapReady, buildingsVisible]);
 
   // Dimming for non-selected floors in "all" / "connection" mode
   useEffect(() => {
