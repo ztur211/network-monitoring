@@ -15,6 +15,7 @@ const mockUser = {
   tier: AccountTier.PERSONAL_FREE,
   homeLatitude: null,
   homeLongitude: null,
+  mapPreferences: {},
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 };
