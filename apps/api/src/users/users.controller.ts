@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Put } from '@nestjs/common';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UpdateMeDto, SetLocationDto } from './users.dto';
+import { UpdateMeDto, SetLocationDto, UpdatePreferencesDto } from './users.dto';
 import { UsersService } from './users.service';
 
 @Controller('v1/users')
@@ -21,6 +21,7 @@ export class UsersController {
   }
 
   @Post('location')
+  @HttpCode(200)
   async setLocation(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetLocationDto) {
     const data = await this.usersService.setLocation(user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
@@ -30,5 +31,24 @@ export class UsersController {
   async getDataSources(@CurrentUser() user: AuthenticatedUser) {
     const data = await this.usersService.getDataSources(user.id);
     return { success: true, data, timestamp: new Date().toISOString() };
+  }
+
+  @Get('me/preferences')
+  async getPreferences(@CurrentUser() user: AuthenticatedUser) {
+    const data = await this.usersService.getPreferences(user.id);
+    return { success: true, data, timestamp: new Date().toISOString() };
+  }
+
+  @Put('me/preferences')
+  async updatePreferences(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdatePreferencesDto,
+  ) {
+    await this.usersService.updatePreferences(user.id, dto);
+    return {
+      success: true,
+      data: { preferences: dto },
+      timestamp: new Date().toISOString(),
+    };
   }
 }

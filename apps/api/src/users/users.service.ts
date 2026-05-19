@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { UserDto } from '@nodescope/shared';
+import type { MapPreferences, UserDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocoding.interface';
 import { DataSourcesService } from '../data-sources/data-sources.service';
@@ -75,6 +75,15 @@ export class UsersService {
   async getDataSources(userId: string): Promise<{ sources: DataSourceStatus[] }> {
     const sources = await this.dataSourcesService.getDataSourceStatus(userId);
     return { sources };
+  }
+
+  async getPreferences(userId: string): Promise<{ preferences: MapPreferences }> {
+    const preferences = await this.usersRepository.getPreferences(userId);
+    return { preferences };
+  }
+
+  async updatePreferences(userId: string, prefs: MapPreferences): Promise<void> {
+    await this.usersRepository.updatePreferences(userId, prefs);
   }
 
   private toDto(user: User): UserDto {
