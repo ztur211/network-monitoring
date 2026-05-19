@@ -44,11 +44,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdatePreferencesDto,
   ) {
-    await this.usersService.updatePreferences(user.id, dto);
-    return {
-      success: true,
-      data: { preferences: dto },
-      timestamp: new Date().toISOString(),
-    };
+    const data = await this.usersService.updatePreferences(user.id, dto);
+    return { success: true, data, timestamp: new Date().toISOString() };
   }
 }

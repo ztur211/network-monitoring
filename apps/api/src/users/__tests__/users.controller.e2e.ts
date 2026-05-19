@@ -3,10 +3,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MOCK_SESSION_TOKEN } from '../../../__mocks__/better-auth-node';
 
-/** Fixed ID that the better-auth mock returns for getSession. Keep in sync with __mocks__/better-auth.ts. */
 const MOCK_USER_ID = 'mock-user-id-e2e';
-const MOCK_SESSION_TOKEN = 'mock-session-token-for-e2e-tests';
 
 /**
  * E2E tests for /api/v1/users/* endpoints.

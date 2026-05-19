@@ -82,8 +82,9 @@ export class UsersService {
     return { preferences };
   }
 
-  async updatePreferences(userId: string, prefs: MapPreferences): Promise<void> {
+  async updatePreferences(userId: string, prefs: MapPreferences): Promise<{ preferences: MapPreferences }> {
     await this.usersRepository.updatePreferences(userId, prefs);
+    return this.getPreferences(userId);
   }
 
   private toDto(user: User): UserDto {

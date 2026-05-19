@@ -1,9 +1,8 @@
-/** Keep in sync with better-auth-node.ts mock. */
-const MOCK_SESSION_TOKEN = 'mock-session-token-for-e2e-tests';
+import { MOCK_SESSION_TOKEN } from './better-auth-node';
 
 const MOCK_USER = {
   id: 'mock-user-id-e2e',
-  email: 'e2e@example.com',
+  email: 'e2e-users-mock@example.com',
   name: 'E2E User',
   emailVerified: true,
   tier: 'PERSONAL_FREE',
