@@ -84,4 +84,52 @@ describe('UsersRepository (integration)', () => {
       expect(exists).toBe(false);
     });
   });
+
+  describe('getPreferences', () => {
+    it('returns empty object by default for a fresh user', async () => {
+      const prefs = await repository.getPreferences(testUserId);
+      expect(prefs).toEqual({});
+    });
+
+    it('returns the stored preferences object', async () => {
+      await prisma.user.update({
+        where: { id: testUserId },
+        data: { mapPreferences: { buildingsVisible: false, mapZoom: 15 } as object },
+      });
+      const prefs = await repository.getPreferences(testUserId);
+      expect(prefs).toEqual({ buildingsVisible: false, mapZoom: 15 });
+    });
+
+    it('returns empty object for an unknown user (no throw)', async () => {
+      const prefs = await repository.getPreferences('00000000-0000-0000-0000-000000000000');
+      expect(prefs).toEqual({});
+    });
+  });
+
+  describe('updatePreferences', () => {
+    it('writes the preferences object', async () => {
+      await repository.updatePreferences(testUserId, {
+        buildingsVisible: true,
+        mapZoom: 18,
+      });
+      const fresh = await prisma.user.findUnique({ where: { id: testUserId } });
+      expect(fresh?.mapPreferences).toEqual({ buildingsVisible: true, mapZoom: 18 });
+    });
+
+    it('overwrites prior preferences entirely (replace semantics, not merge)', async () => {
+      await repository.updatePreferences(testUserId, { buildingsVisible: false });
+      await repository.updatePreferences(testUserId, { mapZoom: 10 });
+      const fresh = await prisma.user.findUnique({ where: { id: testUserId } });
+      expect(fresh?.mapPreferences).toEqual({ mapZoom: 10 });
+    });
+
+    it('does not modify other User fields', async () => {
+      const before = await prisma.user.findUnique({ where: { id: testUserId } });
+      await repository.updatePreferences(testUserId, { mapZoom: 12 });
+      const after = await prisma.user.findUnique({ where: { id: testUserId } });
+      expect(after?.name).toBe(before?.name);
+      expect(after?.email).toBe(before?.email);
+      expect(after?.tier).toBe(before?.tier);
+    });
+  });
 });
