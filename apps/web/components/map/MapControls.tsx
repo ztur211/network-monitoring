@@ -32,7 +32,7 @@ interface MapControlsProps {
 
 export function MapControls({ currentZoom }: MapControlsProps) {
   const [expanded, setExpanded] = useState(false);
-  const { layerToggles, setLayerToggle } = useUiStore();
+  const { layerToggles, setLayerToggle, buildingsVisible, setBuildingsVisible } = useUiStore();
 
   const zoomLabel = getZoomLabel(currentZoom);
 
@@ -61,6 +61,41 @@ export function MapControls({ currentZoom }: MapControlsProps) {
           className="border-t border-gray-200 dark:border-gray-700"
           style={{ maxHeight: 260 }}
         >
+          {/* Base map layers — sourced from the tile style, not from devices */}
+          <View className="px-3 py-2">
+            <Text className="text-xs text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1">
+              Base Map
+            </Text>
+            <TouchableOpacity
+              onPress={() => setBuildingsVisible(!buildingsVisible)}
+              className="flex-row items-center py-1"
+            >
+              <View
+                className={`w-4 h-4 rounded border mr-2 items-center justify-center ${
+                  buildingsVisible
+                    ? 'bg-blue-600 border-blue-600'
+                    : 'bg-transparent border-gray-400 dark:border-gray-500'
+                }`}
+              >
+                {buildingsVisible && <Text className="text-white text-xs">✓</Text>}
+              </View>
+              <Text
+                className={`text-sm ${
+                  currentZoom < 13
+                    ? 'text-gray-400 dark:text-gray-600'
+                    : 'text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Buildings
+              </Text>
+              {currentZoom < 13 && (
+                <Text className="text-xs text-gray-400 dark:text-gray-600 ml-1">
+                  z13+
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
           {CATEGORY_GROUPS.map((group) => (
             <View key={group.label} className="px-3 py-2">
               <Text className="text-xs text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1">
