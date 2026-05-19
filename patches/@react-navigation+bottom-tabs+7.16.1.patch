@@ -22,7 +22,7 @@ index b4c78af..cc0bf0d 100644
      }), /*#__PURE__*/_jsx(View, {
        role: "tablist",
 diff --git a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabView.js b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabView.js
-index 7f3b7bd..9854f27 100644
+index 7f3b7bd..f598367 100644
 --- a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabView.js
 +++ b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabView.js
 @@ -216,13 +216,13 @@ export function BottomTabView(props) {
@@ -31,7 +31,7 @@ index 7f3b7bd..9854f27 100644
            style: [StyleSheet.absoluteFill, {
 -            zIndex: isFocused ? 0 : -1
 +            zIndex: isFocused ? 0 : -1,
-+            pointerEvents: isFocused ? 'box-none' : 'none'
++            pointerEvents: isFocused ? 'auto' : 'none'
            }],
            active: activityState,
            enabled: detachInactiveScreens,
@@ -60,7 +60,7 @@ index ba17a4a..05bc7b8 100644
        </View>
        <View
 diff --git a/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabView.tsx b/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabView.tsx
-index 3476534..d04d8bd 100644
+index 3476534..dfe9d8a 100644
 --- a/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabView.tsx
 +++ b/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabView.tsx
 @@ -318,12 +318,14 @@ export function BottomTabView(props: Props) {
@@ -70,7 +70,7 @@ index 3476534..d04d8bd 100644
 -              style={[StyleSheet.absoluteFill, { zIndex: isFocused ? 0 : -1 }]}
 +              style={[
 +                StyleSheet.absoluteFill,
-+                { zIndex: isFocused ? 0 : -1, pointerEvents: isFocused ? 'box-none' : 'none' },
++                { zIndex: isFocused ? 0 : -1, pointerEvents: isFocused ? 'auto' : 'none' },
 +              ]}
                active={activityState}
                enabled={detachInactiveScreens}
