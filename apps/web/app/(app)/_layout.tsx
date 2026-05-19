@@ -10,6 +10,7 @@ import { OfflineBanner } from '../../components/OfflineBanner';
 import { useDeviceStore } from '../../store/device.store';
 import { useCircuitStore } from '../../store/circuits.store';
 import { useAiStore } from '../../store/ai.store';
+import { useUiStore } from '../../store/ui.store';
 import { WS_EVENTS, DeviceDto, CircuitDto, FiberRunDto, DeviceConnectionDto } from '@nodescope/shared';
 import type { SessionUser } from '@nodescope/shared';
 
@@ -19,6 +20,7 @@ export default function AppLayout() {
   const { upsertDevice, removeDevice, flushOfflineQueue: flushDevices } = useDeviceStore();
   const { upsertCircuit, removeCircuit, flushOfflineQueue: flushCircuits } = useCircuitStore();
   const { appendTokenToCurrentMessage, completeCurrentMessage, setError: setAiError } = useAiStore();
+  const { syncPreferencesFromServer, flushMapPreferences } = useUiStore();
 
   useEffect(() => {
     authClient.getSession().then((result) => {
@@ -26,6 +28,7 @@ export default function AppLayout() {
         setUser(result.data.user as SessionUser);
         websocketService.connect();
         browserCollectorService.start();
+        void syncPreferencesFromServer();
       } else {
         setUser(null);
         router.replace('/(auth)/login');
@@ -48,6 +51,7 @@ export default function AppLayout() {
     const handleReconnect = () => {
       void flushDevices();
       void flushCircuits();
+      void flushMapPreferences();
     };
     websocketService.on('reconnect', handleReconnect);
 
