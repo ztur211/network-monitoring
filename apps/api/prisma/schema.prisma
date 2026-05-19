@@ -73,6 +73,7 @@ model User {
   tier          AccountTier @default(PERSONAL_FREE)
   homeLatitude  Float?
   homeLongitude Float?
+  mapPreferences Json    @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
