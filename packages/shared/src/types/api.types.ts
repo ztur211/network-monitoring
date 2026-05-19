@@ -109,3 +109,14 @@ export interface ApiError {
   };
   timestamp: string;
 }
+
+export type FloorDisplayMode = 'single' | 'all' | 'connection';
+
+export interface MapPreferences {
+  buildingsVisible?: boolean;
+  layerToggles?: Record<string, boolean>;
+  mapCenter?: [number, number];
+  mapZoom?: number;
+  selectedFloor?: number | null;
+  floorDisplayMode?: FloorDisplayMode;
+}
