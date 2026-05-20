@@ -1,30 +1,29 @@
 import type { Config } from 'jest';
 
 const config: Config = {
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  moduleFileExtensions: ['js', 'mjs', 'json', 'ts'],
   rootDir: 'src',
   testRegex: '.*\\.repository\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.(t|j|mj)s$': [
+      'ts-jest',
+      {
+        useESM: true,
+        tsconfig: '<rootDir>/../tsconfig.jest.json',
+      },
+    ],
   },
+  extensionsToTreatAsEsm: ['.ts'],
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage/integration',
   testEnvironment: 'node',
   testTimeout: 30000,
+  setupFiles: ['<rootDir>/../jest.e2e.setup.ts'],
+  transformIgnorePatterns: [
+    '/node_modules/(?!(better-auth|better-call|@better-fetch|@better-auth)/)',
+  ],
   moduleNameMapper: {
     '^@nodescope/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
-    '^better-auth/node$': '<rootDir>/../__mocks__/better-auth-node.ts',
-    '^better-auth$': '<rootDir>/../__mocks__/better-auth.ts',
-    '^better-auth/adapters/prisma$': '<rootDir>/../__mocks__/better-auth-prisma.ts',
-  },
-  globals: {
-    'ts-jest': {
-      tsconfig: {
-        paths: {
-          '@nodescope/shared': ['../../packages/shared/src/index.ts'],
-        },
-      },
-    },
   },
 };
 

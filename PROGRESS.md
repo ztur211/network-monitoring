@@ -1148,18 +1148,41 @@ Bypasses Better Auth's `input: false` lockdown by following the existing `setLoc
 
 **[Medium] `websocketService.on('reconnect', ...)` is dead code app-wide.** In `socket.io-client` v4, the `reconnect` event lives on the `Manager`, not the `Socket`. The handler in `apps/web/app/(app)/_layout.tsx` that calls `flushDevices`, `flushCircuits`, and (new) `flushMapPreferences` on reconnect never fires. Pre-existing — affects all three flush handlers. Fix: subscribe to `socket.on('connect')` with a `wasConnected` boolean to distinguish reconnect from initial connect, then emit a custom event or call the flushes directly. Until fixed, dirty data flushes on the next user action, not automatically on reconnect.
 
-**[High] Pre-existing e2e test suite has multiple red suites** — surfaced when running `npm test --workspace=apps/api` to verify Phase 10. **These failures pre-date this session.** Verified by checking out the OLD (pre-Task-4) `__mocks__` and running e2e against the current code: with old mocks, 9 e2e suites failed / 59 individual tests failed. Phase 10's mock fixes improved this to 7 suites / 22 tests. Phase 10's own `users.controller.e2e.ts` is 14/14 green.
-
-The remaining failing suites:
-- `auth.e2e.ts` — full sign-up → get-session → sign-out flow
-- `ai.controller.e2e.ts` — all 9 tests (requires auth)
-- `devices/circuits/connections/fiber-runs.controller.e2e.ts` — PATCH/DELETE tests (likely auth-scoping or version-conflict issues)
-- `map.controller.e2e.ts` — `GET /map/devices` bbox query returns empty (user-scoping or seed-data mismatch)
-
-Symptoms suggest the auth-mock infrastructure now produces a single fixed user with a fixed email, but tests that need *different* users for separate scenarios (e.g., "user A's device shouldn't appear in user B's bbox query") share that one user and trip over each other. Needs a proper diagnose session — not in scope for Phase 10.
-
 **[Low] `UsersService` unit-test gap.** `getPreferences` and `updatePreferences` are not covered in `users.service.spec.ts`. The mock repository shape in that file doesn't declare them. E2E covers the integration, so Rule #1 is technically violated but practically OK.
 
 **[Low] 4-site update requirement for new preference fields.** Adding a Phase 11 preference field requires coordinated updates to `MapPreferences` (shared type), `UpdatePreferencesDto` (class-validator), `collectCurrentPreferences` (frontend), and the server-wins `if` block in `syncPreferencesFromServer`. No compile-time enforcement.
 
 **[Low] `layerToggles` value types not validated at runtime.** `@IsObject()` on the DTO accepts `{ ROUTER: 'yes' }` (string instead of boolean). In practice only the frontend writes this, but no defense-in-depth at the API boundary.
+
+## Phase 11 — e2e suite green-line + Better Auth tests via real flow (2026-05-20)
+
+Closes the [High] outstanding item from Phase 10. Goal: `npm test --workspace=apps/api` exits 0.
+
+**Test mode migrated to ESM, production stays CJS.** Better Auth ships ESM-only (`"type": "module"`, no `.mjs` CommonJS entry); Jest's CJS test runner couldn't load it, which is why the original session shipped with hand-written mocks under `apps/api/__mocks__/better-auth*.ts`. Those mocks accumulated drift — they never persisted users to the DB, lost dynamic signup emails, didn't track sign-out, and missed endpoints (`/forget-password`). The fix is a hybrid: production keeps `module: commonjs`; tests use a new `apps/api/tsconfig.jest.json` with `module: ESNext` + `moduleResolution: Bundler`, ts-jest in `useESM` mode, and jest invoked with `NODE_OPTIONS='--experimental-vm-modules --no-warnings'` (via `cross-env` in `package.json` scripts so Windows works). The three `__mocks__/better-auth*` files were deleted.
+
+**Six bugs surfaced and fixed once the real Better Auth was wired in:**
+
+1. **`AiController` was mounted at `/api/ai/*` instead of `/api/v1/ai/*`** — `@Controller('ai')` should have been `@Controller('v1/ai')`. The web app (axios baseURL `/api/v1`) was hitting `/api/v1/ai/*` and getting 404 in production; nothing flagged it because the AI feature was never exercised end-to-end on the deployed instance. Same commit also added `@HttpCode(HttpStatus.OK)` on `@Post('message')` so the response code matches the documented contract instead of NestJS's default 201.
+
+2. **Better Auth's password-reset endpoint is `/api/auth/request-password-reset`, not `/api/auth/forget-password`.** The CLAUDE.md reference was wrong. Also added a no-op `sendResetPassword: async () => undefined` in `better-auth.config.ts` so the endpoint returns 200 in MVP (where no email service is configured) — this preserves the anti-enumeration contract.
+
+3. **Optimistic-concurrency PATCH DTOs rejected every changeset** because `ChangesetChangeDto.oldValue` and `.newValue` were declared with no class-validator decorator. With `forbidNonWhitelisted: true`, the validator stripped them and the resulting empty changes array failed `@ArrayMinSize(1)`. Added `@Allow()` on both fields in `devices`, `circuits`, `connections`, and `fiber-runs` DTOs.
+
+4. **`MapRepository.findDevicesInBbox` failed with `Failed to deserialize column of type 'geometry'`.** The raw query used `SELECT d.*`, which returned the untracked `location geometry(Point, 4326)` column that Prisma can't parse. Switched to `$queryRawUnsafe` with explicit column list. This was a real production bug masked by the auth/FK failures upstream — anyone with devices on the map would have hit it.
+
+5. **`HealthController`'s `API_VERSION` IIFE used `__dirname`** (CJS-only). In ESM tests it threw ReferenceError. Refactored to try `__dirname` and fall back to `process.cwd()` candidates. Also tightened the candidate-version loop to skip entries whose package.json has no `version` field (the repo-root workspace `package.json` doesn't).
+
+6. **`DataSourcesRepository` integration test was flake-prone** because `createMany` evaluates `@default(now())` once per statement, so two rows landed with identical timestamps and the `ORDER BY time DESC` was non-deterministic. Test now passes explicit `time` values.
+
+**Test files rewritten:**
+- `users.controller.e2e.ts` and `clients.controller.e2e.ts` — dropped the deleted-mock imports and the dead `dev@nodescope.test` sign-in; both sign up a fresh real user per suite and clean up via `prisma.user.deleteMany` (cascades through all owned entities).
+- `realtime.gateway.e2e.ts` and `__tests__/graceful-degradation/websocket-reconnect.e2e.ts` — replaced `jest.mock('../../auth/better-auth.config', …)` with `jest.spyOn(auth.api, 'getSession').mockResolvedValue(…)`, since `jest.mock` doesn't hoist in ESM. The realtime gateway test also expanded `mockRedis.duplicate()` to return a noop pub/sub client (`on/subscribe/psubscribe/…`) because the real `@socket.io/redis-adapter` runs in ESM mode instead of being mock-replaced.
+- `devices/circuits/connections/fiber-runs/map/ai` e2e files — added `name` field to sign-up payloads (Better Auth's `signUpEmail` requires it), tracked `testEmail` in a const, and added `prisma.user.deleteMany` cleanup in `afterAll`.
+
+**Globals injection.** `apps/api/jest.e2e.setup.ts` (also referenced from `jest.unit.config.ts` and `jest.integration.config.ts`) does `Object.assign(globalThis, await import('@jest/globals'))` so test files can keep using `jest.fn()` / `describe` / etc. without per-file imports. Jest's automatic `injectGlobals` doesn't work in ESM mode. The setup file also forces `DATABASE_URL=postgresql://…:5433/nodescope_test` so the suite cannot accidentally hit the dev DB.
+
+**Verification:** unit 13/13 (118 tests), integration 6/6 (39 tests), e2e 14/14 (101 tests). `nest build` clean; `node dist/main.js` boots (EADDRINUSE means it tried to bind, i.e. CJS production runtime still works).
+
+### Outstanding from Phase 11 (none blocking)
+
+The earlier `websocketService.on('reconnect', ...)` dead-code item from Phase 10 is still open; it was diagnosed and documented but the fix is in `apps/web/lib/websocket.service.ts` and was not in scope for Phase 11.

@@ -7,15 +7,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 const API_VERSION = (() => {
-  // Try both layouts: ts-jest runs from src/ (two ../), compiled dist runs
-  // from dist/src/ (three ../). Same module, different __dirname.
+  // __dirname exists in CJS (prod build + ts-jest CJS); in ESM (ts-jest --useESM)
+  // it throws ReferenceError. Fall back to process.cwd() lookups so the same
+  // controller boots in both module systems. Skip candidates whose package.json
+  // lacks a version field (e.g. the repo-root monorepo package.json).
+  const baseDir = (() => {
+    try { return __dirname; } catch { return process.cwd(); }
+  })();
   const candidates = [
-    join(__dirname, '../../package.json'),
-    join(__dirname, '../../../package.json'),
+    join(baseDir, '../../package.json'),       // ts-jest CJS: apps/api/src/health/
+    join(baseDir, '../../../package.json'),    // compiled dist: apps/api/dist/src/health/
+    join(process.cwd(), 'package.json'),        // running from apps/api/ in ESM
+    join(process.cwd(), 'apps/api/package.json'), // running from repo root in ESM
   ];
   for (const path of candidates) {
     try {
-      return (JSON.parse(readFileSync(path, 'utf-8')) as { version: string }).version;
+      const version = (JSON.parse(readFileSync(path, 'utf-8')) as { version?: string }).version;
+      if (typeof version === 'string' && version.length > 0) return version;
     } catch {/* try next */}
   }
   return '0.0.0-unknown';

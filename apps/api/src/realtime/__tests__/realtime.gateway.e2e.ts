@@ -4,25 +4,6 @@ import { io, Socket as ClientSocket } from 'socket.io-client';
 import { RealtimeModule } from '../realtime.module';
 import { RedisService } from '../../redis/redis.service';
 import { WS_EVENTS } from '@nodescope/shared';
-
-jest.mock('@socket.io/redis-adapter', () => {
-  // socket.io@4.8+ instantiates the adapter via `new MockAdapter(namespace)`
-  // and calls .init() / .close() on it. Provide a minimal shape that satisfies
-  // the runtime — we don't actually need Redis pub/sub in unit-style e2e tests.
-  const { Adapter } = jest.requireActual('socket.io-adapter');
-  return {
-    createAdapter: jest.fn().mockReturnValue(Adapter),
-  };
-});
-
-jest.mock('../../auth/better-auth.config', () => ({
-  auth: {
-    api: {
-      getSession: jest.fn(),
-    },
-  },
-}));
-
 import { auth } from '../../auth/better-auth.config';
 
 const VALID_SESSION = {
@@ -30,15 +11,27 @@ const VALID_SESSION = {
   session: { id: 'session-1', token: 'tok' },
 };
 
+// The Redis adapter calls pub/sub methods on each duplicated client. Provide
+// no-op stubs so adapter init doesn't crash — pub/sub propagation is not
+// exercised by these connection-flow tests.
+function makePubSubClient(): Record<string, jest.Mock> {
+  const client: Record<string, jest.Mock> = {};
+  for (const method of [
+    'on', 'subscribe', 'psubscribe', 'unsubscribe', 'punsubscribe',
+    'publish', 'spublish', 'ssubscribe', 'sunsubscribe', 'quit',
+  ]) {
+    client[method] = jest.fn();
+  }
+  client.duplicate = jest.fn().mockImplementation(makePubSubClient);
+  return client;
+}
+
 const mockRedis = {
   sadd: jest.fn().mockResolvedValue(1),
   srem: jest.fn().mockResolvedValue(1),
   scard: jest.fn().mockResolvedValue(1),
   set: jest.fn().mockResolvedValue('OK'),
-  duplicate: jest.fn().mockReturnValue({
-    on: jest.fn(),
-    subscribe: jest.fn(),
-  }),
+  duplicate: jest.fn().mockImplementation(makePubSubClient),
 };
 
 describe('RealtimeGateway (e2e)', () => {
@@ -66,12 +59,13 @@ describe('RealtimeGateway (e2e)', () => {
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
   });
 
   describe('connection with valid session', () => {
     it('connects and Redis records the socket', (done) => {
-      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue(VALID_SESSION as never);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -99,7 +93,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('connection with missing/invalid session', () => {
     it('is rejected — socket disconnects immediately', (done) => {
-      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(null);
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue(null as never);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -121,7 +115,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('v1:ping → v1:pong heartbeat', () => {
     it('responds to ping with pong', (done) => {
-      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue(VALID_SESSION as never);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,
@@ -148,7 +142,7 @@ describe('RealtimeGateway (e2e)', () => {
 
   describe('disconnect', () => {
     it('removes the socket from Redis on disconnect', (done) => {
-      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(VALID_SESSION);
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue(VALID_SESSION as never);
 
       const client: ClientSocket = io(`http://localhost:${port}`, {
         withCredentials: false,

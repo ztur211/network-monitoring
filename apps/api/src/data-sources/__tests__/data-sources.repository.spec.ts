@@ -73,10 +73,15 @@ describe('DataSourcesRepository', () => {
     });
 
     it('returns one row per user with their latest metric', async () => {
+      // Explicit timestamps — `createMany` evaluates `@default(now())` once per
+      // statement, so the two records would otherwise share a timestamp and
+      // ORDER BY time DESC would return either non-deterministically.
+      const earlier = new Date('2026-01-01T00:00:00.000Z');
+      const later = new Date('2026-01-01T00:00:01.000Z');
       await prisma.deviceMetric.createMany({
         data: [
-          { userId: 'test-datasources-user', sourceType: 'browser', latency: 10 },
-          { userId: 'test-datasources-user', sourceType: 'browser', latency: 20 },
+          { userId: 'test-datasources-user', sourceType: 'browser', latency: 10, time: earlier },
+          { userId: 'test-datasources-user', sourceType: 'browser', latency: 20, time: later },
         ],
       });
       const results = await repository.findLatestForUsers(['test-datasources-user']);

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -16,11 +17,12 @@ import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AiService } from './ai.service';
 import { SendAiMessageDto } from './ai.dto';
 
-@Controller('ai')
+@Controller('v1/ai')
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   @Post('message')
+  @HttpCode(HttpStatus.OK)
   async sendMessage(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: SendAiMessageDto,

@@ -2,6 +2,7 @@ import request from 'supertest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../../app.module';
+import { PrismaService } from '../../prisma/prisma.service';
 
 // E2E tests — require test DB and running services
 // Run with: npm run test:e2e --workspace=apps/api
@@ -9,6 +10,7 @@ import { AppModule } from '../../app.module';
 describe('GET /api/v1/clients', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  const testEmail = `e2e-clients-${Date.now()}@example.com`;
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -19,9 +21,17 @@ describe('GET /api/v1/clients', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.setGlobalPrefix('api');
     await app.init();
+
+    const signUpRes = await request(app.getHttpServer())
+      .post('/api/auth/sign-up/email')
+      .send({ email: testEmail, password: 'Password123!', name: 'Clients Test User' });
+    const setCookie = signUpRes.headers['set-cookie'];
+    sessionCookie = Array.isArray(setCookie) ? setCookie[0] : (setCookie ?? '');
   });
 
   afterAll(async () => {
+    const prisma = app.get(PrismaService);
+    await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
 
@@ -32,13 +42,6 @@ describe('GET /api/v1/clients', () => {
   });
 
   describe('when authenticated', () => {
-    beforeAll(async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/sign-in/email')
-        .send({ email: 'dev@nodescope.test', password: process.env.SEED_PASSWORD });
-      sessionCookie = res.headers['set-cookie']?.[0] ?? '';
-    });
-
     it('returns 200 with currentDevice and agentStatus', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/clients')

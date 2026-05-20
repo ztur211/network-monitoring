@@ -3,9 +3,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MOCK_SESSION_TOKEN } from '../../../__mocks__/better-auth-node';
-
-const MOCK_USER_ID = 'mock-user-id-e2e';
 
 /**
  * E2E tests for /api/v1/users/* endpoints.
@@ -14,6 +11,7 @@ const MOCK_USER_ID = 'mock-user-id-e2e';
 describe('UsersController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  const testEmail = `e2e-users-${Date.now()}@example.com`;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -27,39 +25,19 @@ describe('UsersController (e2e)', () => {
     );
     await app.init();
 
-    // Seed the mock user that the better-auth mock's getSession returns.
-    // The auth controller is mocked (toNodeHandler returns a stub), so sign-up
-    // does not write to the DB. We must create the user row ourselves so that
-    // service methods that call usersRepository.findById / update find a record.
-    const prisma = app.get(PrismaService);
-    await prisma.user.upsert({
-      where: { id: MOCK_USER_ID },
-      create: {
-        id: MOCK_USER_ID,
-        email: 'e2e-users-mock@example.com',
-        name: 'E2E User',
-        emailVerified: true,
-        tier: 'PERSONAL_FREE',
-      },
-      update: {
-        mapPreferences: {},
-      },
-    });
-
-    // Call the mocked sign-up endpoint to get the session cookie.
     const signUpRes = await request(app.getHttpServer())
       .post('/api/auth/sign-up/email')
-      .send({ email: 'e2e-users-mock@example.com', password: 'Password123!', name: 'E2E User' });
+      .send({ email: testEmail, password: 'Password123!', name: 'Users Test User' });
 
     const setCookie = signUpRes.headers['set-cookie'];
     const rawCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
     // Supertest .set('Cookie', …) needs just the name=value pair, not the full Set-Cookie directives.
-    sessionCookie = rawCookie?.split(';')[0] ?? `better-auth.session_token=${MOCK_SESSION_TOKEN}`;
+    sessionCookie = rawCookie?.split(';')[0] ?? '';
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
-    await prisma.user.deleteMany({ where: { id: MOCK_USER_ID } });
+    await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
 
@@ -72,7 +50,7 @@ describe('UsersController (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toMatchObject({
-        email: expect.stringContaining('@example.com'),
+        email: testEmail,
         tier: 'PERSONAL_FREE',
       });
     });

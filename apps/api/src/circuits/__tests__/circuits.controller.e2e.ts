@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * E2E tests for /api/v1/circuits/* endpoints.
@@ -11,6 +12,7 @@ describe('CircuitsController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
   let circuitId: string;
+  const testEmail = `e2e-circuits-${Date.now()}@example.com`;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -26,13 +28,15 @@ describe('CircuitsController (e2e)', () => {
 
     const signUp = await request(app.getHttpServer())
       .post('/api/auth/sign-up/email')
-      .send({ email: `e2e-circuits-${Date.now()}@example.com`, password: 'Password123!' });
+      .send({ email: testEmail, password: 'Password123!', name: 'Circuits Test User' });
 
     const setCookie = signUp.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
   });
 
   afterAll(async () => {
+    const prisma = app.get(PrismaService);
+    await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
 
