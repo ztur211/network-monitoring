@@ -1,4 +1,5 @@
 import {
+  Allow,
   IsArray,
   IsEnum,
   IsInt,
@@ -37,7 +38,10 @@ class ChangesetChangeDto {
   @IsString()
   field: string;
 
+  @Allow()
   oldValue: unknown;
+
+  @Allow()
   newValue: unknown;
 }
 

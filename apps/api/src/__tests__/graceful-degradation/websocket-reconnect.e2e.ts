@@ -12,15 +12,6 @@ import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { AiService } from '../../ai/ai.service';
 import { Socket } from 'socket.io';
-
-jest.mock('../../auth/better-auth.config', () => ({
-  auth: {
-    api: {
-      getSession: jest.fn(),
-    },
-  },
-}));
-
 import { auth } from '../../auth/better-auth.config';
 
 const mockRedis = {
@@ -72,8 +63,12 @@ describe('Graceful degradation — WebSocket reconnection', () => {
     mockDataSources.getLatestMetrics.mockResolvedValue(new Map());
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('disconnects client when session is missing (unauthenticated handshake)', async () => {
-    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(null);
+    jest.spyOn(auth.api, 'getSession').mockResolvedValue(null as never);
     const socket = makeSocket();
 
     await gateway.handleConnection(socket);
@@ -85,10 +80,10 @@ describe('Graceful degradation — WebSocket reconnection', () => {
 
   it('joins user room and records presence on valid session', async () => {
     const userId = 'user-abc';
-    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({
+    jest.spyOn(auth.api, 'getSession').mockResolvedValue({
       user: { id: userId, tier: 'PERSONAL_FREE' },
       session: {},
-    });
+    } as never);
     const socket = makeSocket();
 
     await gateway.handleConnection(socket);

@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
+import { PrismaService } from '../../prisma/prisma.service';
 import { AI_PROVIDER_TOKEN } from '../adapters/ai-provider.interface';
 
 const mockAdapter = {
@@ -16,6 +17,7 @@ const mockAdapter = {
 describe('AiController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  const testEmail = `e2e-ai-${Date.now()}@example.com`;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -35,7 +37,7 @@ describe('AiController (e2e)', () => {
     const signUpRes = await request(app.getHttpServer())
       .post('/api/auth/sign-up/email')
       .send({
-        email: `e2e-ai-${Date.now()}@example.com`,
+        email: testEmail,
         password: 'Password123!',
         name: 'AI E2E User',
       });
@@ -45,6 +47,8 @@ describe('AiController (e2e)', () => {
   });
 
   afterAll(async () => {
+    const prisma = app.get(PrismaService);
+    await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
 

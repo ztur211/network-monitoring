@@ -13,6 +13,10 @@ export const auth = betterAuth({
       verify: ({ hash, password }: { hash: string; password: string }) =>
         argon2.verify(hash, password),
     },
+    // MVP has no email service. Provide a no-op so the /forget-password endpoint
+    // returns 200 regardless of whether the email exists — this matches the
+    // anti-enumeration contract documented in API Design v1.0.
+    sendResetPassword: async () => undefined,
   },
   session: {
     expiresIn: 60 * 60 * 24 * 30,

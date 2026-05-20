@@ -115,11 +115,11 @@ describe('Auth (e2e)', () => {
     });
   });
 
-  describe('POST /api/auth/forget-password', () => {
+  describe('POST /api/auth/request-password-reset', () => {
     it('returns 200 regardless of whether email exists (prevents enumeration)', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/auth/forget-password')
-        .send({ email: 'nonexistent@example.com' });
+        .post('/api/auth/request-password-reset')
+        .send({ email: 'nonexistent@example.com', redirectTo: 'http://localhost:8081/reset' });
 
       expect(res.status).toBe(200);
     });
