@@ -7,6 +7,16 @@ const PING_INTERVAL_MS = 25_000;
 const OFFLINE_RETRY_DELAY_MS = 30_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+// socket.io-client v4 emits these on the Manager (`socket.io`), not the Socket.
+// Subscribing them on the Socket silently no-ops. Route them to the Manager.
+const MANAGER_EVENTS = new Set([
+  'reconnect',
+  'reconnect_attempt',
+  'reconnect_error',
+  'reconnect_failed',
+  'ping',
+]);
+
 class WebSocketService {
   private socket: Socket | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -35,12 +45,12 @@ class WebSocketService {
       useUiStore.getState().setConnectionStatus('reconnecting');
     });
 
-    this.socket.on('reconnect', () => {
+    this.socket.io.on('reconnect', () => {
       useUiStore.getState().setConnectionStatus('connected');
       this.startPingLoop();
     });
 
-    this.socket.on('reconnect_failed', () => {
+    this.socket.io.on('reconnect_failed', () => {
       useUiStore.getState().setConnectionStatus('offline');
       this.scheduleOfflineRetry();
     });
@@ -54,11 +64,24 @@ class WebSocketService {
   }
 
   on<T = unknown>(event: string, listener: (data: T) => void): void {
-    this.socket?.on(event, listener as (...args: unknown[]) => void);
+    if (!this.socket) return;
+    const cb = listener as (...args: unknown[]) => void;
+    if (MANAGER_EVENTS.has(event)) {
+      // socket.io's overloaded type signatures don't reduce when accessed via
+      // a union variable, so call the Manager directly and cast through any.
+      (this.socket.io.on as (e: string, l: (...args: unknown[]) => void) => void)(event, cb);
+    } else {
+      this.socket.on(event, cb);
+    }
   }
 
   off(event: string, listener?: (...args: unknown[]) => void): void {
-    this.socket?.off(event, listener);
+    if (!this.socket) return;
+    if (MANAGER_EVENTS.has(event)) {
+      (this.socket.io.off as (e: string, l?: (...args: unknown[]) => void) => void)(event, listener);
+    } else {
+      this.socket.off(event, listener);
+    }
   }
 
   emit(event: string, payload?: unknown): void {
