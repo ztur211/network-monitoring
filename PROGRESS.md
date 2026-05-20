@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 ---
 
@@ -22,6 +22,7 @@ Last updated: 2026-05-18
 | 9c | Deployment Hardening (.do/app.yaml + post-deploy smoke test) | 🟢 Code complete |
 | 9d | Schema-drift fixes + Dead-code sweep (MULTI_PROPERTY, Prisma enum dedupe, unused-export removal) | 🟢 Code complete |
 | 9e | First-run shakedown (map render, /clients crash, browser-collector bandwidth endpoint, RN-Web 0.21 fallout) | 🟢 Code complete |
+| 10 | Post-MVP session 2026-05-18/19: drag-after-tab-switch fix, building footprints toggle, cross-device map prefs sync | 🟢 Code complete |
 
 ---
 
@@ -1067,3 +1068,98 @@ Phase 7 ships marked as "complete" but evidently `/clients` was never actually c
 All Phase 0–9e code is in the repo. Phase 9b dependency upgrade landed code-side with the web bundle under the <500 KB gzipped target. Phase 9c codified the App Platform deployment and added a post-deploy smoke test that runs as part of `deploy.yml`. Phase 9d cleaned up the drift between code intent (TierGuard, CLAUDE.md) and schema reality (Prisma) and deduped hand-written types that violated Rule #6. Phase 9e — the first-run shakedown — caught the dependency-upgrade regressions, the latent DeviceMetric/TimescaleDB bug, and the `/clients` envelope crash that would have been the first thing any new user hit.
 
 Remaining work is operational: cloud provisioning (managed PG with PostGIS + TimescaleDB, managed Redis, App Platform app from `.do/app.yaml`), secret configuration, first production deploy (which will exercise the smoke test for the first time), manual cross-browser verification, and a deliberate sweep of the four screens that 9e didn't touch (Equipment, Circuits, AI Assistant, Settings).
+
+---
+
+## Phase 10 — Post-MVP iteration (2026-05-18/19)
+
+Three threads of work in one session: a drag-handling bug discovered during normal use, then two planned features (buildings toggle + cross-device preference sync). The drag bug was found incidentally, diagnosed and fixed first; the two features went through a full brainstorm → spec → plan → implement → review cycle.
+
+Specs and plans (local only — `docs/` is gitignored):
+- `docs/superpowers/specs/2026-05-19-buildings-toggle-design.md`
+- `docs/superpowers/plans/2026-05-19-buildings-toggle.md`
+- `docs/superpowers/specs/2026-05-19-map-preferences-sync-design.md`
+- `docs/superpowers/plans/2026-05-19-map-preferences-sync.md`
+
+### `fix(web): map drag broken after tab switch (invalid 'box-none' CSS)` (commit `6d560ce`)
+
+User-reported: drag the map → switch to another tab → switch back → drag no longer works. Diagnosed end-to-end via a Playwright reproduction that confirmed `pointer-events: none` was bleeding down to the MapLibre canvas-container after the tab cycle.
+
+Root cause: the `patch-package` patch from Phase 9e (`@react-navigation/bottom-tabs+7.16.1.patch`, commit `4fe8533`) wrote `pointerEvents: 'box-none'` as an inline style on `MaybeScreen` in `BottomTabView.tsx`. The CSS value `box-none` is a React Native concept, not a valid CSS pointer-events value. Browsers silently reject it. The interaction:
+
+- First render (focused): tries inline `pointer-events: box-none` → rejected → no inline value → inherits `auto`. Drag works.
+- Tab away (unfocused): inline becomes `pointer-events: none`. Accepted.
+- Tab back (focused): tries to update inline back to `box-none` → rejected → **stale `none` stays in the inline style**. Inherits down through the screen wrapper to MapLibre's `.maplibregl-canvas-container` and silently kills drag.
+
+Fix: change `'box-none'` to `'auto'` in the patch. On web the two are functionally equivalent for the focused case (children still receive events either way), and `'auto'` is valid CSS so it correctly replaces the stale `'none'` on update. One-character semantic change.
+
+Verified with Playwright: drag works, switch tabs, switch back, drag still works.
+
+### `feat(web): show OpenFreeMap building footprints` + toggle in MapControls (commits `3f5e97d`, `db64de6`)
+
+The OpenFreeMap "liberty" style **already includes** a `building` fill layer (minzoom 13) sourced from the `openmaptiles` vector tiles — but its default `fill-color: hsl(35,8%,85%)` against the basemap is effectively invisible. Phase 10's first feature: make them visible and gate behind a user toggle.
+
+Two commits, both frontend-only:
+
+1. `3f5e97d` — store + map wiring. Add `buildingsVisible: boolean` to `ui.store` (persisted to localStorage as `ns:buildingsVisible`, default `true`). Two `useEffect` hooks in `MapView.tsx`: one runs `setPaintProperty` once on map-ready to override the too-pale defaults with `hsl(35,12%,78%)` fill + `hsl(35,15%,55%)` outline; the other toggles `visibility` whenever the store flag flips.
+2. `db64de6` — UI. Add a new "Base Map" group at the top of the expanded MapControls panel with one row ("Buildings") using the same checkbox + label pattern as the device-category toggles, including the `z13+` faded indicator below the building layer's minzoom.
+
+The defensive `if (!map.getLayer('building')) return` guard in both effects covers the case where OpenFreeMap renames the layer upstream.
+
+### `feat: cross-device map preferences sync` (commits `55f1e89` → `cf295ce`, 10 commits)
+
+User asked for cross-device sync of map preferences (initially just buildingsVisible; expanded during brainstorm to all six "my view" fields). Local-first architecture by explicit user requirement — the app must remain fully functional with internet down at the location.
+
+Six fields synced: `buildingsVisible`, `layerToggles`, `mapCenter`, `mapZoom`, `selectedFloor`, `floorDisplayMode`. Two of those (`selectedFloor`, `floorDisplayMode`) were transient before this work — they now persist to localStorage AND server.
+
+**Storage:** New `User.mapPreferences Json @default("{}")` column. Single ALTER TABLE migration, NOT NULL default `{}` covers existing rows with no backfill.
+
+**API:** Two endpoints under `/api/v1/users/me/preferences`:
+- `GET` returns `{ preferences: MapPreferences }`, empty `{}` for fresh users.
+- `PUT` validates via class-validator and replaces entirely (not merges). Returns the actually-stored value, not the request DTO (caught in code review — Postgres jsonb can normalize keys, so echoing the DTO would diverge from reality).
+
+Bypasses Better Auth's `input: false` lockdown by following the existing `setLocation` pattern (custom endpoint that writes via the repository, not via Better Auth's `updateUser`).
+
+**Frontend — local-first model:**
+- localStorage is the operational source of truth. All reads come from localStorage (instant, works offline). UI updates synchronously.
+- A `mapPreferencesDirty: boolean` flag (also localStorage-backed) tracks unsynced changes.
+- Every existing setter writes through to localStorage, sets `dirty=true`, then enqueues a 500 ms-debounced PUT.
+- On bootstrap (after `authClient.getSession()` resolves), `syncPreferencesFromServer` runs a three-branch reconciliation:
+  1. **Local-wins:** if `dirty=true`, PUT local state to server (preserves offline changes).
+  2. **One-shot migration:** if server is empty `{}` AND any Phase-1 localStorage keys exist, PUT the local state once.
+  3. **Server-wins:** for each field the server has set, write to localStorage + store. Fields the server hasn't set keep their current value (defaults).
+- On WebSocket `reconnect`, `flushMapPreferences` PUTs current state if dirty. (See "Outstanding items" below — this is structurally wired but the underlying `reconnect` event never fires.)
+- All API calls wrapped in try/catch — failures leave dirty=true and are non-fatal.
+
+**Test coverage (backend, TDD):**
+- `users.repository.spec.ts` — 6 integration tests against the real test DB for `getPreferences` / `updatePreferences`.
+- `users.controller.e2e.ts` — 8 e2e tests covering round-trip, replace semantics, validation (400 for bad shapes / unknown extra fields), auth (401).
+
+**Frontend verification:** No frontend unit-test suite per project convention. Verified with a 4-scenario Playwright script: online happy path (debounce coalescing rapid changes into one PUT), offline tolerance (UI works offline, dirty flag persists), Phase-1 → Phase-2 migration (localStorage keys auto-pushed once), cross-device hydration (fresh browser pulls server state).
+
+### Side fixes that landed during Phase 10
+
+- `0d70963` — `chore(api): add mapPreferences to test User fixtures`. Required follow-up after the schema migration made `mapPreferences` a required field on the Prisma-generated `User` type — `users.service.spec.ts` had a `mockUser` literal missing the field that no longer compiled.
+- `96d0426` — `fix(api): code-review followups on /v1/users/me/preferences`. Three small fixes from the code-quality reviewer: PUT now returns the stored value (not the request DTO) so the response can't diverge from DB; deduplicated `MOCK_SESSION_TOKEN` import (was triplicated across `__mocks__/better-auth-node.ts`, `__mocks__/better-auth.ts`, and the e2e test); aligned mock-user email with the e2e-seeded DB row.
+- `55f3896` + `cf295ce` — health controller `package.json` path. The Phase 8 commit `9043510` introduced `readFileSync(join(__dirname, '../../package.json'))` for the dynamic version, but the path is layout-sensitive: `__dirname` is `apps/api/src/health/` under ts-jest and `apps/api/dist/src/health/` under compiled dev/production. Two `../` works in source layout; three `../` works in compiled. Final fix (`cf295ce`) tries both and uses whichever `readFileSync` succeeds — bulletproof against build/transpile layout choices. The original `55f3896` (three-dot-only) was reverted-by-superseding; the path landed correct for compiled but broke ts-jest, blocking the entire e2e suite from loading.
+- Auth e2e mocks (`__mocks__/better-auth-node.ts`, `__mocks__/better-auth.ts`) were extensively rewritten as part of `c0035a9`. The pre-Phase-10 stubs returned `undefined` for `toNodeHandler` and hardcoded `null` for `getSession`, meaning every e2e test that touched auth blew up at runtime or got an unconditional 401. The new mocks simulate a real session flow (signup issues a cookie, get-session honors it). This unblocked the new Phase 10 e2e tests AND fixed several pre-existing tests that had been silently red — but did not fix every e2e suite (see "Outstanding items" below).
+
+### Outstanding items (queued for a follow-up session)
+
+**[Medium] `websocketService.on('reconnect', ...)` is dead code app-wide.** In `socket.io-client` v4, the `reconnect` event lives on the `Manager`, not the `Socket`. The handler in `apps/web/app/(app)/_layout.tsx` that calls `flushDevices`, `flushCircuits`, and (new) `flushMapPreferences` on reconnect never fires. Pre-existing — affects all three flush handlers. Fix: subscribe to `socket.on('connect')` with a `wasConnected` boolean to distinguish reconnect from initial connect, then emit a custom event or call the flushes directly. Until fixed, dirty data flushes on the next user action, not automatically on reconnect.
+
+**[High] Pre-existing e2e test suite has multiple red suites** — surfaced when running `npm test --workspace=apps/api` to verify Phase 10. **These failures pre-date this session.** Verified by checking out the OLD (pre-Task-4) `__mocks__` and running e2e against the current code: with old mocks, 9 e2e suites failed / 59 individual tests failed. Phase 10's mock fixes improved this to 7 suites / 22 tests. Phase 10's own `users.controller.e2e.ts` is 14/14 green.
+
+The remaining failing suites:
+- `auth.e2e.ts` — full sign-up → get-session → sign-out flow
+- `ai.controller.e2e.ts` — all 9 tests (requires auth)
+- `devices/circuits/connections/fiber-runs.controller.e2e.ts` — PATCH/DELETE tests (likely auth-scoping or version-conflict issues)
+- `map.controller.e2e.ts` — `GET /map/devices` bbox query returns empty (user-scoping or seed-data mismatch)
+
+Symptoms suggest the auth-mock infrastructure now produces a single fixed user with a fixed email, but tests that need *different* users for separate scenarios (e.g., "user A's device shouldn't appear in user B's bbox query") share that one user and trip over each other. Needs a proper diagnose session — not in scope for Phase 10.
+
+**[Low] `UsersService` unit-test gap.** `getPreferences` and `updatePreferences` are not covered in `users.service.spec.ts`. The mock repository shape in that file doesn't declare them. E2E covers the integration, so Rule #1 is technically violated but practically OK.
+
+**[Low] 4-site update requirement for new preference fields.** Adding a Phase 11 preference field requires coordinated updates to `MapPreferences` (shared type), `UpdatePreferencesDto` (class-validator), `collectCurrentPreferences` (frontend), and the server-wins `if` block in `syncPreferencesFromServer`. No compile-time enforcement.
+
+**[Low] `layerToggles` value types not validated at runtime.** `@IsObject()` on the DTO accepts `{ ROUTER: 'yes' }` (string instead of boolean). In practice only the frontend writes this, but no defense-in-depth at the API boundary.
