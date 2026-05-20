@@ -1186,3 +1186,20 @@ Closes the [High] outstanding item from Phase 10. Goal: `npm test --workspace=ap
 ### Outstanding from Phase 11 (none blocking)
 
 The earlier `websocketService.on('reconnect', ...)` dead-code item from Phase 10 is still open; it was diagnosed and documented but the fix is in `apps/web/lib/websocket.service.ts` and was not in scope for Phase 11.
+
+## Phase 12 — `WebSocketService` Manager-event routing + first apps/web jest test (2026-05-20)
+
+Closes the [Medium] outstanding item from Phase 10. In socket.io-client v4, `reconnect` and `reconnect_failed` are emitted on the Manager (`socket.io`), not the Socket — see `node_modules/socket.io-client/build/cjs/socket.js` `subEvents()`, which only relays `open`/`packet`/`error`/`close` to the Socket. The three pre-existing `this.socket.on('reconnect', …)` / `'reconnect_failed'` / consumer `websocketService.on('reconnect', …)` subscriptions in `apps/web/lib/websocket.service.ts` and `apps/web/app/(app)/_layout.tsx` were therefore dead code. `flushDevices()`, `flushCircuits()`, and (Phase 10's) `flushMapPreferences()` only ran on the next user action after reconnect, not automatically.
+
+**Fix.** Inside `WebSocketService`:
+- The two internal subscriptions now call `this.socket.io.on(...)` instead of `this.socket.on(...)`.
+- The public `on()` / `off()` methods consult a small `MANAGER_EVENTS = {reconnect, reconnect_attempt, reconnect_error, reconnect_failed, ping}` set and route to `this.socket.io` for those, `this.socket` for everything else. Each branch is typed independently because socket.io's overloads don't reduce when accessed via a union variable.
+- `_layout.tsx` is unchanged — `websocketService.on('reconnect', handleReconnect)` now does what its name promised.
+
+**First jest test in apps/web.** Added `apps/web/lib/__tests__/websocket.service.spec.ts` with `apps/web/jest.config.ts`, `tsconfig.jest.json`, and `jest.setup.ts` mirroring the apps/api ESM pattern (ts-jest `useESM: true`, `--experimental-vm-modules` via `cross-env`, `Object.assign(globalThis, await import('@jest/globals'))` for jest globals). The test mocks `socket.io-client` with separate Socket and Manager `EventEmitter`s, mocks `ui.store` via `moduleNameMapper` (avoids pulling in Zustand/React), and uses `jest.unstable_mockModule` because plain `jest.mock` doesn't hoist in ESM. Five assertions: `'reconnect'` and `'reconnect_failed'` route to Manager, `'connect'` still routes to Socket, `off` symmetric.
+
+Per CLAUDE.md ("No frontend unit-test suite per project convention") this opens a narrow door: pure-logic files under `lib/` and `store/` can have unit tests, but RN/JSX components continue to be verified through Playwright. The `testRegex` is scoped to `(lib|store)/__tests__/.*\\.spec\\.ts$` to keep that boundary explicit.
+
+`apps/web/tsconfig.json` gained `exclude: ['**/__tests__/**', 'jest.config.ts', 'jest.setup.ts']` so the strict prod typecheck doesn't sweep up test fixtures with looser types.
+
+**Verification:** `npm test --workspace=apps/web` → 5/5 passing. `npx tsc --noEmit` in `apps/web` → clean. The api test suite (`npm test --workspace=apps/api`) is still 258/258 (no API code touched).
