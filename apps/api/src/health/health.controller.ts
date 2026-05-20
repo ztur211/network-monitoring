@@ -6,7 +6,20 @@ import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
-const API_VERSION = (JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf-8')) as { version: string }).version;
+const API_VERSION = (() => {
+  // Try both layouts: ts-jest runs from src/ (two ../), compiled dist runs
+  // from dist/src/ (three ../). Same module, different __dirname.
+  const candidates = [
+    join(__dirname, '../../package.json'),
+    join(__dirname, '../../../package.json'),
+  ];
+  for (const path of candidates) {
+    try {
+      return (JSON.parse(readFileSync(path, 'utf-8')) as { version: string }).version;
+    } catch {/* try next */}
+  }
+  return '0.0.0-unknown';
+})();
 
 @Controller('health')
 @Public()
