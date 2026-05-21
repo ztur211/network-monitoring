@@ -25,6 +25,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { DataSourcesModule } from './data-sources/data-sources.module';
 import { ClientsModule } from './clients/clients.module';
 import { AiModule } from './ai/ai.module';
+import { NetworksModule } from './networks/networks.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { AiModule } from './ai/ai.module';
     RealtimeModule,
     ClientsModule,
     AiModule,
+    NetworksModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
