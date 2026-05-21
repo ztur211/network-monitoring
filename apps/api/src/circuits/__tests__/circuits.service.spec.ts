@@ -23,8 +23,11 @@ const makeCircuit = (overrides = {}) => ({
 const makeDevice = (id: string) => ({
   id,
   userId: 'user-1',
+  networkId: null,
   name: 'Router',
   category: 'ROUTER' as const,
+  mobility: 'UNKNOWN' as const,
+  browserDeviceId: null,
   latitude: null, longitude: null, floor: null, floorLabel: null,
   ipAddress: null, macAddress: null, notes: null, version: 1,
   createdAt: new Date(), updatedAt: new Date(),
