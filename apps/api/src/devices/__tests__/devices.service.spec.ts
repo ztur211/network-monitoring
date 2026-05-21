@@ -31,6 +31,7 @@ const mockRepo: jest.Mocked<DevicesRepository> = {
   findAllByUserId: jest.fn(),
   countByUserId: jest.fn(),
   findByIdAndUserId: jest.fn(),
+  findByUserIdAndBrowserDeviceId: jest.fn(),
   create: jest.fn(),
   updateWithVersion: jest.fn(),
   deleteByIdAndUserId: jest.fn(),
@@ -184,6 +185,88 @@ describe('DevicesService', () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(null);
 
       await expect(service.deleteDevice('user-1', 'missing')).rejects.toThrow(NodeScopeException);
+    });
+  });
+
+  describe('createBrowserDevice', () => {
+    it('returns existing device when (userId, browserDeviceId) row already present', async () => {
+      const existing = makeDevice({
+        id: 'browser-1',
+        category: DeviceCategory.BROWSER_CLIENT,
+        browserDeviceId: 'bd-uuid-123',
+        mobility: DeviceMobility.HOME_ONLY,
+      });
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(existing);
+
+      const result = await service.createBrowserDevice(
+        'user-1', 'bd-uuid-123', 'New name attempted', DeviceMobility.ROAMS,
+      );
+
+      expect(result.id).toBe('browser-1');
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.existsByNameCaseInsensitive).not.toHaveBeenCalled();
+    });
+
+    it('creates a new BROWSER_CLIENT device when none exists for the browser', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(null);
+      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
+      mockRepo.create.mockResolvedValue(makeDevice({
+        id: 'browser-1',
+        category: DeviceCategory.BROWSER_CLIENT,
+        browserDeviceId: 'bd-uuid-123',
+        mobility: DeviceMobility.HOME_ONLY,
+        name: 'My Laptop',
+      }));
+
+      const result = await service.createBrowserDevice(
+        'user-1', 'bd-uuid-123', 'My Laptop', DeviceMobility.HOME_ONLY,
+      );
+
+      expect(result.id).toBe('browser-1');
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          category: DeviceCategory.BROWSER_CLIENT,
+          browserDeviceId: 'bd-uuid-123',
+          mobility: DeviceMobility.HOME_ONLY,
+          name: 'My Laptop',
+        }),
+      );
+    });
+
+    it('bypasses tier device-limit check (browsers do not consume slots)', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(null);
+      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
+      mockRepo.create.mockResolvedValue(makeDevice({ category: DeviceCategory.BROWSER_CLIENT }));
+
+      await service.createBrowserDevice('user-1', 'bd-1', 'X', DeviceMobility.UNKNOWN);
+
+      expect(mockTiers.getDeviceLimit).not.toHaveBeenCalled();
+      expect(mockRepo.countByUserId).not.toHaveBeenCalled();
+    });
+
+    it('throws DEVICE_003 DEVICE_NAME_TAKEN when name collides on first creation', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(null);
+      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(true);
+
+      await expect(
+        service.createBrowserDevice('user-1', 'bd-1', 'Existing Name', DeviceMobility.UNKNOWN),
+      ).rejects.toThrow(NodeScopeException);
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('passes networkId through when provided', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(null);
+      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
+      mockRepo.create.mockResolvedValue(makeDevice({ category: DeviceCategory.BROWSER_CLIENT, networkId: 'net-1' }));
+
+      await service.createBrowserDevice(
+        'user-1', 'bd-1', 'Laptop', DeviceMobility.HOME_ONLY, 'net-1',
+      );
+
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ networkId: 'net-1' }),
+      );
     });
   });
 });

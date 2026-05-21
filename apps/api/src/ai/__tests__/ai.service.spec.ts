@@ -333,4 +333,103 @@ describe('AiService', () => {
       expect(result.conversationId).toBe('existing');
     });
   });
+
+  describe('generateOnboardingMessage', () => {
+    it('returns adapter content trimmed to 300 chars with providerStatus=ok', async () => {
+      const longContent = 'A'.repeat(500);
+      mockAdapter.complete.mockResolvedValue({
+        content: longContent,
+        inputTokens: 50,
+        outputTokens: 30,
+      });
+
+      const result = await service.generateOnboardingMessage(
+        'user-1',
+        '127.0.0.1',
+        'networkName',
+        {},
+      );
+
+      expect(result.providerStatus).toBe('ok');
+      expect(result.content.length).toBe(300);
+      expect(result.tokensUsed).toBe(80);
+      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 80);
+    });
+
+    it('does NOT call conversation history (onboarding is stateless on AI side)', async () => {
+      mockAdapter.complete.mockResolvedValue({
+        content: 'Hello!',
+        inputTokens: 10,
+        outputTokens: 5,
+      });
+
+      await service.generateOnboardingMessage('user-1', '127.0.0.1', 'welcome', {});
+
+      expect(mockConversation.getHistory).not.toHaveBeenCalled();
+      expect(mockConversation.appendMessages).not.toHaveBeenCalled();
+    });
+
+    it('re-throws rate-limit NodeScopeException without calling adapter', async () => {
+      mockRateLimiter.checkRateLimits.mockRejectedValue(
+        new NodeScopeException('AI_001', 'AI_RATE_LIMIT_HOURLY', HttpStatus.TOO_MANY_REQUESTS),
+      );
+
+      await expect(
+        service.generateOnboardingMessage('user-1', '127.0.0.1', 'networkName', {}),
+      ).rejects.toThrow(NodeScopeException);
+      expect(mockAdapter.complete).not.toHaveBeenCalled();
+    });
+
+    it('returns hardcoded per-step fallback when adapter throws (providerStatus=unavailable)', async () => {
+      mockAdapter.complete.mockRejectedValue(new Error('connection lost'));
+
+      const result = await service.generateOnboardingMessage(
+        'user-1',
+        '127.0.0.1',
+        'mobility',
+        { networkName: 'Home', browserDeviceName: 'Laptop' },
+      );
+
+      expect(result.providerStatus).toBe('unavailable');
+      expect(result.tokensUsed).toBe(0);
+      expect(result.content.length).toBeGreaterThan(0);
+      expect(mockRateLimiter.incrementUsage).not.toHaveBeenCalled();
+    });
+
+    it('every step has a fallback string', async () => {
+      const stepIds = [
+        'welcome', 'networkName', 'address', 'browserDeviceName',
+        'mobility', 'confirmHomeIp', 'routerMac', 'modemMac',
+        'isp', 'speeds', 'done',
+      ] as const;
+
+      mockAdapter.complete.mockRejectedValue(new Error('always fails'));
+
+      for (const stepId of stepIds) {
+        const result = await service.generateOnboardingMessage('user-1', '127.0.0.1', stepId, {});
+        expect(result.providerStatus).toBe('unavailable');
+        expect(result.content).toMatch(/\S/);
+      }
+    });
+
+    it('passes the userMessage through to the adapter', async () => {
+      mockAdapter.complete.mockResolvedValue({
+        content: 'OK',
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+
+      await service.generateOnboardingMessage(
+        'user-1',
+        '127.0.0.1',
+        'networkName',
+        {},
+        'My home setup',
+      );
+
+      expect(mockAdapter.complete).toHaveBeenCalledWith(
+        expect.objectContaining({ userMessage: 'My home setup' }),
+      );
+    });
+  });
 });
