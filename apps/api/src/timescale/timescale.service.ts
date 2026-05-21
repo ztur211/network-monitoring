@@ -8,8 +8,21 @@ export class TimescaleService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
+    await this.ensureExtension();
     await this.initializeHypertable();
     await this.initializePolicies();
+  }
+
+  private async ensureExtension(): Promise<void> {
+    try {
+      await this.prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS timescaledb');
+    } catch (error) {
+      this.logger.fatal(
+        { error },
+        'Failed to create TimescaleDB extension — DB role lacks privileges or image lacks the extension',
+      );
+      process.exit(1);
+    }
   }
 
   private async initializeHypertable(): Promise<void> {
