@@ -26,6 +26,7 @@ import { DataSourcesModule } from './data-sources/data-sources.module';
 import { ClientsModule } from './clients/clients.module';
 import { AiModule } from './ai/ai.module';
 import { NetworksModule } from './networks/networks.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { NetworksModule } from './networks/networks.module';
     ClientsModule,
     AiModule,
     NetworksModule,
+    OnboardingModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
