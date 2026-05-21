@@ -232,7 +232,9 @@ export function handleStep(
       if (isSkipChip(input)) return advance(progress, 'speeds', []);
       const isp = readField(input, 'isp');
       if (!isp) return stay(progress, stepId);
-      return advance({ ...progress, isp }, 'speeds', []);
+      return advance({ ...progress, isp }, 'speeds', [
+        { type: 'SaveNetwork', payload: { name: progress.networkName!, isp } },
+      ]);
     }
 
     case 'speeds': {
@@ -247,7 +249,12 @@ export function handleStep(
       return advance(
         { ...progress, downMbps, upMbps },
         'done',
-        [],
+        [
+          {
+            type: 'SaveNetwork',
+            payload: { name: progress.networkName!, downMbps, upMbps },
+          },
+        ],
         true,
       );
     }
