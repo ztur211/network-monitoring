@@ -4,13 +4,16 @@ import { DevicesRepository } from '../devices.repository';
 import { TiersService, FREE_TIER_DEVICE_LIMIT } from '../../tiers/tiers.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
-import { DeviceCategory } from '@prisma/client';
+import { DeviceCategory, DeviceMobility } from '@prisma/client';
 
 const makeDevice = (overrides = {}) => ({
   id: 'dev-1',
   userId: 'user-1',
+  networkId: null,
   name: 'Router',
   category: DeviceCategory.ROUTER,
+  mobility: DeviceMobility.UNKNOWN,
+  browserDeviceId: null,
   latitude: null,
   longitude: null,
   floor: null,

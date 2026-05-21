@@ -23,8 +23,11 @@ const makeFiberRun = (overrides = {}) => ({
 const makeDevice = (id: string) => ({
   id,
   userId: 'user-1',
+  networkId: null,
   name: `Device ${id}`,
   category: 'ROUTER' as const,
+  mobility: 'UNKNOWN' as const,
+  browserDeviceId: null,
   latitude: null,
   longitude: null,
   floor: null,

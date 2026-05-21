@@ -12,8 +12,11 @@ const mockMapRepo: jest.Mocked<MapRepository> = {
 const makeDevice = () => ({
   id: 'dev-1',
   userId: 'user-1',
+  networkId: null,
   name: 'Router',
   category: 'ROUTER',
+  mobility: 'UNKNOWN',
+  browserDeviceId: null,
   latitude: 40.0,
   longitude: -74.0,
   floor: null,
