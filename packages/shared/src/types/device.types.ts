@@ -1,8 +1,8 @@
 // DeviceCategory mirrors the Prisma enum (apps/api/prisma/schema.prisma).
 // Type-only re-export erases at compile time — no Prisma runtime in the web
 // bundle. CLAUDE.md Rule #6 forbids hand-written duplicates of Prisma types.
-import type { DeviceCategory } from '@prisma/client';
-export type { DeviceCategory };
+import type { DeviceCategory, DeviceMobility } from '@prisma/client';
+export type { DeviceCategory, DeviceMobility };
 
 export interface DeviceCategoryConfig {
   minZoom: number;
@@ -29,5 +29,6 @@ export const DEVICE_CATEGORY_CONFIG: Record<DeviceCategory, DeviceCategoryConfig
   TABLET:              { minZoom: 18, label: 'End-User Devices' },
   PRINTER:             { minZoom: 18, label: 'End-User Devices' },
   IOT_DEVICE:          { minZoom: 18, label: 'End-User Devices' },
+  BROWSER_CLIENT:      { minZoom: 0,  label: 'This Browser' },
   CUSTOM:              { minZoom: 16, label: 'Other' },
 };
