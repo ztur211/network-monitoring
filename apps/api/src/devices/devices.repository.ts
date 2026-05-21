@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { Device, DeviceCategory, Prisma } from '@prisma/client';
+import { Device, DeviceCategory, DeviceMobility, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateDeviceData = {
   userId: string;
   name: string;
   category: DeviceCategory;
+  mobility?: DeviceMobility;
+  browserDeviceId?: string;
+  networkId?: string;
   latitude?: number;
   longitude?: number;
   floor?: number;
@@ -32,6 +35,13 @@ export class DevicesRepository {
 
   findByIdAndUserId(deviceId: string, userId: string): Promise<Device | null> {
     return this.prisma.device.findFirst({ where: { id: deviceId, userId } });
+  }
+
+  findByUserIdAndBrowserDeviceId(
+    userId: string,
+    browserDeviceId: string,
+  ): Promise<Device | null> {
+    return this.prisma.device.findFirst({ where: { userId, browserDeviceId } });
   }
 
   create(data: CreateDeviceData): Promise<Device> {

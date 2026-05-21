@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Device } from '@prisma/client';
+import { Device, DeviceCategory, DeviceMobility } from '@prisma/client';
 import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
@@ -92,6 +92,51 @@ export class DevicesService {
     }
     await this.devicesRepository.deleteByIdAndUserId(deviceId, userId);
     this.conflictService.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId }, userId);
+  }
+
+  /**
+   * Idempotent create-or-fetch for a BROWSER_CLIENT device tied to a
+   * specific browser via its localStorage-bound `browserDeviceId`. If a row
+   * already exists for this (userId, browserDeviceId) the existing row is
+   * returned unchanged — a browser refresh during onboarding must not
+   * create duplicates or fail on the unique constraint.
+   *
+   * Bypasses the tier device-limit deliberately: a user's own browser
+   * shouldn't consume one of their PERSONAL_FREE device slots.
+   */
+  async createBrowserDevice(
+    userId: string,
+    browserDeviceId: string,
+    name: string,
+    mobility: DeviceMobility,
+    networkId?: string,
+  ): Promise<DeviceDto> {
+    const existing = await this.devicesRepository.findByUserIdAndBrowserDeviceId(
+      userId,
+      browserDeviceId,
+    );
+    if (existing) return this.toDto(existing);
+
+    const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(userId, name);
+    if (nameTaken) {
+      throw new NodeScopeException('DEVICE_003', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
+    }
+
+    const device = await this.devicesRepository.create({
+      userId,
+      name,
+      category: DeviceCategory.BROWSER_CLIENT,
+      mobility,
+      browserDeviceId,
+      networkId,
+    });
+    const dto = this.toDto(device);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.DEVICE_UPDATED,
+      { deviceId: device.id, device: dto, updatedBy: userId },
+      userId,
+    );
+    return dto;
   }
 
   private toDto(device: Device): DeviceDto {
