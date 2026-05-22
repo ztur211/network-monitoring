@@ -32,6 +32,10 @@ const config: Config = {
     // Stub the Zustand-backed ui.store so websocket.service tests don't need
     // React/Zustand to load.
     '^(.+)/store/ui\\.store$': '<rootDir>/lib/__tests__/__mocks__/ui.store.ts',
+    // zustand is hoisted to the root node_modules but `react` lives in the
+    // workspace-local node_modules (RN/Expo pin react@19.2.6 in apps/web). Point
+    // jest at the workspace copy so store unit tests can import zustand directly.
+    '^react$': '<rootDir>/node_modules/react',
   },
 };
 
