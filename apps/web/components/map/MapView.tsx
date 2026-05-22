@@ -27,9 +27,19 @@ const FIBER_LAYER_ID = 'ns-fiber-layer';
 interface MapViewProps {
   onDeviceClick: (device: DeviceDto) => void;
   selectedDeviceId?: string | null;
+  // When true, taps on the map (not on a device marker) call onMapClick with
+  // the picked lngLat. Cursor becomes a crosshair while active. Drives the
+  // "tap to place a device" flow from app/(app)/map.tsx.
+  placementMode?: boolean;
+  onMapClick?: (lngLat: { longitude: number; latitude: number }) => void;
 }
 
-export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
+export function MapView({
+  onDeviceClick,
+  selectedDeviceId,
+  placementMode,
+  onMapClick,
+}: MapViewProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>(
     new Map(),
@@ -132,6 +142,28 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
       mapRef.current = null;
     };
   }, []);
+
+  // Placement-mode click handler. Subscribes to `map.on('click', …)` only
+  // while placementMode is true; unsubscribes (and restores the cursor) on
+  // toggle-off or unmount. Device-marker clicks bubble up via their own
+  // listeners and call stopPropagation, so this only fires on empty map.
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !placementMode || !onMapClick) return;
+    const map = mapRef.current;
+    const canvas = map.getCanvasContainer();
+    const previousCursor = canvas.style.cursor;
+    canvas.style.cursor = 'crosshair';
+
+    const handler = (e: maplibregl.MapMouseEvent): void => {
+      onMapClick({ longitude: e.lngLat.lng, latitude: e.lngLat.lat });
+    };
+    map.on('click', handler);
+
+    return () => {
+      map.off('click', handler);
+      canvas.style.cursor = previousCursor;
+    };
+  }, [mapReady, placementMode, onMapClick]);
 
   // Rebuild the live marker whenever the bound browser-device, its latest
   // ambient metrics, the click handler, or the geolocation fix changes. The
