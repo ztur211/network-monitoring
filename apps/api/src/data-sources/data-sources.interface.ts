@@ -19,6 +19,8 @@ export interface RawMetricPayload {
   bandwidthUp?: number;
   latency?: number;
   connectionQuality?: string;
+  deviceId?: string;
+  tag?: string;
 }
 
 export interface DataSourceCollector {

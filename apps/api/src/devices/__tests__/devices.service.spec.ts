@@ -269,4 +269,28 @@ describe('DevicesService', () => {
       );
     });
   });
+
+  describe('findDeviceIdByBrowserDeviceId', () => {
+    it('returns device.id when (userId, browserDeviceId) row exists', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(
+        makeDevice({ id: 'browser-7', browserDeviceId: 'bd-uuid' }),
+      );
+
+      const result = await service.findDeviceIdByBrowserDeviceId('user-1', 'bd-uuid');
+
+      expect(result).toBe('browser-7');
+      expect(mockRepo.findByUserIdAndBrowserDeviceId).toHaveBeenCalledWith(
+        'user-1',
+        'bd-uuid',
+      );
+    });
+
+    it('returns null when no matching device exists', async () => {
+      mockRepo.findByUserIdAndBrowserDeviceId.mockResolvedValue(null);
+
+      const result = await service.findDeviceIdByBrowserDeviceId('user-1', 'unknown-bd');
+
+      expect(result).toBeNull();
+    });
+  });
 });

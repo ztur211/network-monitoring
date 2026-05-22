@@ -50,6 +50,54 @@ describe('DataSourcesService', () => {
       const callArg = mockRepository.createMetric.mock.calls[0][0] as Record<string, unknown>;
       expect(callArg['unknownField']).toBeUndefined();
     });
+
+    it('passes deviceId through to repository when present', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { deviceId: 'device-uuid-1', bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 'device-uuid-1' }),
+      );
+    });
+
+    it('passes tag through to repository when present', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { tag: 'speedtest', bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ tag: 'speedtest' }),
+      );
+    });
+
+    it('defaults deviceId to null when absent', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: null }),
+      );
+    });
+
+    it('defaults tag to null when absent', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ tag: null }),
+      );
+    });
+
+    it('ignores non-string deviceId', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { deviceId: 12345, bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: null }),
+      );
+    });
+
+    it('ignores non-string tag', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { tag: 42, bandwidthDown: 50 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ tag: null }),
+      );
+    });
   });
 
   describe('getLatestMetric', () => {

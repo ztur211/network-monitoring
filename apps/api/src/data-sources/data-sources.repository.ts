@@ -9,6 +9,8 @@ interface CreateMetricData {
   bandwidthUp?: number | null;
   latency?: number | null;
   connectionQuality?: string | null;
+  deviceId?: string | null;
+  tag?: string | null;
 }
 
 @Injectable()

@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
+import { DevicesService } from '../../devices/devices.service';
 import { AiService } from '../../ai/ai.service';
 import { Socket } from 'socket.io';
 import { auth } from '../../auth/better-auth.config';
@@ -28,6 +29,10 @@ const mockDataSources = {
 };
 
 const mockAiService = {};
+
+const mockDevicesService = {
+  findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
+};
 
 function makeSocket(overrides: Partial<Socket> = {}): Socket {
   return {
@@ -50,6 +55,7 @@ describe('Graceful degradation — WebSocket reconnection', () => {
         RealtimeGateway,
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
+        { provide: DevicesService, useValue: mockDevicesService },
         { provide: AiService, useValue: mockAiService },
       ],
     }).compile();

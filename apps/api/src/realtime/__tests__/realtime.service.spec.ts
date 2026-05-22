@@ -4,6 +4,7 @@ import { WS_EVENTS } from '@nodescope/shared';
 import { RealtimeGateway } from '../realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
+import { DevicesService } from '../../devices/devices.service';
 import { AiService } from '../../ai/ai.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
@@ -33,10 +34,13 @@ type MockDataSources = {
 
 type MockAi = { sendMessageStream: jest.Mock };
 
+type MockDevices = { findDeviceIdByBrowserDeviceId: jest.Mock };
+
 describe('RealtimeGateway — service interface', () => {
   let gateway: RealtimeGateway;
   let mockDataSources: MockDataSources;
   let mockAiService: MockAi;
+  let mockDevices: MockDevices;
 
   beforeEach(async () => {
     mockDataSources = {
@@ -50,11 +54,16 @@ describe('RealtimeGateway — service interface', () => {
       sendMessageStream: jest.fn(),
     };
 
+    mockDevices = {
+      findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
+        { provide: DevicesService, useValue: mockDevices },
         { provide: AiService, useValue: mockAiService },
       ],
     }).compile();
@@ -141,7 +150,10 @@ describe('RealtimeGateway — service interface', () => {
 
       await gateway.handleMetricsSubmit(socket, payload);
 
-      expect(mockDataSources.ingest).toHaveBeenCalledWith('authenticated-user', payload);
+      expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'authenticated-user',
+        expect.objectContaining({ bandwidthDown: 100, bandwidthUp: 50, latency: 30 }),
+      );
       expect(mockDataSources.ingest).not.toHaveBeenCalledWith('victim-user', expect.anything());
     });
 
@@ -149,6 +161,62 @@ describe('RealtimeGateway — service interface', () => {
       const socket = buildSocket(undefined);
       await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
       expect(mockDataSources.ingest).not.toHaveBeenCalled();
+    });
+
+    it('resolves browserDeviceId to deviceId via DevicesService before ingesting', async () => {
+      mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce('device-uuid-7');
+      const socket = buildSocket({ id: 'user-1' });
+
+      await gateway.handleMetricsSubmit(socket, {
+        browserDeviceId: 'browser-uuid-1',
+        bandwidthDown: 100,
+      } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
+
+      expect(mockDevices.findDeviceIdByBrowserDeviceId).toHaveBeenCalledWith(
+        'user-1',
+        'browser-uuid-1',
+      );
+      expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ deviceId: 'device-uuid-7', bandwidthDown: 100 }),
+      );
+    });
+
+    it('ingests with deviceId undefined when browserDeviceId does not match a device', async () => {
+      mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce(null);
+      const socket = buildSocket({ id: 'user-1' });
+
+      await gateway.handleMetricsSubmit(socket, {
+        browserDeviceId: 'unknown-browser',
+        bandwidthDown: 100,
+      } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
+
+      const callPayload = mockDataSources.ingest.mock.calls[0][1] as Record<string, unknown>;
+      expect(callPayload.deviceId).toBeUndefined();
+      expect(callPayload.bandwidthDown).toBe(100);
+    });
+
+    it('does not call DevicesService when browserDeviceId is absent', async () => {
+      const socket = buildSocket({ id: 'user-1' });
+
+      await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
+
+      expect(mockDevices.findDeviceIdByBrowserDeviceId).not.toHaveBeenCalled();
+      expect(mockDataSources.ingest).toHaveBeenCalled();
+    });
+
+    it('passes tag from payload through to ingest', async () => {
+      const socket = buildSocket({ id: 'user-1' });
+
+      await gateway.handleMetricsSubmit(socket, {
+        tag: 'speedtest',
+        bandwidthDown: 100,
+      } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
+
+      expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ tag: 'speedtest' }),
+      );
     });
   });
 
