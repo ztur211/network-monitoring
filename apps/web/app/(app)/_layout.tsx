@@ -6,11 +6,18 @@ import { authClient } from '../../lib/auth-client';
 import { useAuthStore } from '../../store/auth.store';
 import { websocketService } from '../../lib/websocket.service';
 import { browserCollectorService, subscribeToMetricsUpdates } from '../../lib/browser-collector.service';
+import {
+  subscribeToOnHomeUpdates,
+  subscribeToNetworkUpdates,
+} from '../../lib/network-events.service';
 import { OfflineBanner } from '../../components/OfflineBanner';
+import { WizardSheet } from '../../components/onboarding/WizardSheet';
 import { useDeviceStore } from '../../store/device.store';
 import { useCircuitStore } from '../../store/circuits.store';
 import { useAiStore } from '../../store/ai.store';
 import { useUiStore } from '../../store/ui.store';
+import { useNetworkStore } from '../../store/network.store';
+import { useOnboardingStore } from '../../store/onboarding.store';
 import { WS_EVENTS, DeviceDto, CircuitDto, FiberRunDto, DeviceConnectionDto } from '@nodescope/shared';
 import type { SessionUser } from '@nodescope/shared';
 
@@ -23,12 +30,40 @@ export default function AppLayout() {
   const { syncPreferencesFromServer, flushMapPreferences } = useUiStore();
 
   useEffect(() => {
+    // Subscriptions deferred until after websocketService.connect() runs,
+    // because websocketService.on() is a no-op when its internal socket is
+    // null. Captured in this closure so the useEffect's cleanup can call
+    // them whether or not the .then() ever resolved.
+    let unsubscribeOnHome: (() => void) | null = null;
+    let unsubscribeNetworkUpdates: (() => void) | null = null;
+
     authClient.getSession().then((result) => {
       if (result.data?.user) {
         setUser(result.data.user as SessionUser);
         websocketService.connect();
         browserCollectorService.start();
         void syncPreferencesFromServer();
+
+        // Register WS subscribers AFTER connect() so the listeners are
+        // actually attached. The server emits v1:network:onHome:changed once
+        // on socket connect — registering synchronously here gets us in
+        // before the handshake round-trip completes.
+        unsubscribeOnHome = subscribeToOnHomeUpdates();
+        unsubscribeNetworkUpdates = subscribeToNetworkUpdates();
+
+        // Load the user's network and open the wizard if they don't have one.
+        // The wizard auto-fires its welcome turn from the WizardSheet effect,
+        // so we only need to flip wizardOpen.
+        void useNetworkStore
+          .getState()
+          .load()
+          .then(() => {
+            const { network, loaded } = useNetworkStore.getState();
+            if (!loaded) return; // load failed — error banner handles it
+            if (network === null && !useOnboardingStore.getState().dismissedForSession) {
+              useOnboardingStore.getState().openWizard();
+            }
+          });
       } else {
         setUser(null);
         router.replace('/(auth)/login');
@@ -60,6 +95,8 @@ export default function AppLayout() {
       unsubscribeMetrics();
       unsubscribeEntities();
       unsubscribeAi();
+      unsubscribeOnHome?.();
+      unsubscribeNetworkUpdates?.();
       websocketService.off('reconnect', handleReconnect);
       websocketService.disconnect();
     };
@@ -146,6 +183,12 @@ export default function AppLayout() {
           }}
         />
       </Tabs>
+
+      {/* Onboarding wizard overlay. Returns null when wizardOpen=false, so
+          it costs nothing in the steady-state map view. When opened it
+          paints an absolute-positioned 60% bottom sheet on top of the
+          active tab. */}
+      <WizardSheet />
     </View>
   );
 }

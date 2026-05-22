@@ -1,6 +1,7 @@
 import { WS_EVENTS } from '@nodescope/shared';
 import { websocketService } from './websocket.service';
 import { useRealtimeStore } from '../store/realtime.store';
+import { getBrowserDeviceId } from './browser-device-id';
 
 const COLLECT_INTERVAL_MS = 30_000;
 const BANDWIDTH_PAYLOAD_BYTES = 100_000; // 100 KB test payload
@@ -70,7 +71,12 @@ class BrowserCollectorService {
       Promise.resolve(this.getConnectionQuality()),
     ]);
 
+    // The gateway resolves browserDeviceId → deviceId via
+    // DevicesService.findDeviceIdByBrowserDeviceId before forwarding to ingest.
+    // Pre-onboarding the lookup returns null and the metric is stored against
+    // the user without a deviceId — still useful, just unattributed.
     websocketService.emit(WS_EVENTS.METRICS_SUBMIT, {
+      browserDeviceId: getBrowserDeviceId(),
       ...(latency !== null && { latency }),
       ...(bandwidth.down !== null && { bandwidthDown: bandwidth.down }),
       ...(bandwidth.up !== null && { bandwidthUp: bandwidth.up }),
