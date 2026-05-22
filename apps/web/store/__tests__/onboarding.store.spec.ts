@@ -8,8 +8,8 @@
  * Actions: openWizard, closeWizard, dismissForSession (POST /onboarding/skip),
  *          sendTurn (POST /onboarding/turn).
  *
- * Mocks `axios` end-of-pipeline so the store exercises its real call chain
- * without a network round trip.
+ * Mocks `axios` end-of-pipeline and the localStorage-bound browser device id
+ * so the store exercises its real call chain without a network round trip.
  */
 import { OnboardingTurnResponse } from '@nodescope/shared';
 
@@ -18,6 +18,7 @@ const jestEsm = jest as typeof jest & {
 };
 
 const mockPost = jest.fn();
+const MOCK_BROWSER_DEVICE_ID = 'mock-browser-device-id-1234';
 
 jestEsm.unstable_mockModule('axios', () => ({
   default: {
@@ -28,6 +29,34 @@ jestEsm.unstable_mockModule('axios', () => ({
     isAxiosError: jest.fn(() => false),
   },
 }));
+
+// browser-device-id reads from localStorage. We seed a known UUID in
+// beforeEach (via a fake Storage) so every sendTurn POST carries a
+// predictable browserDeviceId without having to mock the module itself —
+// jest.unstable_mockModule + relative paths don't compose well in ts-jest
+// ESM mode, but localStorage seeding is just as deterministic.
+
+class FakeLocalStorage {
+  private store = new Map<string, string>();
+  get length(): number {
+    return this.store.size;
+  }
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+  getItem(key: string): string | null {
+    return this.store.has(key) ? (this.store.get(key) as string) : null;
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
 
 const { useOnboardingStore } = await import('../onboarding.store');
 
@@ -81,6 +110,10 @@ function resetStore(): void {
 
 describe('onboarding.store', () => {
   beforeEach(() => {
+    const fake = new FakeLocalStorage();
+    fake.setItem('nodescope.browserDeviceId', MOCK_BROWSER_DEVICE_ID);
+    (globalThis as unknown as { localStorage: Storage }).localStorage =
+      fake as unknown as Storage;
     mockPost.mockReset();
     resetStore();
   });
@@ -134,7 +167,10 @@ describe('onboarding.store', () => {
         .getState()
         .sendTurn({ chipChoice: 'start' });
 
-      expect(mockPost).toHaveBeenCalledWith('/onboarding/turn', { chipChoice: 'start' });
+      expect(mockPost).toHaveBeenCalledWith('/onboarding/turn', {
+        browserDeviceId: MOCK_BROWSER_DEVICE_ID,
+        chipChoice: 'start',
+      });
       const state = useOnboardingStore.getState();
       expect(state.currentStep).toBe('networkName');
       expect(state.chips).toEqual(resp.chips);
@@ -183,6 +219,22 @@ describe('onboarding.store', () => {
 
       expect(transcript).toHaveLength(1);
       expect(transcript[0]).toMatchObject({ role: 'bot' });
+    });
+
+    it('always includes browserDeviceId in the POST body — even on the initial welcome turn', async () => {
+      // Regression: the backend OnboardingTurnDto requires browserDeviceId
+      // (string, MinLength 1). The store must inject it on every call, not
+      // only when the caller supplies it. The smoke on 2026-05-21 caught the
+      // welcome-turn 400 when this wasn't sent.
+      mockPost.mockResolvedValueOnce({
+        data: { success: true, data: welcomeResponse() },
+      });
+
+      await useOnboardingStore.getState().sendTurn({});
+
+      expect(mockPost).toHaveBeenCalledWith('/onboarding/turn', {
+        browserDeviceId: MOCK_BROWSER_DEVICE_ID,
+      });
     });
 
     it('appends a user bubble derived from fieldValues when no userMessage/chipChoice', async () => {

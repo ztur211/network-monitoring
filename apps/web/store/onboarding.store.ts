@@ -8,6 +8,7 @@ import {
   OnboardingTurnResponse,
 } from '@nodescope/shared';
 import { api } from '../lib/api.service';
+import { getBrowserDeviceId } from '../lib/browser-device-id';
 
 export interface OnboardingMessage {
   id: string;
@@ -96,9 +97,14 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     }));
 
     try {
+      // The server-side OnboardingTurnDto requires `browserDeviceId` (the
+      // localStorage UUID that identifies this browser). Inject it on every
+      // turn so the state-machine's SaveBrowserDevice side-effect can resolve
+      // the right Device row idempotently. The caller's OnboardingTurnRequest
+      // does not need to know about it.
       const res = await api.post<{ success: true; data: OnboardingTurnResponse }>(
         '/onboarding/turn',
-        request,
+        { ...request, browserDeviceId: getBrowserDeviceId() },
       );
       const data = res.data.data;
       set((state) => ({
