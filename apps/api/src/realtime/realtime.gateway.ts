@@ -17,6 +17,7 @@ import { auth } from '../auth/better-auth.config';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { DevicesService } from '../devices/devices.service';
+import { NetworksService } from '../networks/networks.service';
 import { AiService } from '../ai/ai.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
@@ -62,6 +63,8 @@ export class RealtimeGateway
     private readonly aiService: AiService,
     @Inject(forwardRef(() => DevicesService))
     private readonly devicesService: DevicesService,
+    @Inject(forwardRef(() => NetworksService))
+    private readonly networksService: NetworksService,
   ) {}
 
   async afterInit(server: Server): Promise<void> {
@@ -98,6 +101,12 @@ export class RealtimeGateway
     await client.join(`tier:${tier}`);
 
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
+
+    const requestIp =
+      typeof client.handshake.address === 'string' ? client.handshake.address : '';
+    const onHomeResult = await this.networksService.checkOnHome(userId, requestIp);
+    client.data.onHome = onHomeResult.onHome;
+    this.pushToUser(userId, WS_EVENTS.NETWORK_ON_HOME_CHANGED, onHomeResult);
 
     this.logger.log({ userId, socketId: client.id }, 'Client connected');
   }

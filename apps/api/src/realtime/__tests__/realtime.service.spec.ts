@@ -5,6 +5,7 @@ import { RealtimeGateway } from '../realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { DevicesService } from '../../devices/devices.service';
+import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
@@ -36,11 +37,14 @@ type MockAi = { sendMessageStream: jest.Mock };
 
 type MockDevices = { findDeviceIdByBrowserDeviceId: jest.Mock };
 
+type MockNetworks = { checkOnHome: jest.Mock };
+
 describe('RealtimeGateway — service interface', () => {
   let gateway: RealtimeGateway;
   let mockDataSources: MockDataSources;
   let mockAiService: MockAi;
   let mockDevices: MockDevices;
+  let mockNetworks: MockNetworks;
 
   beforeEach(async () => {
     mockDataSources = {
@@ -58,12 +62,17 @@ describe('RealtimeGateway — service interface', () => {
       findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
     };
 
+    mockNetworks = {
+      checkOnHome: jest.fn().mockResolvedValue({ networkId: null, onHome: false }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
         { provide: DevicesService, useValue: mockDevices },
+        { provide: NetworksService, useValue: mockNetworks },
         { provide: AiService, useValue: mockAiService },
       ],
     }).compile();

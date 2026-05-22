@@ -99,6 +99,21 @@ export class NetworksService {
     await this.networksRepository.deleteByIdAndUserId(networkId, userId);
   }
 
+  async checkOnHome(
+    userId: string,
+    requestIp: string,
+  ): Promise<{ networkId: string | null; onHome: boolean }> {
+    const networks = await this.networksRepository.findAllByUserId(userId);
+    const network = networks[0] ?? null;
+    if (!network) return { networkId: null, onHome: false };
+
+    const onHome =
+      requestIp.length > 0 &&
+      network.homePublicIp !== null &&
+      network.homePublicIp === requestIp;
+    return { networkId: network.id, onHome };
+  }
+
   private toSummary(network: Network): NetworkSummary {
     return {
       id: network.id,

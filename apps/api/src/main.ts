@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -6,9 +7,17 @@ import compression from 'compression';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
 
   app.useLogger(app.get(Logger));
+
+  // Trust the first proxy hop (DigitalOcean App Platform LB). Without this,
+  // req.ip resolves to the LB's address and Network.checkOnHome can never
+  // produce a true result. The "1" matches the single LB in front of the
+  // service in production; locally there is no proxy so the value is inert.
+  app.set('trust proxy', 1);
 
   // CSP whitelist per SAD §12.4: self + OpenFreeMap tiles + Nominatim geocoder.
   // Anthropic API is server-to-server only (never called from the browser), so
