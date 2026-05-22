@@ -6,7 +6,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { DeviceDto } from '@nodescope/shared';
+import { DeviceDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
 import { DeviceDetailPanel } from '../../components/map/DeviceDetailPanel';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
@@ -36,6 +36,14 @@ export default function MapScreen() {
   const [pickedCoords, setPickedCoords] = useState<{ latitude: number; longitude: number } | null>(
     null,
   );
+  // One-shot fly target. `key` is monotonically increasing so MapView re-runs
+  // its fly even when consecutive devices happen to be at the same coords.
+  const [flyTarget, setFlyTarget] = useState<{
+    key: number;
+    latitude: number;
+    longitude: number;
+    zoom?: number;
+  } | null>(null);
 
   useEffect(() => {
     void loadDevices();
@@ -112,7 +120,24 @@ export default function MapScreen() {
       setIsSubmitting(true);
       try {
         if (formMode === 'create') {
-          await createDevice(input as CreateDeviceInput);
+          const created = await createDevice(input as CreateDeviceInput);
+          // Auto-zoom to where the user just placed the device. Each category
+          // has a minZoom (DEVICE_CATEGORY_CONFIG) — markers don't render
+          // below it. Without this fly, a user adding a COMPUTER (minZoom 18)
+          // from zoom 13 wouldn't see the marker at all and would think the
+          // create failed.
+          if (created.latitude !== null && created.longitude !== null) {
+            const config =
+              DEVICE_CATEGORY_CONFIG[created.category as DeviceCategory] ??
+              DEVICE_CATEGORY_CONFIG.CUSTOM;
+            const targetZoom = Math.max(config.minZoom + 0.5, 13);
+            setFlyTarget({
+              key: Date.now(),
+              latitude: created.latitude,
+              longitude: created.longitude,
+              zoom: targetZoom,
+            });
+          }
         } else if (formMode === 'edit' && editDevice) {
           await updateDevice(editDevice.id, editDevice, input as UpdateDeviceInput);
         }
@@ -152,6 +177,7 @@ export default function MapScreen() {
           selectedDeviceId={selectedDevice?.id}
           placementMode={placementMode === 'placing'}
           onMapClick={handleMapClick}
+          flyTo={flyTarget}
         />
       </Suspense>
 
