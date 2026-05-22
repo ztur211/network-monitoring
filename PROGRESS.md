@@ -1203,3 +1203,122 @@ Per CLAUDE.md ("No frontend unit-test suite per project convention") this opens 
 `apps/web/tsconfig.json` gained `exclude: ['**/__tests__/**', 'jest.config.ts', 'jest.setup.ts']` so the strict prod typecheck doesn't sweep up test fixtures with looser types.
 
 **Verification:** `npm test --workspace=apps/web` → 5/5 passing. `npx tsc --noEmit` in `apps/web` → clean. The api test suite (`npm test --workspace=apps/api`) is still 258/258 (no API code touched).
+
+## Phase 13 — Empty Login → Live Map + AI Onboarding Wizard (PR 1, 2026-05-21)
+
+Closes the "empty map" complaint a fresh user sees on first sign-in: a `[0, 0]` zoom-2 globe with no devices, no network, and no obvious next step. Phase 13 introduces an AI-assisted onboarding wizard, persists the browser itself as a `Device` row of new category `BROWSER_CLIENT`, and adds a public-IP-match "On home network" pill on the map header. The data model is forward-compatible with Multi-Property tier (post-MVP Priority 2): `Network.userId` is indexed but not `@@unique`, and `Network.propertyId` is reserved as nullable.
+
+Specs and plan (local only — `docs/` is gitignored):
+- `~/.claude/plans/i-have-an-additional-eventual-rainbow.md` — the original PR 1 + PR 2 plan. Phase 13 is PR 1.
+
+Shipped across **six slices on `feat/onboarding`** (sessions chosen so each commit is independently bisectable):
+
+### Slice 1 — Networks module + onboarding state machine (commit `0778c40`, plus prep `6eebbb7` and the TimescaleDB fix `d408111`)
+
+Schema additions in one Prisma migration (`20260521120000_add_networks_and_browser_device`):
+- `Network` model — id, userId, name, homeAddress/homeLatitude/homeLongitude, homePublicIp, isp, downMbps, upMbps, version, propertyId (reserved). `@@index([userId])` and `@@index([userId, propertyId])`. Cascade-deletes on user removal.
+- `Device.networkId String? @relation(...)` (nullable FK, `SetNull` on network delete), `Device.mobility DeviceMobility @default(UNKNOWN)`, `Device.browserDeviceId String?` with `@@unique([userId, browserDeviceId])` and `@@index([userId, networkId])`.
+- `DeviceMetric.deviceId String?` (nullable; no FK because TimescaleDB hypertables can't have FKs to non-partitioned tables) and `DeviceMetric.tag String?` ('ambient' | 'speedtest', null treated as ambient). New `@@index([userId, deviceId, time])`.
+- `DeviceCategory.BROWSER_CLIENT` and new `DeviceMobility` enum (HOME_ONLY | ROAMS | UNKNOWN).
+
+**Backend modules added:**
+- `apps/api/src/networks/` — full module per CLAUDE.md template. 5 endpoints under `/api/v1/networks` (list, create, get, patch, delete). One-network-per-user cap (`MAX_NETWORKS_PER_USER = 1`) enforced in service, not schema. `homePublicIp` returned by `GET /:id` only, never by `GET /` (list intentionally omits it). Optimistic concurrency via `version` column → `SYNC_001 EDIT_CONFLICT` on mismatch. `NETWORK_001 NETWORK_LIMIT_EXCEEDED` and `NETWORK_002 NETWORK_NOT_FOUND` are new error codes. 38 tests across repo/service/e2e.
+- `apps/api/src/onboarding/onboarding.state-machine.ts` — pure function `step(progress, input) → { stepId, chips, fields, sideEffects[] }` over the 11 onboarding steps (`welcome → networkName → address → browserDeviceName → mobility → confirmHomeIp → routerMac → modemMac → isp → speeds → done`). Side-effect tags (`SaveNetwork`, `SaveBrowserDevice`, `SaveRouterDevice`, `SaveModemDevice`, `SaveHomeIp`) are typed so the service layer reading them is deterministic. 27 unit tests.
+
+**Shared types:** new `packages/shared/src/types/network.types.ts` (`NetworkSummary`, `NetworkDetail`, `CreateNetworkDto`, `BrowserDeviceInfo`) and `onboarding.types.ts` (`OnboardingStepId`, `OnboardingFieldKind`, `OnboardingChip`, `OnboardingField`, `OnboardingProgress`, `OnboardingTurnRequest`, `OnboardingTurnResponse`). 3 new `WS_EVENTS` constants (`NETWORK_UPDATED`, `NETWORK_ON_HOME_CHANGED`, `ONBOARDING_TURN`).
+
+**Infrastructure prep:**
+- `6eebbb7` — schema + types added without API wiring, so the migration could land first and the modules could be split across slices.
+- `d408111` — `TimescaleService.onModuleInit` auto-installs the TimescaleDB extension before calling `create_hypertable`. Real bug fix surfaced when slice 1 ran against a tmpfs-wiped test DB: the init migration only added PostGIS, so `create_hypertable()` failed at boot. Idempotent `CREATE EXTENSION IF NOT EXISTS timescaledb`.
+
+Jest unit `testRegex` broadened to `*.state-machine.spec.ts` so the new pure-function spec runs alongside `*.spec.ts`.
+
+### Slice 1b — Onboarding service + AI integration (commits `f709980`, `0e2bb64`)
+
+Wires the state machine to the modules that actually write to the database.
+
+- `OnboardingService` + controller (2 endpoints under `/api/v1/onboarding`):
+  - `POST /turn` — body `{ userMessage?, chipChoice?, fieldValues? }` → `{ stepId, botMessage, chips, fields, progress, complete }`. Per-user state cached in Redis with 24h TTL.
+  - `POST /skip` — closes the wizard for the session. Sets a Redis `onboarding:dismissed:{userId}` flag with 30-day TTL. Wizard re-opens after the flag expires if Network still doesn't exist.
+- `AiService.generateOnboardingMessage(step, progress, userMessage?)` — assembles a step-aware prompt, calls `ClaudeAdapter.generate`, trims output to ≤300 chars. **Reuses the existing six-layer rate-limiter buckets** (deviation from plan, which called for a dedicated `ai:onboarding:{userId}` bucket — would have required `AiRateLimiterService` to accept bucket prefixes for a ~10-message-per-user wizard; not worth the refactor). When the adapter is unavailable, falls back to a hardcoded message per step (`ONBOARDING_FALLBACKS: Record<OnboardingStepId, string>` — TypeScript record type enforces every step has an entry).
+- `DevicesService.createBrowserDevice(userId, browserDeviceId, name, mobility, networkId)` — idempotent on `(userId, browserDeviceId)`. Browser refresh that re-onboards returns the existing row instead of creating a duplicate. Bypasses the per-tier device-limit (browser-as-device shouldn't count against the user's quota).
+
+**Plan deviations resolved in this slice:**
+- The state machine emits `SaveNetwork` side-effects at the `isp` and `speeds` steps (not just `address`). Without those, the ISP and speed inputs collected in `progress` never reached the DB. Side-effect payloads at non-address steps include `name` as a sentinel — `OnboardingService.persistNetworkFields` strips it via `stripNameKey` so the field doesn't get clobbered.
+- `SaveHomeIp` payload contains `ip: 'CURRENT_REQUEST'` sentinel because the state machine is pure (no `req.ip` access). The actual request IP is substituted by `OnboardingService.enactSideEffect` reading `req.ip` (after `app.set('trust proxy', 1)` — see slice 2b).
+
+### Slice 2a — Per-device metrics ingestion (commit `6bc8f87`, Task #8)
+
+`RawMetricPayload` gains optional `deviceId` and `tag` with type-guards. `DevicesService.findDeviceIdByBrowserDeviceId(userId, browserDeviceId)` resolves the localStorage-bound ID to a Device row's `id`. `RealtimeGateway.handleMetricsSubmit` accepts an extra `browserDeviceId` field on the inbound payload, resolves it via that method, and strips it before forwarding to `DataSourcesService.ingest`. Pre-onboarding the lookup returns null and the metric is stored against the user with no `deviceId` — still useful, just unattributed.
+
+**Module cycle first appearance:** Adding `DevicesService` as a dependency of `RealtimeGateway` (which already depended on `ConflictResolutionModule`) created `Realtime ↔ Devices via Conflict`. Resolved by wrapping the `RealtimeModule` import in `conflict.module.ts` with `forwardRef(() => RealtimeModule)`, the `ConflictResolutionModule` import in `devices.module.ts` with `forwardRef(...)`, and the gateway constructor injection with `@Inject(forwardRef(() => DevicesService))`. **First use of `forwardRef` in the codebase** — kept in mind for slice 2b's parallel cycle.
+
+### Slice 2b — On-home check + trust-proxy (commit `9e0c3d4`, Task #9)
+
+`NetworksService.checkOnHome(userId, requestIp): Promise<{ networkId, onHome }>` — single-network MVP, returns `{networkId: null, onHome: false}` when no network exists, `homePublicIp` is null, or the request IP is empty. `RealtimeGateway.handleConnection` calls this after auth and emits `v1:network:onHome:changed` once per socket lifetime. The event re-fires after a `PATCH /networks/:id { homePublicIp }` — emitted via the same `conflictService.emitEntityEvent` path the other entity-update events use, but tagged `NETWORK_ON_HOME_CHANGED` so the frontend handler is separate.
+
+`apps/api/src/main.ts` gains `app.set('trust proxy', 1)` so DigitalOcean's App Platform load balancer's `X-Forwarded-For` header is honored by Express's `req.ip`. Without that, `req.ip` would be the LB's internal IP, which never matches `homePublicIp` and pins `onHome` to false in production.
+
+**Plan deviation:** the plan called this `on-home.middleware.ts` per request. It's actually a `NetworksService.checkOnHome` call from the gateway's `handleConnection` — one comparison per socket lifetime, not per HTTP request. Much less load and matches the event semantics ("on-home for this connection").
+
+The parallel cycle `Realtime ↔ Networks via Conflict` was broken the same way as slice 2a — `forwardRef` on `networks.module.ts` for `ConflictResolutionModule`, and `@Inject(forwardRef(() => NetworksService))` on the gateway constructor.
+
+### Slice 3 — Frontend Zustand stores (commit `c01b7f0`, Task #11)
+
+Two new stores in `apps/web/store/`:
+- `network.store.ts` — `{ network: NetworkSummary | null, onHome, isLoading, loaded, error }` + `setNetwork`, `setOnHome`, `load()`. `loaded` stays false on error so callers can distinguish "never loaded" from "loaded and empty" — the wizard auto-open in slice 6 depends on this.
+- `onboarding.store.ts` — `{ wizardOpen, currentStep, progress, transcript[{id,role,content,timestamp}], chips, fields, submitting, complete, dismissedForSession, error }` + `openWizard`, `closeWizard`, `dismissForSession()`, `sendTurn(request)`. Initial welcome turn = `sendTurn({})` with no user bubble appended; subsequent turns derive a user bubble from `userMessage` → `chipChoice` → `fieldValues` (in that order of preference). In-flight guards on both `load()` (network) and `sendTurn()` (onboarding) prevent re-entrancy from React strict-mode double-render.
+
+**First store unit tests in the web workspace.** 8 specs for `network.store`, 13 for `onboarding.store`, all TDD'd RED→GREEN. Required adding `'^react$': '<rootDir>/node_modules/react'` to `apps/web/jest.config.ts`: `zustand` is hoisted to the root `node_modules`, but RN/Expo pin `react@19.2.6` inside `apps/web/node_modules`. `getState`/`setState` don't actually use react at runtime — the `moduleNameMapper` just makes zustand's `react.mjs` import resolvable when ts-jest loads the module.
+
+### Slice 4 — WizardSheet UI (commit `a947f2a`, Task #12)
+
+New directory `apps/web/components/onboarding/`:
+- `WizardSheet.tsx` — 60%-height bottom-sheet, fixed-positioned over the current route. Header has "Skip for now" → `dismissForSession()` and a plain × → `closeWizard()`. Auto-fires the welcome turn via `sendTurn({})` on first mount with empty transcript (ref-guarded against strict-mode double-render). Resets local field state when the active step's field-key signature changes (not just step ID — two steps reusing a key won't clobber mid-edit). Auto-scrolls transcript on every new message. Four-state model: loading (initial spinner with empty transcript), loaded (normal), submitting mid-conversation (typing-indicator bubble), error (red banner + Retry).
+- `WizardMessage.tsx` — chat bubble, user (blue) vs bot (gray). Mirrors `AiMessage.tsx` but without streaming/usage-warning ornaments (onboarding is request/response, not streamed).
+- `WizardChip.tsx` — pill button per server-supplied `OnboardingChip`. Forwards value to handler on press.
+- `WizardField.tsx` — single text input keyed off `OnboardingField.kind`. `number`/`speeds` use numeric keyboards; `mac` forces uppercase; `address` carries a free-text placeholder.
+
+The `'done'` step's `'close'` chip short-circuits to `closeWizard()` instead of POSTing another `/onboarding/turn`.
+
+**Convention deviation flagged in commit:** the original plan called for `WizardSheet.test.tsx` (Jest + RTL) but CLAUDE.md and `apps/web/jest.config.ts` deliberately skip RN/JSX unit tests in favor of Playwright. Followed CLAUDE.md (no @testing-library/react in `apps/web/package.json`). Store unit tests in slice 3 cover the underlying behavior; component coverage lands via the manual Playwright smoke at end of slice 6.
+
+### Slice 5 — LiveMarker upgrade + OnHomeBadge + DeviceDto extension (commit `c73e19b`, Task #13)
+
+- `apps/web/lib/browser-device-id.ts` (+ 5 TDD'd unit tests) — `getBrowserDeviceId()` reads `localStorage['nodescope.browserDeviceId']` or generates a UUID via `crypto.randomUUID()` with a `Math.random` RFC4122-v4 fallback for older environments. SSR-safe — returns a transient id if `localStorage` is undefined so server-rendered code can still call it.
+- `apps/web/lib/on-home.service.ts` — `subscribeToOnHomeUpdates()` mirrors `subscribeToMetricsUpdates`. Pipes `v1:network:onHome:changed` → `useNetworkStore.setOnHome`. The actual wire-up to the layout deferred to slice 6.
+- `apps/web/components/map/LiveMarker.tsx` — was pulse-only. Now accepts `LiveMarkerInfo = { name?, latencyMs?, downMbps?, upMbps?, onClick? }` and renders a rounded name label above the pulse and an ambient-stats badge underneath. Click handler wired only when `onClick` is supplied so the marker stays passive pre-onboarding.
+- `apps/web/components/map/OnHomeBadge.tsx` — green pill ("On home network") when `useNetworkStore.onHome === true`, grey pill ("Away from home") otherwise. **Returns null when `network === null`** so it doesn't appear pre-onboarding (a grey badge then would read as a complaint about state the user hasn't been asked to fix yet). **Display-only for PR 1.** The plan's "tap to save current IP as home" interactive flow needs a server endpoint that reads `req.ip` (browser can't detect its own public IP); that lands with PR 2's smart IP-rotation banner.
+- `apps/web/components/map/DeviceMarker.tsx` — `BROWSER_CLIENT` added to `CATEGORY_COLORS` (`#2563eb` — same blue as the live marker) and `CATEGORY_ABBR` (`'WEB'`). Fixes the 2 pre-existing TS2741 errors that appeared after `6eebbb7` added the enum value.
+- `apps/web/components/map/MapView.tsx` — geolocation handling split into two effects. The init effect captures the position into `livePosition` state; a dedicated effect builds the live marker from `livePosition + browserDevice + metrics`, rebuilding on each change. Marker fully torn down and re-added each cycle — the DOM tree is small enough (~3 nodes) that ~30s recreates are cheaper than diffing children in place.
+- `apps/web/app/(app)/map.tsx` — renders `<OnHomeBadge/>` next to the `<Timestamp/>` in a top-left row. Right side stays clear for MapLibre's NavigationControl.
+
+**DeviceDto extension.** Adding `browserDeviceId: string | null` to the shared interface so `MapView` could find which device row represents *this* browser. The schema field has existed since slice 1 but was never exposed through the API. Both DTO assemblers updated (`devices.service.toDto` and `map.service.deviceToDto`); optimistic `DeviceDto` literals in `device.store.ts` patched with `browserDeviceId: null`. **Required `npm run build --workspace=packages/shared` before re-running the api `tsc`** — `packages/shared` has a compile-to-dist step that the api consumes.
+
+### Slice 6 — Final wire-up (commit `e0fb173`, Task #14)
+
+- `apps/web/lib/browser-collector.service.ts` — every `WS_EVENTS.METRICS_SUBMIT` payload now carries `browserDeviceId: getBrowserDeviceId()`. The gateway (slice 2a) resolves it → `deviceId` before forwarding to ingest.
+- `apps/web/lib/network-events.service.ts` (renamed from `on-home.service.ts`) — added `subscribeToNetworkUpdates()` alongside `subscribeToOnHomeUpdates()`. The new helper handles `v1:network:updated` and pipes the payload's `NetworkDetail` → `useNetworkStore.setNetwork` as a `NetworkSummary` (stripping `homePublicIp` to match the store's chosen shape). Rename is loss-free — nothing imported from the old filename yet.
+- `apps/web/app/(app)/_layout.tsx` — after `websocketService.connect()` in `getSession.then`:
+  1. `subscribeToOnHomeUpdates()` + `subscribeToNetworkUpdates()` register synchronously, AFTER `connect()` runs, because `websocketService.on()` is a no-op while its internal socket is null.
+  2. `useNetworkStore.getState().load()` — populates the cached `NetworkSummary`. When the promise resolves with `loaded=true && network===null && !useOnboardingStore.dismissedForSession`, calls `openWizard()`. The WizardSheet's own effect auto-fires the welcome turn from there.
+- `<WizardSheet/>` rendered as a sibling of `<Tabs>` so the overlay covers the tab bar when active. Returns null when `wizardOpen=false`, so it costs nothing in the steady-state map view.
+
+### Outstanding from Phase 13 (carried forward)
+
+- **Manual browser smoke** has not been exercised end-to-end yet. The next session's first task: sign up a fresh user, walk every step of the wizard, confirm `OnHomeBadge` and the persisted `LiveMarker` work, and that page reload during the same auth session doesn't re-open the wizard (because `network !== null` keeps the auto-open trigger from firing).
+- **Pre-existing WS subscriber ordering bug** (separate refactor, not blocking slice 6). `subscribeToMetricsUpdates`, `subscribeToEntityEvents`, `subscribeToAiEvents`, and the `reconnect` handler in `_layout.tsx` are all registered OUTSIDE `getSession.then`, where `websocketService.on()` is a no-op (internal socket is null). Slice 6 worked around this for task-#14 subscribers by registering inside the `.then`. Worth fixing the legacy subscribers in a follow-up — possibly by buffering subscriptions inside `websocketService` until `connect()` runs, so the call site no longer needs to think about ordering.
+- **`docs/API_Design.md` and `docs/DB_Schema.md`** updated locally (they're gitignored) with the new endpoints, error codes, WS events, and the Network/Device/DeviceMetric schema additions. Section markers in the local copies are: API_Design § 2.7 (NETWORK_001/002, ONBOARD_001), § 2.8 (`NetworkSummary`/`NetworkDetail` + `DeviceDto.browserDeviceId`), new § 8 (Network endpoints), new § 9 (Onboarding endpoints), § 13.3 (`v1:network:updated`, `v1:network:onHome:changed`, `v1:onboarding:turn`); DB_Schema § 2.2 (BROWSER_CLIENT), new § 2.5 (`DeviceMobility`), § 7.4 (Network model + Device extensions), § 7.5 (DeviceMetric.deviceId/tag).
+
+### Verification at end of Phase 13
+
+| Suite | Result |
+|---|---|
+| API Unit | 16/16 suites, **199/199** tests |
+| API Integration | 7/7 suites, **54/54** tests (no integration changes after slice 2) |
+| API E2E for touched modules | devices/map/networks: 3/3 suites, **27/27** tests |
+| Web Jest | 4/4 suites, **31/31** tests (+ 26 since pre-Phase-13: 8 network.store + 13 onboarding.store + 5 browser-device-id) |
+| `tsc --noEmit` apps/web | clean |
+| `tsc --noEmit` apps/api | clean (after rebuilding `packages/shared`) |
+
+Total of **10 commits** on `feat/onboarding` (master tip `6eebbb7` is the schema-only prep that landed before the branch forked): `d408111`, `0778c40`, `f709980`, `0e2bb64`, `6bc8f87`, `9e0c3d4`, `c01b7f0`, `a947f2a`, `c73e19b`, `e0fb173`. Branch is **code-complete**; remaining work is manual verification + the existing-subscriber refactor noted above.
