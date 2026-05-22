@@ -10,6 +10,7 @@ import { DeviceDto } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
 import { DeviceDetailPanel } from '../../components/map/DeviceDetailPanel';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
+import { OnHomeBadge } from '../../components/map/OnHomeBadge';
 import { DeviceForm } from '../../components/DeviceForm';
 import { Timestamp } from '../../components/Timestamp';
 
@@ -134,13 +135,20 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Data freshness indicator */}
-      <View className="absolute top-2 left-2" style={{ pointerEvents: 'none' }}>
+      {/* Data freshness + on-home indicators, top-left. The OnHomeBadge hides
+          itself when no network exists, so this row collapses to just the
+          timestamp pre-onboarding. Right side stays clear for MapLibre's
+          NavigationControl. */}
+      <View
+        className="absolute top-2 left-2 flex-row items-center gap-2"
+        style={{ pointerEvents: 'none' }}
+      >
         <Timestamp
           isoTimestamp={loadedAt}
           staleThresholdMs={300_000}
           className="bg-white/80 dark:bg-gray-900/80 rounded-full px-2 py-0.5"
         />
+        <OnHomeBadge />
       </View>
 
       {/* Add device FAB */}

@@ -163,6 +163,7 @@ export class DevicesService {
       ipAddress: device.ipAddress,
       macAddress: device.macAddress,
       notes: device.notes,
+      browserDeviceId: device.browserDeviceId,
       version: device.version,
       createdAt: device.createdAt.toISOString(),
       updatedAt: device.updatedAt.toISOString(),

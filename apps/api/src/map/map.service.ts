@@ -60,6 +60,7 @@ export class MapService {
       ipAddress: device.ipAddress,
       macAddress: device.macAddress,
       notes: device.notes,
+      browserDeviceId: device.browserDeviceId,
       version: device.version,
       createdAt: device.createdAt.toISOString(),
       updatedAt: device.updatedAt.toISOString(),

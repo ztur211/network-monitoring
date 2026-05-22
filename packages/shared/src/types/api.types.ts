@@ -27,6 +27,7 @@ export interface DeviceDto {
   ipAddress: string | null;
   macAddress: string | null;
   notes: string | null;
+  browserDeviceId: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
