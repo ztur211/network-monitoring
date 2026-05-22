@@ -59,11 +59,17 @@ export class OnboardingService {
     ip: string,
     dto: OnboardingTurnDto,
   ): Promise<OnboardingTurnResponse> {
-    if (await this.userHasNetwork(userId)) {
+    // The wizard creates the Network row early (at the address step) and
+    // updates it through later steps. So "user already has a network" is NOT
+    // by itself proof of completion — we must also check that no in-flight
+    // wizard state exists in Redis. Only then is the user truly trying to
+    // restart a finished onboarding.
+    const persisted = await this.redis.get(stateKey(userId));
+    if (!persisted && (await this.userHasNetwork(userId))) {
       throw new NodeScopeException('ONBOARD_001', 'ALREADY_COMPLETE', HttpStatus.CONFLICT);
     }
 
-    const state = await this.loadState(userId);
+    const state = persisted ? this.parseState(persisted) : { stepId: 'welcome' as OnboardingStepId, progress: {} };
     const input = this.buildInput(dto);
 
     const result = handleStep(state.stepId, state.progress, input);
@@ -121,6 +127,10 @@ export class OnboardingService {
   private async loadState(userId: string): Promise<PersistedState> {
     const raw = await this.redis.get(stateKey(userId));
     if (!raw) return { stepId: 'welcome', progress: {} };
+    return this.parseState(raw);
+  }
+
+  private parseState(raw: string): PersistedState {
     try {
       return JSON.parse(raw) as PersistedState;
     } catch {

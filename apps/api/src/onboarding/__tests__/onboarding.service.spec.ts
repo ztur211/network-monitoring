@@ -81,12 +81,35 @@ describe('OnboardingService', () => {
   });
 
   describe('handleTurn', () => {
-    it('throws ONBOARD_001 ALREADY_COMPLETE when user already has a network', async () => {
+    it('throws ONBOARD_001 ALREADY_COMPLETE when a network exists AND no in-flight state', async () => {
       mockNetworksRepo.countByUserId.mockResolvedValue(1);
+      mockRedis.get.mockResolvedValue(null); // no redis state — user has truly completed before
 
       await expect(
         service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' }),
       ).rejects.toThrow(NodeScopeException);
+    });
+
+    it('proceeds mid-flow even after SaveNetwork created a Network row (regression: 2026-05-21 smoke)', async () => {
+      // Smoke caught: state-machine fires SaveNetwork at the `address` step,
+      // creating a Network row. Every subsequent turn (browserDeviceName,
+      // mobility, ...) was 409-ing because the guard read "user has a
+      // network → onboarding done". The wizard must finish its own flow.
+      mockNetworksRepo.countByUserId.mockResolvedValue(1);
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({
+          stepId: 'browserDeviceName',
+          progress: { networkName: 'Home', homeAddress: '123 Maple' },
+        }),
+      );
+
+      const result = await service.handleTurn('user-1', '127.0.0.1', {
+        browserDeviceId: 'bd-1',
+        fieldValues: { name: 'My Laptop' },
+      });
+
+      expect(result.stepId).toBe('mobility');
+      expect(result.complete).toBe(false);
     });
 
     it('on first turn (no Redis state), starts at welcome → advances to networkName', async () => {
