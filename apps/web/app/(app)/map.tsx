@@ -69,24 +69,23 @@ export default function MapScreen() {
     const device = selectedDevice;
     setSelectedDevice(null);
 
-    Alert.alert(
-      'Delete Device',
+    // react-native-web's Alert.alert is a console.warn stub: it does not
+    // show a dialog and never fires the button callbacks. The destructive
+    // path therefore has to use window.confirm directly. Same swap is made
+    // in equipment.tsx and circuits.tsx (search "window.confirm" for the
+    // full set).
+    const confirmed = typeof window !== 'undefined' && window.confirm(
       `Delete "${device.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDevice(device.id);
-            } catch {
-              Alert.alert('Error', 'Failed to delete device. It may have been re-queued for retry.');
-            }
-          },
-        },
-      ],
     );
+    if (!confirmed) return;
+
+    try {
+      await deleteDevice(device.id);
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.alert('Failed to delete device. It may have been re-queued for retry.');
+      }
+    }
   }, [selectedDevice, deleteDevice]);
 
   const handleFormClose = useCallback(() => {
