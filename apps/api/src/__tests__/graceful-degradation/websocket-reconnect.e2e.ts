@@ -11,6 +11,7 @@ import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { DevicesService } from '../../devices/devices.service';
+import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { Socket } from 'socket.io';
 import { auth } from '../../auth/better-auth.config';
@@ -32,6 +33,10 @@ const mockAiService = {};
 
 const mockDevicesService = {
   findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
+};
+
+const mockNetworksService = {
+  checkOnHome: jest.fn().mockResolvedValue({ networkId: null, onHome: false }),
 };
 
 function makeSocket(overrides: Partial<Socket> = {}): Socket {
@@ -56,6 +61,7 @@ describe('Graceful degradation — WebSocket reconnection', () => {
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
         { provide: DevicesService, useValue: mockDevicesService },
+        { provide: NetworksService, useValue: mockNetworksService },
         { provide: AiService, useValue: mockAiService },
       ],
     }).compile();
@@ -91,6 +97,12 @@ describe('Graceful degradation — WebSocket reconnection', () => {
       session: {},
     } as never);
     const socket = makeSocket();
+    // handleConnection now emits v1:network:onHome:changed after auth, which
+    // needs a server stub. Provide a noop one — the assertions below only care
+    // about join + sadd.
+    (gateway as unknown as { server: { to: jest.Mock } }).server = {
+      to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+    };
 
     await gateway.handleConnection(socket);
 
@@ -100,6 +112,31 @@ describe('Graceful degradation — WebSocket reconnection', () => {
       expect.stringContaining(userId),
       socket.id,
     );
+  });
+
+  it('emits v1:network:onHome:changed after connect using checkOnHome result', async () => {
+    const userId = 'user-abc';
+    const onHomePayload = { networkId: 'net-9', onHome: true };
+    mockNetworksService.checkOnHome.mockResolvedValueOnce(onHomePayload);
+    jest.spyOn(auth.api, 'getSession').mockResolvedValue({
+      user: { id: userId, tier: 'PERSONAL_FREE' },
+      session: {},
+    } as never);
+
+    const emit = jest.fn();
+    const roomEmitter = { emit };
+    const socket = makeSocket({
+      handshake: { headers: {}, address: '203.0.113.5' } as never,
+    });
+    // Inject minimal server stub so the gateway can route to the user's room
+    (gateway as unknown as { server: { to: jest.Mock } }).server = {
+      to: jest.fn().mockReturnValue(roomEmitter),
+    };
+
+    await gateway.handleConnection(socket);
+
+    expect(mockNetworksService.checkOnHome).toHaveBeenCalledWith(userId, '203.0.113.5');
+    expect(emit).toHaveBeenCalledWith('v1:network:onHome:changed', onHomePayload);
   });
 
   it('removes socket from Redis presence on disconnect', async () => {

@@ -191,4 +191,54 @@ describe('NetworksService', () => {
       expect(mockRepo.deleteByIdAndUserId).not.toHaveBeenCalled();
     });
   });
+
+  describe('checkOnHome', () => {
+    it('returns onHome=false and networkId=null when user has no network', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([]);
+
+      const result = await service.checkOnHome('user-1', '203.0.113.5');
+
+      expect(result).toEqual({ networkId: null, onHome: false });
+    });
+
+    it('returns onHome=true when requestIp matches network.homePublicIp', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([
+        makeNetwork({ id: 'net-7', homePublicIp: '203.0.113.5' }),
+      ]);
+
+      const result = await service.checkOnHome('user-1', '203.0.113.5');
+
+      expect(result).toEqual({ networkId: 'net-7', onHome: true });
+    });
+
+    it('returns onHome=false when requestIp differs from network.homePublicIp', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([
+        makeNetwork({ id: 'net-7', homePublicIp: '203.0.113.5' }),
+      ]);
+
+      const result = await service.checkOnHome('user-1', '198.51.100.9');
+
+      expect(result).toEqual({ networkId: 'net-7', onHome: false });
+    });
+
+    it('returns onHome=false when network.homePublicIp is null (not yet confirmed)', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([
+        makeNetwork({ id: 'net-7', homePublicIp: null }),
+      ]);
+
+      const result = await service.checkOnHome('user-1', '203.0.113.5');
+
+      expect(result).toEqual({ networkId: 'net-7', onHome: false });
+    });
+
+    it('returns onHome=false when requestIp is empty even if homePublicIp matches empty', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([
+        makeNetwork({ id: 'net-7', homePublicIp: null }),
+      ]);
+
+      const result = await service.checkOnHome('user-1', '');
+
+      expect(result).toEqual({ networkId: 'net-7', onHome: false });
+    });
+  });
 });
