@@ -62,21 +62,19 @@ export default function EquipmentScreen() {
   }, [devices, search, categoryFilter, floorFilter]);
 
   const handleDelete = useCallback(
-    (device: DeviceDto) => {
-      Alert.alert('Delete Device', `Delete "${device.name}"?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDevice(device.id);
-            } catch {
-              Alert.alert('Error', 'Failed to delete device.');
-            }
-          },
-        },
-      ]);
+    async (device: DeviceDto) => {
+      // RN-Web Alert.alert is a stub — see comment in map.tsx handleDelete.
+      const confirmed = typeof window !== 'undefined' && window.confirm(
+        `Delete "${device.name}"? This cannot be undone.`,
+      );
+      if (!confirmed) return;
+      try {
+        await deleteDevice(device.id);
+      } catch {
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to delete device.');
+        }
+      }
     },
     [deleteDevice],
   );

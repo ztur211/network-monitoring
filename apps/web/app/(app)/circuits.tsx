@@ -35,25 +35,19 @@ export default function CircuitsScreen() {
   }, []);
 
   const handleDelete = useCallback(
-    (circuit: CircuitDto) => {
-      Alert.alert(
-        'Delete Circuit',
+    async (circuit: CircuitDto) => {
+      // RN-Web Alert.alert is a stub — see comment in map.tsx handleDelete.
+      const confirmed = typeof window !== 'undefined' && window.confirm(
         `Delete "${circuit.ispName} — ${circuit.serviceType}"? This cannot be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await deleteCircuit(circuit.id);
-              } catch {
-                Alert.alert('Error', 'Failed to delete circuit.');
-              }
-            },
-          },
-        ],
       );
+      if (!confirmed) return;
+      try {
+        await deleteCircuit(circuit.id);
+      } catch {
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to delete circuit.');
+        }
+      }
     },
     [deleteCircuit],
   );
