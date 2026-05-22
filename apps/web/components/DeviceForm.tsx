@@ -19,19 +19,13 @@ const DEVICE_CATEGORIES: DeviceCategory[] = [
   'PATCH_PANEL', 'UPS', 'COMPUTER', 'PHONE', 'TABLET', 'PRINTER', 'IOT_DEVICE', 'CUSTOM',
 ];
 
+// Lat/lng are captured from a map click before the form opens (see
+// apps/web/app/(app)/map.tsx placement-mode flow). They're not in the schema
+// because the user never types them — pencil-and-paper coordinate entry isn't
+// part of the supported UX.
 const schema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   category: z.string().min(1, 'Category is required'),
-  latitude: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseFloat(v) : undefined))
-    .refine((v) => v === undefined || (!isNaN(v) && v >= -90 && v <= 90), 'Must be -90 to 90'),
-  longitude: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseFloat(v) : undefined))
-    .refine((v) => v === undefined || (!isNaN(v) && v >= -180 && v <= 180), 'Must be -180 to 180'),
   floor: z
     .string()
     .optional()
@@ -59,13 +53,39 @@ type FormValues = z.input<typeof schema>;
 
 interface DeviceFormProps {
   device?: DeviceDto | null;
+  // For create: lat/lng captured from the placement-mode map click.
+  // For edit: usually omitted — the existing device.latitude/longitude are used.
+  // Provided again only when the user invokes "Move on map" (future).
+  placedLatitude?: number | null;
+  placedLongitude?: number | null;
   isSubmitting?: boolean;
   onClose: () => void;
   onSubmit: (input: CreateDeviceInput | UpdateDeviceInput) => Promise<void>;
 }
 
-export function DeviceForm({ device, isSubmitting, onClose, onSubmit }: DeviceFormProps) {
+function formatCoord(lat: number | null | undefined, lng: number | null | undefined): string | null {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  const latStr = `${Math.abs(lat).toFixed(5)}° ${lat >= 0 ? 'N' : 'S'}`;
+  const lngStr = `${Math.abs(lng).toFixed(5)}° ${lng >= 0 ? 'E' : 'W'}`;
+  return `${latStr}, ${lngStr}`;
+}
+
+export function DeviceForm({
+  device,
+  placedLatitude,
+  placedLongitude,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: DeviceFormProps) {
   const isEdit = !!device;
+
+  // For create: use the captured coords from the map click.
+  // For edit: keep the device's existing coords; placedLatitude/Longitude
+  // would override only when "Move on map" feeds new coords back in.
+  const effectiveLatitude = placedLatitude ?? device?.latitude ?? null;
+  const effectiveLongitude = placedLongitude ?? device?.longitude ?? null;
+  const coordLine = formatCoord(effectiveLatitude, effectiveLongitude);
 
   const {
     control: formControl,
@@ -85,8 +105,6 @@ export function DeviceForm({ device, isSubmitting, onClose, onSubmit }: DeviceFo
       reset({
         name: device.name,
         category: device.category,
-        latitude: device.latitude !== null ? String(device.latitude) : '',
-        longitude: device.longitude !== null ? String(device.longitude) : '',
         floor: device.floor !== null ? String(device.floor) : '',
         floorLabel: device.floorLabel ?? '',
         ipAddress: device.ipAddress ?? '',
@@ -104,8 +122,8 @@ export function DeviceForm({ device, isSubmitting, onClose, onSubmit }: DeviceFo
     const cleaned: CreateDeviceInput = {
       name: values.name,
       category: values.category,
-      ...(values.latitude !== undefined && { latitude: values.latitude as unknown as number }),
-      ...(values.longitude !== undefined && { longitude: values.longitude as unknown as number }),
+      ...(effectiveLatitude !== null && { latitude: effectiveLatitude }),
+      ...(effectiveLongitude !== null && { longitude: effectiveLongitude }),
       ...(values.floor !== undefined && { floor: values.floor as unknown as number }),
       ...(values.floorLabel && { floorLabel: values.floorLabel }),
       ...(values.ipAddress && { ipAddress: values.ipAddress }),
@@ -179,26 +197,16 @@ export function DeviceForm({ device, isSubmitting, onClose, onSubmit }: DeviceFo
               )}
             </View>
 
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <FormField
-                  label="Latitude"
-                  error={errors.latitude?.message}
-                  control={control}
-                  name="latitude"
-                  placeholder="e.g. 37.7749"
-                  keyboardType="decimal-pad"
-                />
-              </View>
-              <View className="flex-1">
-                <FormField
-                  label="Longitude"
-                  error={errors.longitude?.message}
-                  control={control}
-                  name="longitude"
-                  placeholder="e.g. -122.4194"
-                  keyboardType="decimal-pad"
-                />
+            {/* Location is captured by tapping the map before the form opens —
+                see placement-mode flow in app/(app)/map.tsx. No text inputs. */}
+            <View>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Location
+              </Text>
+              <View className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-800">
+                <Text className="text-sm text-gray-700 dark:text-gray-300">
+                  {coordLine ?? 'Tap the map to place this device'}
+                </Text>
               </View>
             </View>
 

@@ -29,6 +29,13 @@ export default function MapScreen() {
   const [editDevice, setEditDevice] = useState<DeviceDto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [limitBannerDismissed, setLimitBannerDismissed] = useState(false);
+  // Placement flow: 'idle' → 'placing' (FAB tapped, awaiting a map click) →
+  // form opens with pickedCoords captured. The form's onClose returns to
+  // 'idle' regardless of submit/cancel.
+  const [placementMode, setPlacementMode] = useState<'idle' | 'placing'>('idle');
+  const [pickedCoords, setPickedCoords] = useState<{ latitude: number; longitude: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     void loadDevices();
@@ -77,7 +84,28 @@ export default function MapScreen() {
   const handleFormClose = useCallback(() => {
     setFormMode(null);
     setEditDevice(null);
+    setPickedCoords(null);
+    setPlacementMode('idle');
   }, []);
+
+  const handleStartPlacement = useCallback(() => {
+    setPlacementMode('placing');
+  }, []);
+
+  const handleCancelPlacement = useCallback(() => {
+    setPlacementMode('idle');
+    setPickedCoords(null);
+  }, []);
+
+  const handleMapClick = useCallback(
+    (lngLat: { longitude: number; latitude: number }) => {
+      if (placementMode !== 'placing') return;
+      setPickedCoords(lngLat);
+      setPlacementMode('idle');
+      setFormMode('create');
+    },
+    [placementMode],
+  );
 
   const handleFormSubmit = useCallback(
     async (input: CreateDeviceInput | UpdateDeviceInput) => {
@@ -122,6 +150,8 @@ export default function MapScreen() {
         <MapView
           onDeviceClick={handleDeviceClick}
           selectedDeviceId={selectedDevice?.id}
+          placementMode={placementMode === 'placing'}
+          onMapClick={handleMapClick}
         />
       </Suspense>
 
@@ -151,10 +181,22 @@ export default function MapScreen() {
         <OnHomeBadge />
       </View>
 
-      {/* Add device FAB */}
-      {!formMode && !selectedDevice && (
+      {/* Placement-mode banner */}
+      {placementMode === 'placing' && (
+        <View className="absolute top-12 left-1/2 -translate-x-1/2 bg-blue-600 rounded-full px-4 py-2 shadow-lg flex-row items-center gap-3">
+          <Text className="text-white text-sm font-medium">Tap the map to place a device</Text>
+          <TouchableOpacity onPress={handleCancelPlacement}>
+            <Text className="text-white text-xs underline">Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Add device FAB — enters placement mode rather than opening the form
+          directly. Once the user taps the map, handleMapClick captures coords
+          and flips to formMode='create'. */}
+      {!formMode && !selectedDevice && placementMode === 'idle' && (
         <TouchableOpacity
-          onPress={() => setFormMode('create')}
+          onPress={handleStartPlacement}
           className="absolute bottom-8 right-5 w-14 h-14 bg-blue-600 rounded-full shadow-xl items-center justify-center"
           style={{ elevation: 8 }}
         >
@@ -176,6 +218,8 @@ export default function MapScreen() {
       {formMode && (
         <DeviceForm
           device={formMode === 'edit' ? editDevice : null}
+          placedLatitude={formMode === 'create' ? pickedCoords?.latitude ?? null : null}
+          placedLongitude={formMode === 'create' ? pickedCoords?.longitude ?? null : null}
           isSubmitting={isSubmitting}
           onClose={handleFormClose}
           onSubmit={handleFormSubmit}
