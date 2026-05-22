@@ -103,6 +103,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
       ipAddress: input.ipAddress ?? null,
       macAddress: input.macAddress ?? null,
       notes: input.notes ?? null,
+      browserDeviceId: null,
       version: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

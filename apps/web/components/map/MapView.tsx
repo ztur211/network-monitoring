@@ -8,9 +8,11 @@ import { DeviceDto, FiberRunDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '
 import { useDeviceStore } from '../../store/device.store';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useRealtimeStore } from '../../store/realtime.store';
 import { api } from '../../lib/api.service';
+import { getBrowserDeviceId } from '../../lib/browser-device-id';
 import { createDeviceMarkerElement, updateDeviceMarkerSelected } from './DeviceMarker';
-import { createLiveMarkerElement } from './LiveMarker';
+import { createLiveMarkerElement, LiveMarkerInfo } from './LiveMarker';
 import { FloorSelector } from './FloorSelector';
 import { MapControls } from './MapControls';
 
@@ -41,11 +43,22 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
   const [mapBounds, setMapBounds] = useState<maplibregl.LngLatBounds | null>(null);
   const [fiberRuns, setFiberRuns] = useState<FiberRunDto[]>([]);
   const [tileError, setTileError] = useState(false);
+  const [livePosition, setLivePosition] = useState<[number, number] | null>(null);
 
   const { devices, upsertDevice } = useDeviceStore();
   const { mapCenter, mapZoom, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
     useUiStore();
   const user = useAuthStore((s) => s.user);
+  const metrics = useRealtimeStore((s) => s.metrics);
+
+  // Persistent identifier of this browser as a Device row. Generated once on
+  // first read, cached in localStorage thereafter. Used below to bind the
+  // live marker to the matching Device once onboarding has created it.
+  const browserDeviceId = useMemo(() => getBrowserDeviceId(), []);
+  const browserDevice = useMemo(
+    () => devices.find((d) => d.browserDeviceId === browserDeviceId) ?? null,
+    [devices, browserDeviceId],
+  );
 
   // Inject MapLibre CSS once
   useEffect(() => {
@@ -100,14 +113,12 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
       }
     });
 
-    // Live marker via geolocation
+    // Capture geolocation once; rendering the marker happens in a dedicated
+    // effect below so it can rebuild when the bound Device or its metrics
+    // change.
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
-        if (!mapRef.current) return;
-        const el = createLiveMarkerElement();
-        liveMarkerRef.current = new maplibregl.Marker({ element: el })
-          .setLngLat([pos.coords.longitude, pos.coords.latitude])
-          .addTo(mapRef.current);
+        setLivePosition([pos.coords.longitude, pos.coords.latitude]);
       });
     }
 
@@ -121,6 +132,29 @@ export function MapView({ onDeviceClick, selectedDeviceId }: MapViewProps) {
       mapRef.current = null;
     };
   }, []);
+
+  // Rebuild the live marker whenever the bound browser-device, its latest
+  // ambient metrics, the click handler, or the geolocation fix changes. The
+  // marker element is recreated rather than mutated in place — its DOM is
+  // small enough that re-mounting on a ~30s metrics push is cheaper than
+  // diffing label/badge children.
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !livePosition) return;
+
+    const info: LiveMarkerInfo = {
+      name: browserDevice?.name ?? null,
+      latencyMs: metrics?.latency ?? null,
+      downMbps: metrics?.bandwidthDown ?? null,
+      upMbps: metrics?.bandwidthUp ?? null,
+      onClick: browserDevice ? () => onDeviceClick(browserDevice) : undefined,
+    };
+
+    liveMarkerRef.current?.remove();
+    const el = createLiveMarkerElement(info);
+    liveMarkerRef.current = new maplibregl.Marker({ element: el })
+      .setLngLat(livePosition)
+      .addTo(mapRef.current);
+  }, [mapReady, livePosition, browserDevice, metrics, onDeviceClick]);
 
   const scheduleViewportLoad = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
