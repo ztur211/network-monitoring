@@ -20,6 +20,8 @@ export class DataSourcesService {
       bandwidthUp: payload.bandwidthUp ?? null,
       latency: payload.latency ?? null,
       connectionQuality: payload.connectionQuality ?? null,
+      deviceId: payload.deviceId ?? null,
+      tag: payload.tag ?? null,
     });
     this.logger.debug({ userId }, 'Metric ingested from browser collector');
   }
@@ -86,6 +88,8 @@ export class DataSourcesService {
     if (typeof r.bandwidthUp === 'number') result.bandwidthUp = r.bandwidthUp;
     if (typeof r.latency === 'number') result.latency = r.latency;
     if (typeof r.connectionQuality === 'string') result.connectionQuality = r.connectionQuality;
+    if (typeof r.deviceId === 'string') result.deviceId = r.deviceId;
+    if (typeof r.tag === 'string') result.tag = r.tag;
     return result;
   }
 

@@ -94,6 +94,17 @@ export class DevicesService {
     this.conflictService.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId }, userId);
   }
 
+  async findDeviceIdByBrowserDeviceId(
+    userId: string,
+    browserDeviceId: string,
+  ): Promise<string | null> {
+    const device = await this.devicesRepository.findByUserIdAndBrowserDeviceId(
+      userId,
+      browserDeviceId,
+    );
+    return device?.id ?? null;
+  }
+
   /**
    * Idempotent create-or-fetch for a BROWSER_CLIENT device tied to a
    * specific browser via its localStorage-bound `browserDeviceId`. If a row

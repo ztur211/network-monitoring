@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import {
   ConnectedSocket,
   OnGatewayConnection,
@@ -16,6 +16,7 @@ import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
+import { DevicesService } from '../devices/devices.service';
 import { AiService } from '../ai/ai.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
@@ -30,6 +31,8 @@ interface MetricsSubmitPayload {
   bandwidthUp?: number;
   latency?: number;
   connectionQuality?: string;
+  browserDeviceId?: string;
+  tag?: string;
 }
 
 @Injectable()
@@ -57,6 +60,8 @@ export class RealtimeGateway
     private readonly redis: RedisService,
     private readonly dataSourcesService: DataSourcesService,
     private readonly aiService: AiService,
+    @Inject(forwardRef(() => DevicesService))
+    private readonly devicesService: DevicesService,
   ) {}
 
   async afterInit(server: Server): Promise<void> {
@@ -117,7 +122,18 @@ export class RealtimeGateway
   ): Promise<void> {
     const userId = (client.data.user as { id: string } | undefined)?.id;
     if (!userId) return;
-    await this.dataSourcesService.ingest(userId, payload);
+
+    const { browserDeviceId, ...rest } = payload ?? {};
+    const ingestPayload: Record<string, unknown> = { ...rest };
+    if (typeof browserDeviceId === 'string' && browserDeviceId.length > 0) {
+      const deviceId = await this.devicesService.findDeviceIdByBrowserDeviceId(
+        userId,
+        browserDeviceId,
+      );
+      if (deviceId !== null) ingestPayload.deviceId = deviceId;
+    }
+
+    await this.dataSourcesService.ingest(userId, ingestPayload);
   }
 
   pushToUser(userId: string, event: string, payload: unknown): void {
