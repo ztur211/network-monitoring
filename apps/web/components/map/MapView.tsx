@@ -24,6 +24,16 @@ const VIEWPORT_DEBOUNCE_MS = 300;
 const FIBER_SOURCE_ID = 'ns-fiber-runs';
 const FIBER_LAYER_ID = 'ns-fiber-layer';
 
+interface FlyToTarget {
+  // Bumping `key` is the signal — same coords with a new key re-fires the
+  // animation. Lets callers re-trigger a fly without juggling "did this
+  // ref change" prop diffing.
+  key: number;
+  latitude: number;
+  longitude: number;
+  zoom?: number;
+}
+
 interface MapViewProps {
   onDeviceClick: (device: DeviceDto) => void;
   selectedDeviceId?: string | null;
@@ -32,6 +42,9 @@ interface MapViewProps {
   // "tap to place a device" flow from app/(app)/map.tsx.
   placementMode?: boolean;
   onMapClick?: (lngLat: { longitude: number; latitude: number }) => void;
+  // One-shot fly. Used after device create so the marker the user just
+  // placed is actually in the viewport at a zoom where its category renders.
+  flyTo?: FlyToTarget | null;
 }
 
 export function MapView({
@@ -39,6 +52,7 @@ export function MapView({
   selectedDeviceId,
   placementMode,
   onMapClick,
+  flyTo,
 }: MapViewProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>(
@@ -142,6 +156,18 @@ export function MapView({
       mapRef.current = null;
     };
   }, []);
+
+  // One-shot fly target. Re-runs whenever `flyTo.key` changes — caller bumps
+  // the key to re-fire even if center/zoom would be identical. Skips the
+  // animation entirely until the map is ready.
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !flyTo) return;
+    mapRef.current.flyTo({
+      center: [flyTo.longitude, flyTo.latitude],
+      zoom: flyTo.zoom ?? mapRef.current.getZoom(),
+      essential: true,
+    });
+  }, [mapReady, flyTo?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Placement-mode click handler. Subscribes to `map.on('click', …)` only
   // while placementMode is true; unsubscribes (and restores the cursor) on
