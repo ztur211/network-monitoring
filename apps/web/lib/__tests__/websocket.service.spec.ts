@@ -74,6 +74,7 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
 
   afterEach(() => {
     websocketService.disconnect();
+    websocketService.removeAllListeners();
     jest.clearAllMocks();
   });
 
@@ -125,5 +126,134 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
 
     mockSocket._emit('connect');
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Regression tests for the subscriber-buffering bug. Before the fix,
+ * `websocketService.on(...)` returned early when `this.socket` was null, so any
+ * subscription registered before `connect()` ran was silently dropped. This bit
+ * `_layout.tsx`, where four entity/AI subscribers were registered synchronously
+ * outside the async `authClient.getSession().then(...)` block — they all
+ * no-op'd and live updates from the server were dropped on the floor.
+ *
+ * After the fix, on/off mutate a service-level registry. connect() re-attaches
+ * the registry to whichever fresh socket it just created, so subscriptions
+ * survive both the pre-connect window and disconnect→reconnect cycles.
+ */
+describe('WebSocketService — subscriber buffering across connect lifecycle', () => {
+  afterEach(() => {
+    websocketService.disconnect();
+    // Clear the singleton's subscriber registries between tests — disconnect()
+    // intentionally keeps them around (so callers can reconnect and have their
+    // handlers re-attach), but in tests that means handler closures from
+    // earlier tests get re-attached to later tests' fresh mockSockets.
+    websocketService.removeAllListeners();
+    jest.clearAllMocks();
+  });
+
+  it('Socket subscriptions registered BEFORE connect() fire on emit after connect', () => {
+    const handler = jest.fn();
+    websocketService.on('v1:device:updated', handler);
+
+    websocketService.connect();
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+
+    expect(handler).toHaveBeenCalledWith({ device: { id: 'd1' } });
+  });
+
+  it('Manager subscriptions registered BEFORE connect() fire on Manager emit after connect', () => {
+    const handler = jest.fn();
+    websocketService.on('reconnect', handler);
+
+    websocketService.connect();
+    mockSocket.io._emit('reconnect', 1);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('off() before connect() cancels a buffered subscription', () => {
+    const handler = jest.fn();
+    websocketService.on('v1:device:updated', handler);
+    websocketService.off('v1:device:updated', handler);
+
+    websocketService.connect();
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('subscriptions survive disconnect → connect (re-attach to the new socket)', () => {
+    const handler = jest.fn();
+    websocketService.on('v1:device:updated', handler);
+
+    websocketService.connect();
+    const firstSocket = mockSocket;
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    websocketService.disconnect();
+    websocketService.connect();
+    expect(mockSocket).not.toBe(firstSocket);
+
+    mockSocket._emit('v1:device:updated', { device: { id: 'd2' } });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenLastCalledWith({ device: { id: 'd2' } });
+  });
+
+  it('Manager subscriptions also survive disconnect → connect', () => {
+    const handler = jest.fn();
+    websocketService.on('reconnect', handler);
+
+    websocketService.connect();
+    mockSocket.io._emit('reconnect', 1);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    websocketService.disconnect();
+    websocketService.connect();
+    mockSocket.io._emit('reconnect', 2);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it('on(event, handler) called twice with the same handler attaches socket.on only once', () => {
+    websocketService.connect();
+    const handler = jest.fn();
+    websocketService.on('v1:device:updated', handler);
+    websocketService.on('v1:device:updated', handler);
+
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+
+    // Without the dedup guard, Node EventEmitter would fire the listener twice.
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('connect() called while a previous socket exists tears down the orphan before creating a new one', () => {
+    websocketService.connect();
+    const firstSocket = mockSocket;
+
+    // Second connect() while firstSocket hasn't fully connected (mock leaves
+    // connected=false) — without the teardown, firstSocket is orphaned but
+    // still has its internal handlers AND any registered user handlers
+    // attached, so it can fire events after a new socket is in place.
+    websocketService.connect();
+
+    expect(firstSocket.disconnect).toHaveBeenCalled();
+    expect(mockSocket).not.toBe(firstSocket);
+  });
+
+  it('removeAllListeners() clears Socket and Manager registries; subsequent connect() does not re-attach', () => {
+    const sockHandler = jest.fn();
+    const mgrHandler = jest.fn();
+    websocketService.on('v1:device:updated', sockHandler);
+    websocketService.on('reconnect', mgrHandler);
+
+    websocketService.removeAllListeners();
+
+    websocketService.connect();
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+    mockSocket.io._emit('reconnect', 1);
+
+    expect(sockHandler).not.toHaveBeenCalled();
+    expect(mgrHandler).not.toHaveBeenCalled();
   });
 });
