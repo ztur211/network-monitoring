@@ -87,11 +87,17 @@ class BrowserCollectorService {
   private measureLatency(): Promise<number | null> {
     return new Promise((resolve) => {
       const sentAt = Date.now();
-      const timeout = setTimeout(() => resolve(null), 5_000);
-      websocketService.on(WS_EVENTS.PONG, () => {
+      let timeout: ReturnType<typeof setTimeout>;
+      const listener = (): void => {
         clearTimeout(timeout);
+        websocketService.off(WS_EVENTS.PONG, listener);
         resolve(Date.now() - sentAt);
-      });
+      };
+      timeout = setTimeout(() => {
+        websocketService.off(WS_EVENTS.PONG, listener);
+        resolve(null);
+      }, 5_000);
+      websocketService.on(WS_EVENTS.PONG, listener);
       websocketService.emit(WS_EVENTS.PING);
     });
   }

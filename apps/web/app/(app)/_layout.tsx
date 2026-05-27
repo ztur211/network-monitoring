@@ -30,12 +30,26 @@ export default function AppLayout() {
   const { syncPreferencesFromServer, flushMapPreferences } = useUiStore();
 
   useEffect(() => {
-    // Subscriptions deferred until after websocketService.connect() runs,
-    // because websocketService.on() is a no-op when its internal socket is
-    // null. Captured in this closure so the useEffect's cleanup can call
-    // them whether or not the .then() ever resolved.
-    let unsubscribeOnHome: (() => void) | null = null;
-    let unsubscribeNetworkUpdates: (() => void) | null = null;
+    // WS subscriptions can be registered synchronously here — websocketService
+    // buffers handlers in a registry and attaches them to whichever socket
+    // connect() eventually creates. This wins the race with the server's
+    // emit-on-connect (v1:network:onHome:changed) and survives reconnects.
+    const unsubscribeMetrics = subscribeToMetricsUpdates();
+    const unsubscribeEntities = subscribeToEntityEvents({ upsertDevice, removeDevice, upsertCircuit, removeCircuit });
+    const unsubscribeAi = subscribeToAiEvents({
+      appendToken: appendTokenToCurrentMessage,
+      complete: completeCurrentMessage,
+      setError: setAiError,
+    });
+    const unsubscribeOnHome = subscribeToOnHomeUpdates();
+    const unsubscribeNetworkUpdates = subscribeToNetworkUpdates();
+
+    const handleReconnect = () => {
+      void flushDevices();
+      void flushCircuits();
+      void flushMapPreferences();
+    };
+    websocketService.on('reconnect', handleReconnect);
 
     authClient.getSession().then((result) => {
       if (result.data?.user) {
@@ -43,13 +57,6 @@ export default function AppLayout() {
         websocketService.connect();
         browserCollectorService.start();
         void syncPreferencesFromServer();
-
-        // Register WS subscribers AFTER connect() so the listeners are
-        // actually attached. The server emits v1:network:onHome:changed once
-        // on socket connect — registering synchronously here gets us in
-        // before the handshake round-trip completes.
-        unsubscribeOnHome = subscribeToOnHomeUpdates();
-        unsubscribeNetworkUpdates = subscribeToNetworkUpdates();
 
         // Load the user's network and open the wizard if they don't have one.
         // The wizard auto-fires its welcome turn from the WizardSheet effect,
@@ -75,28 +82,13 @@ export default function AppLayout() {
       router.replace('/(auth)/login');
     });
 
-    const unsubscribeMetrics = subscribeToMetricsUpdates();
-    const unsubscribeEntities = subscribeToEntityEvents({ upsertDevice, removeDevice, upsertCircuit, removeCircuit });
-    const unsubscribeAi = subscribeToAiEvents({
-      appendToken: appendTokenToCurrentMessage,
-      complete: completeCurrentMessage,
-      setError: setAiError,
-    });
-
-    const handleReconnect = () => {
-      void flushDevices();
-      void flushCircuits();
-      void flushMapPreferences();
-    };
-    websocketService.on('reconnect', handleReconnect);
-
     return () => {
       browserCollectorService.stop();
       unsubscribeMetrics();
       unsubscribeEntities();
       unsubscribeAi();
-      unsubscribeOnHome?.();
-      unsubscribeNetworkUpdates?.();
+      unsubscribeOnHome();
+      unsubscribeNetworkUpdates();
       websocketService.off('reconnect', handleReconnect);
       websocketService.disconnect();
     };
