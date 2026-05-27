@@ -30,7 +30,7 @@ export interface SaveBrowserDevicePayload {
 
 export interface SaveDevicePayload {
   name: string;
-  macAddress: string;
+  macAddress: string | undefined;
 }
 
 export type OnboardingInput =
@@ -97,7 +97,7 @@ export function renderStep(stepId: OnboardingStepId): StepRender {
       return {
         chips: [SKIP_CHIP],
         fields: [
-          { key: 'name', kind: 'text', label: 'Router name', placeholder: 'Main Router' },
+          { key: 'name', kind: 'text', label: 'Router name', placeholder: 'Main Router', required: true },
           { key: 'macAddress', kind: 'mac', label: 'Router MAC (optional)' },
         ],
       };
@@ -105,7 +105,7 @@ export function renderStep(stepId: OnboardingStepId): StepRender {
       return {
         chips: [SKIP_CHIP],
         fields: [
-          { key: 'name', kind: 'text', label: 'Modem name', placeholder: 'Modem' },
+          { key: 'name', kind: 'text', label: 'Modem name', placeholder: 'Modem', required: true },
           { key: 'macAddress', kind: 'mac', label: 'Modem MAC (optional)' },
         ],
       };
@@ -208,7 +208,7 @@ export function handleStep(
       if (isSkipChip(input)) return advance(progress, 'modemMac', []);
       const name = readField(input, 'name');
       const macAddress = readField(input, 'macAddress');
-      if (!name || !macAddress) return stay(progress, stepId);
+      if (!name) return stay(progress, stepId);
       return advance(
         { ...progress, routerMac: macAddress },
         'modemMac',
@@ -220,7 +220,7 @@ export function handleStep(
       if (isSkipChip(input)) return advance(progress, 'isp', []);
       const name = readField(input, 'name');
       const macAddress = readField(input, 'macAddress');
-      if (!name || !macAddress) return stay(progress, stepId);
+      if (!name) return stay(progress, stepId);
       return advance(
         { ...progress, modemMac: macAddress },
         'isp',

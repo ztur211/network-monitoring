@@ -24,6 +24,18 @@ describe('renderStep', () => {
     expect(r.chips.some((c) => c.value === 'skip')).toBe(true);
     expect(r.fields.map((f) => f.key).sort()).toEqual(['macAddress', 'name']);
   });
+
+  it('routerMac marks `name` required so the wizard Send button gates on it; macAddress stays optional', () => {
+    const r = renderStep('routerMac');
+    expect(r.fields.find((f) => f.key === 'name')?.required).toBe(true);
+    expect(r.fields.find((f) => f.key === 'macAddress')?.required).not.toBe(true);
+  });
+
+  it('modemMac marks `name` required and `macAddress` optional', () => {
+    const r = renderStep('modemMac');
+    expect(r.fields.find((f) => f.key === 'name')?.required).toBe(true);
+    expect(r.fields.find((f) => f.key === 'macAddress')?.required).not.toBe(true);
+  });
 });
 
 describe('handleStep: welcome → networkName', () => {
@@ -154,8 +166,19 @@ describe('handleStep: routerMac', () => {
     ]);
   });
 
-  it('missing macAddress stays on step', () => {
+  it('name only (MAC blank) advances to modemMac and saves device with undefined macAddress', () => {
     const r = handleStep('routerMac', {}, { kind: 'fields', values: { name: 'Router' } });
+    expect(r.nextStepId).toBe('modemMac');
+    expect(r.sideEffects).toEqual([
+      { type: 'SaveRouterDevice', payload: { name: 'Router', macAddress: undefined } },
+    ]);
+  });
+
+  it('missing name (only MAC) stays on step — name is the only required field', () => {
+    const r = handleStep('routerMac', {}, {
+      kind: 'fields',
+      values: { macAddress: 'AA:BB:CC:DD:EE:FF' },
+    });
     expect(r.nextStepId).toBe('routerMac');
     expect(r.sideEffects).toEqual([]);
   });
@@ -173,6 +196,23 @@ describe('handleStep: modemMac', () => {
       values: { name: 'Modem', macAddress: '11:22:33:44:55:66' },
     });
     expect(r.sideEffects[0].type).toBe('SaveModemDevice');
+  });
+
+  it('name only (MAC blank) advances to isp and saves device with undefined macAddress', () => {
+    const r = handleStep('modemMac', {}, { kind: 'fields', values: { name: 'Modem' } });
+    expect(r.nextStepId).toBe('isp');
+    expect(r.sideEffects).toEqual([
+      { type: 'SaveModemDevice', payload: { name: 'Modem', macAddress: undefined } },
+    ]);
+  });
+
+  it('missing name (only MAC) stays on step', () => {
+    const r = handleStep('modemMac', {}, {
+      kind: 'fields',
+      values: { macAddress: '11:22:33:44:55:66' },
+    });
+    expect(r.nextStepId).toBe('modemMac');
+    expect(r.sideEffects).toEqual([]);
   });
 });
 

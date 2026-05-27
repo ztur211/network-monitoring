@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Network } from '@prisma/client';
 import {
   NetworkDetail,
@@ -7,6 +7,7 @@ import {
 } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
+import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import {
   CreateNetworkDto,
   NETWORK_WRITABLE_FIELDS,
@@ -21,6 +22,7 @@ export class NetworksService {
   constructor(
     private readonly networksRepository: NetworksRepository,
     private readonly conflictService: ConflictResolutionService,
+    @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
   ) {}
 
   async listNetworks(userId: string): Promise<NetworkSummary[]> {
@@ -88,6 +90,11 @@ export class NetworksService {
       { networkId, network: detail, changes: patch.changes, updatedBy: userId },
       userId,
     );
+
+    if (patch.changes.some((c) => c.field === 'homePublicIp')) {
+      void this.realtimeService.recomputeOnHomeForUser(userId);
+    }
+
     return detail;
   }
 

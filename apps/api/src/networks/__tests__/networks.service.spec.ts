@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NetworksService } from '../networks.service';
 import { NetworksRepository } from '../networks.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 const makeNetwork = (overrides = {}) => ({
@@ -36,6 +37,14 @@ const mockConflict: jest.Mocked<ConflictResolutionService> = {
   emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
+const mockRealtime = {
+  pushToUser: jest.fn(),
+  pushToTier: jest.fn(),
+  pushToOrg: jest.fn(),
+  getConnectionStatus: jest.fn(),
+  recomputeOnHomeForUser: jest.fn(),
+};
+
 describe('NetworksService', () => {
   let service: NetworksService;
 
@@ -45,6 +54,7 @@ describe('NetworksService', () => {
         NetworksService,
         { provide: NetworksRepository, useValue: mockRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
+        { provide: REALTIME_SERVICE, useValue: mockRealtime },
       ],
     }).compile();
 
@@ -174,6 +184,34 @@ describe('NetworksService', () => {
         }),
         'user-1',
       );
+    });
+
+    it('triggers RealtimeService.recomputeOnHomeForUser when homePublicIp is in changes', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork());
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.5' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.5', version: 2 }),
+      );
+
+      await service.updateNetwork('user-1', 'net-1', {
+        baseVersion: 1,
+        changes: [{ field: 'homePublicIp', oldValue: null, newValue: '203.0.113.5' }],
+      });
+
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('does NOT trigger recomputeOnHomeForUser when only non-IP fields change', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork());
+      mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
+      mockRepo.updateWithVersion.mockResolvedValue(makeNetwork({ name: 'Renamed', version: 2 }));
+
+      await service.updateNetwork('user-1', 'net-1', {
+        baseVersion: 1,
+        changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
+      });
+
+      expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
     });
   });
 

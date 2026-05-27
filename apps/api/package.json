@@ -8,9 +8,9 @@
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.unit.config.ts",
-    "test:integration": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.integration.config.ts",
-    "test:e2e": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.e2e.config.ts"
+    "test:unit": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.unit.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB",
+    "test:integration": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.integration.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB",
+    "test:e2e": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.e2e.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
