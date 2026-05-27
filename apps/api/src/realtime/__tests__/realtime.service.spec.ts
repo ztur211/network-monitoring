@@ -136,6 +136,52 @@ describe('RealtimeGateway — service interface', () => {
     });
   });
 
+  describe('recomputeOnHomeForUser', () => {
+    it('iterates the user\'s sockets, recomputes onHome per-socket, and emits NETWORK_ON_HOME_CHANGED', async () => {
+      const socket1 = {
+        handshake: { address: '203.0.113.5' },
+        data: {} as { onHome?: boolean },
+        emit: jest.fn(),
+      };
+      const socket2 = {
+        handshake: { address: '198.51.100.9' },
+        data: {} as { onHome?: boolean },
+        emit: jest.fn(),
+      };
+      const userRoom = { fetchSockets: jest.fn().mockResolvedValue([socket1, socket2]) };
+      (mockServer as unknown as { in: jest.Mock }).in = jest.fn().mockReturnValue(userRoom);
+
+      mockNetworks.checkOnHome
+        .mockResolvedValueOnce({ networkId: 'net-1', onHome: true })
+        .mockResolvedValueOnce({ networkId: 'net-1', onHome: false });
+
+      await gateway.recomputeOnHomeForUser('user-1');
+
+      expect((mockServer as unknown as { in: jest.Mock }).in).toHaveBeenCalledWith('user:user-1');
+      expect(mockNetworks.checkOnHome).toHaveBeenCalledWith('user-1', '203.0.113.5');
+      expect(mockNetworks.checkOnHome).toHaveBeenCalledWith('user-1', '198.51.100.9');
+      expect(socket1.emit).toHaveBeenCalledWith(
+        WS_EVENTS.NETWORK_ON_HOME_CHANGED,
+        { networkId: 'net-1', onHome: true },
+      );
+      expect(socket2.emit).toHaveBeenCalledWith(
+        WS_EVENTS.NETWORK_ON_HOME_CHANGED,
+        { networkId: 'net-1', onHome: false },
+      );
+      expect(socket1.data.onHome).toBe(true);
+      expect(socket2.data.onHome).toBe(false);
+    });
+
+    it('is a no-op when the user has no connected sockets', async () => {
+      const userRoom = { fetchSockets: jest.fn().mockResolvedValue([]) };
+      (mockServer as unknown as { in: jest.Mock }).in = jest.fn().mockReturnValue(userRoom);
+
+      await gateway.recomputeOnHomeForUser('user-1');
+
+      expect(mockNetworks.checkOnHome).not.toHaveBeenCalled();
+    });
+  });
+
   describe('handlePing', () => {
     it('returns PONG event with null data', () => {
       const response = gateway.handlePing();

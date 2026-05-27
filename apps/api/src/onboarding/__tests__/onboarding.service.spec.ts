@@ -9,6 +9,7 @@ import { AiService } from '../../ai/ai.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { RedisService } from '../../redis/redis.service';
 import { GEOCODING_PROVIDER } from '../../map/geocoding/geocoding.interface';
+import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 const mockRedis = {
@@ -47,6 +48,14 @@ const mockGeocoder = {
   geocode: jest.fn(),
 };
 
+const mockRealtime = {
+  pushToUser: jest.fn(),
+  pushToTier: jest.fn(),
+  pushToOrg: jest.fn(),
+  getConnectionStatus: jest.fn(),
+  recomputeOnHomeForUser: jest.fn(),
+};
+
 describe('OnboardingService', () => {
   let service: OnboardingService;
 
@@ -62,6 +71,7 @@ describe('OnboardingService', () => {
         { provide: AiService, useValue: mockAi },
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: GEOCODING_PROVIDER, useValue: mockGeocoder },
+        { provide: REALTIME_SERVICE, useValue: mockRealtime },
       ],
     }).compile();
 
@@ -212,6 +222,26 @@ describe('OnboardingService', () => {
         expect.objectContaining({ homePublicIp: '203.0.113.5' }),
         1,
       );
+    });
+
+    it('SaveHomeIp triggers RealtimeService.recomputeOnHomeForUser so open tabs see the new on-home status', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({
+          stepId: 'confirmHomeIp',
+          progress: { networkName: 'Home' },
+        }),
+      );
+      mockNetworksRepo.findAllByUserId.mockResolvedValue([
+        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      ]);
+      mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
+
+      await service.handleTurn('user-1', '203.0.113.5', {
+        browserDeviceId: 'bd-1',
+        chipChoice: 'yes',
+      });
+
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
     });
 
     it('GeocodeAddress side effect calls geocoder + updates network with lat/lng', async () => {

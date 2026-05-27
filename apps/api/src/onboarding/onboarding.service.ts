@@ -15,6 +15,7 @@ import { NetworksRepository } from '../networks/networks.repository';
 import { NetworksService } from '../networks/networks.service';
 import { RedisService } from '../redis/redis.service';
 import { AiService } from '../ai/ai.service';
+import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import { OnboardingTurnDto } from './onboarding.dto';
 import {
   handleStep,
@@ -52,6 +53,7 @@ export class OnboardingService {
     private readonly aiService: AiService,
     private readonly conflictService: ConflictResolutionService,
     @Inject(GEOCODING_PROVIDER) private readonly geocoder: GeocodingProvider,
+    @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
   ) {}
 
   async handleTurn(
@@ -177,6 +179,7 @@ export class OnboardingService {
         break;
       case 'SaveHomeIp':
         await this.persistNetworkFields(userId, { homePublicIp: ip });
+        void this.realtimeService.recomputeOnHomeForUser(userId);
         break;
       case 'GeocodeAddress': {
         try {
@@ -236,7 +239,7 @@ export class OnboardingService {
   private async createInfrastructureDevice(
     userId: string,
     category: DeviceCategory,
-    payload: { name: string; macAddress: string },
+    payload: { name: string; macAddress: string | undefined },
   ): Promise<void> {
     const network = await this.findUserNetwork(userId);
     try {

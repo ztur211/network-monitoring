@@ -11,4 +11,5 @@ export interface IRealtimeService {
   pushToTier(tier: AccountTier, event: string, payload: unknown): void;
   pushToOrg(orgId: string, event: string, payload: unknown): void;
   getConnectionStatus(userId: string): Promise<ConnectionStatus>;
+  recomputeOnHomeForUser(userId: string): Promise<void>;
 }

@@ -162,6 +162,17 @@ export class RealtimeGateway
     return count > 0 ? 'connected' : 'offline';
   }
 
+  async recomputeOnHomeForUser(userId: string): Promise<void> {
+    const sockets = await this.server.in(`user:${userId}`).fetchSockets();
+    for (const socket of sockets) {
+      const requestIp =
+        typeof socket.handshake.address === 'string' ? socket.handshake.address : '';
+      const result = await this.networksService.checkOnHome(userId, requestIp);
+      socket.data.onHome = result.onHome;
+      socket.emit(WS_EVENTS.NETWORK_ON_HOME_CHANGED, result);
+    }
+  }
+
   private async runPushScheduler(): Promise<void> {
     const ttl = parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10);
     const acquired = await this.redis.set(
