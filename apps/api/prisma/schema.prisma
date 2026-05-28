@@ -192,6 +192,13 @@ model Device {
 model Network {
   id            String  @id @default(uuid())
   userId        String
+  // RESERVED — null in MVP. FK target for the future Property model in the
+  // Multi-Property tier (post-MVP Priority 2). The Property → Network → Device
+  // hierarchy is the structural anchor of that tier: a Property has many
+  // Networks; a Network belongs to at most one Property. Services do not read
+  // or write this column in MVP. Device.propertyId and DeviceMetric.propertyId
+  // are NOT reserved — they reach Property via Device → Network → Property.
+  propertyId    String?
   name          String
   homeAddress   String?
   homeLatitude  Float?
@@ -209,6 +216,7 @@ model Network {
   devices Device[]
 
   @@index([userId])
+  @@index([userId, propertyId])
 }
 
 model DeviceConnection {

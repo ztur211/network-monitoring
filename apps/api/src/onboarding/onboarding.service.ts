@@ -68,7 +68,7 @@ export class OnboardingService {
     // restart a finished onboarding.
     const persisted = await this.redis.get(stateKey(userId));
     if (!persisted && (await this.userHasNetwork(userId))) {
-      throw new NodeScopeException('ONBOARD_001', 'ALREADY_COMPLETE', HttpStatus.CONFLICT);
+      throw new NodeScopeException('ONBOARD_002', 'ONBOARDING_ALREADY_COMPLETE', HttpStatus.CONFLICT);
     }
 
     const state = persisted ? this.parseState(persisted) : { stepId: 'welcome' as OnboardingStepId, progress: {} };
