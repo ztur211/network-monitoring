@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { DeviceDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
@@ -142,7 +141,9 @@ export default function MapScreen() {
         }
         handleFormClose();
       } catch {
-        Alert.alert('Error', 'Failed to save device. It has been queued for retry when reconnected.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save device. It has been queued for retry when reconnected.');
+        }
         handleFormClose();
       } finally {
         setIsSubmitting(false);

@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
@@ -91,7 +90,9 @@ export default function EquipmentScreen() {
         setFormMode(null);
         setEditDevice(null);
       } catch {
-        Alert.alert('Error', 'Failed to save device. Queued for retry.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save device. Queued for retry.');
+        }
         setFormMode(null);
         setEditDevice(null);
       } finally {

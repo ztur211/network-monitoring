@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Switch,
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
@@ -80,7 +79,9 @@ export default function SettingsScreen() {
       if (user) {
         setUser({ ...user, name: res.data.data.name, email: res.data.data.email });
       }
-      Alert.alert('Saved', 'Profile updated successfully.');
+      if (typeof window !== 'undefined') {
+        window.alert('Profile updated successfully.');
+      }
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
         ?.error?.code;
