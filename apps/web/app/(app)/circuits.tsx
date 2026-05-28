@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Modal,
 } from 'react-native';
 import { CircuitDto } from '@nodescope/shared';
@@ -64,7 +63,9 @@ export default function CircuitsScreen() {
         setFormMode(null);
         setEditCircuit(null);
       } catch {
-        Alert.alert('Error', 'Failed to save circuit. Queued for retry.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save circuit. Queued for retry.');
+        }
         setFormMode(null);
         setEditCircuit(null);
       } finally {

@@ -1322,3 +1322,85 @@ The `'done'` step's `'close'` chip short-circuits to `closeWizard()` instead of 
 | `tsc --noEmit` apps/api | clean (after rebuilding `packages/shared`) |
 
 Total of **10 commits** on `feat/onboarding` (master tip `6eebbb7` is the schema-only prep that landed before the branch forked): `d408111`, `0778c40`, `f709980`, `0e2bb64`, `6bc8f87`, `9e0c3d4`, `c01b7f0`, `a947f2a`, `c73e19b`, `e0fb173`. Branch is **code-complete**; remaining work is manual verification + the existing-subscriber refactor noted above.
+
+---
+
+## Post-Phase 13 — Smoke fixes, hardening & polish (2026-05-21 → 2026-05-28)
+
+The "code-complete" tag at the close of Phase 13 turned out to need a follow-up sweep. Manual smoke, a 4-state UI audit, and cross-platform infra glitches surfaced 10 commits' worth of follow-on work. Listed below in commit order.
+
+### Smoke pass — 2026-05-21 / 2026-05-22
+
+Five commits driven by the first manual walk-through of the onboarding → map flow:
+
+- **`26f6530`** — `OnboardingTurnDto` required `browserDeviceId` (MinLength 1) on every POST, but the store only injected it when the caller supplied it. The welcome turn 400'd. Store now reads `getBrowserDeviceId()` and injects on every call.
+- **`39b421e`** — `OnboardingService.handleTurn` threw `ONBOARD_001 ALREADY_COMPLETE` whenever a Network row existed. But the wizard creates the Network row at the address step (via `SaveNetwork`), so every subsequent turn 409'd. Guard now requires *both* "no Redis state" AND "Network exists" before rejecting.
+- **`8cf7f5e`** — Tap-to-place flow. Replaced the manual lat/lng text inputs on `DeviceForm` with a "tap '+' → tap map → pre-filled form" gesture. `MapView` accepts `placementMode` + `onMapClick` props and swaps the canvas cursor to `crosshair` only while placing. Device-marker clicks bubble through their own listeners (with `stopPropagation`) so the placement handler only fires on empty map.
+- **`3c16153`** — Auto-zoom to newly created device. Every `DeviceCategory` has a `minZoom` in `DEVICE_CATEGORY_CONFIG`; markers below it are filtered out. A user placing a COMPUTER (`minZoom 18`) from zoom 13 saw nothing afterward — looked like a silent failure. After a successful create, fly to the new device at `max(category.minZoom + 0.5, 13)`. The filter itself is preserved (keeps the map readable at scale).
+- **`3943096`** — Two browser-only bugs:
+  1. Device markers snapped to (0, 0) at the end of every zoom animation. Our `applyMarkerStyles` overwrote MapLibre's `transform: translate(...)` with `transform: scale(...)`. Fix: wrap each marker so MapLibre's translate lives on the outer div and our scale on an inner child — the two transforms can no longer collide.
+  2. Delete buttons did nothing. RN-Web's `Alert.alert` is a `console.warn` stub. Swap to `window.confirm` for the destructive prompt and `window.alert` for the error toast across `map.tsx`, `equipment.tsx`, and `circuits.tsx`. Established the swap pattern this section will later finish (see "Alert.alert leftovers" below).
+
+### `bd4f8f5` (2026-05-27) — WS subscriber buffer
+
+Resolves the "pre-existing WS subscriber ordering bug" Phase 13 flagged as deferred. `websocketService.on/off` had been no-ops before `connect()`, so four subscriptions registered synchronously in `_layout.tsx` (device/circuit live updates, AI token streaming, offline-queue flush on reconnect) were silently dropped on every cold session bootstrap. Adds Socket/Manager subscription registries that survive disconnect and re-attach on every fresh socket. With buffering in place, `_layout.tsx` registers all subscribers synchronously at the top of the useEffect — Slice 6's wedge-into-`.then` workaround is gone. Includes four hardening fixes from code review: PONG listener leak in `measureLatency`, half-connected socket teardown in `connect()`, duplicate-handler skip in `on()`, and `removeAllListeners()` wired into test `afterEach`.
+
+### `6dda8a3` (2026-05-27) — On-home recompute broadcast + jest OOM cap + Prisma cross-platform
+
+**Feature.** Open browser tabs missed the on-home transition when a user confirmed their home IP via the `confirmHomeIp` chip or when a network PATCH updated `homePublicIp` directly. Each socket's `socket.data.onHome` was set once at handshake time from the request IP, and only the originating tab learned of changes.
+
+`recomputeOnHomeForUser(userId)` is now on both `IRealtimeService` and `RealtimeGateway`. It pulls all sockets in `user:{userId}` from the Socket.io room, re-runs `NetworksService.checkOnHome` per-socket (each socket has its own handshake IP), updates `socket.data.onHome`, and emits `NETWORK_ON_HOME_CHANGED` per socket. Wired into:
+- `NetworksService.updateNetwork` — triggers recompute only when `homePublicIp` is in `patch.changes`. Non-IP edits don't fire it.
+- `OnboardingService` — triggers right after `SaveHomeIp` enacts.
+
+Module wiring: `NetworksModule` and `OnboardingModule` both `forwardRef(() => RealtimeModule)`. RealtimeModule already forwardRefs both, so the cycle is broken from either side.
+
+**State machine adjustment.** `routerMac` / `modemMac` mark `name` required and `macAddress` optional. Both steps advance on name-only input; `SaveDevicePayload.macAddress` widens to `string | undefined`. Surfaced because the onboarding service spec needed a clean way to drive `SaveHomeIp` without the wizard getting stuck on a router MAC the user hadn't bothered to enter.
+
+**Jest infra.** Capped `--maxWorkers=2 --workerIdleMemoryLimit=512MB` on the API unit/integration/e2e scripts in `apps/api/package.json`. Root cause of an earlier "agent OOM'd at exit 137": the 24-core sandbox was forking ~22 unbounded ts-jest workers, each spinning up its own TS compiler against a (separately broken) module-resolution state. Capping workers is the durable fix; even with module resolution clean, parallelism > 2 is heat with no benefit on this sandbox profile.
+
+**Prisma `binaryTargets`.** `apps/api/prisma/schema.prisma`'s generator block adds `["native", "debian-openssl-3.0.x"]`. A `prisma generate` run on Windows previously produced only the Windows query engine; Linux runtimes (sandbox, DigitalOcean App Platform builds) then threw `PrismaClientInitializationError` when loading the client at test teardown. `native` still resolves so the Windows binary continues to be generated for local dev.
+
+### `c2b4c4e` (2026-05-28) — 4-state model audit fixes
+
+An audit pass on `apps/web` against CLAUDE.md's four-state UI rule flagged four candidate gaps. Three real, one false positive:
+- **`settings.tsx:55`** — data-sources fetch silently swallowed errors with `// non-critical — show empty`, rendering "No data sources configured" for both genuinely-empty and failure cases. New `sourcesError` state distinguishes them: error path shows a red row + Retry button; empty stays for the genuine zero-sources case.
+- **`AiChatWindow.tsx:87`** — error banner had no Retry. Failed `sendMessage` stranded the user — error text shown, no recovery path short of retyping. Added `retryLastMessage` to `ai.store`: walks `messages` backward to find the last user message, drops trailing empty-streaming assistant bubbles (the WS-error path leaves these), clears `error`, starts a fresh assistant message, and re-emits with the same `conversationId`. Idempotent under concurrent calls via the existing `isStreaming` guard. Preserves partial-content streaming bubbles — only fully-empty ones are dropped.
+- **`AiChatWindow.tsx:136`** — usage row had no loading state. Wired the existing `isLoadingUsage` (already on the store, just unused) to a spinner + "Loading usage…" while `loadUsage()` is in flight and `usage` is null.
+- **`clients.tsx:104`** — false positive. `Timestamp` is already nested inside the `StaleDataOverlay` at line 152, and `Timestamp.tsx:44` colors amber when stale at the 90s threshold. No change.
+
+### `7eb3dd9` (2026-05-28) — ai.store unit spec backfill
+
+`c2b4c4e` added `retryLastMessage` but `ai.store` had no spec file at all — out of step with `network.store` and `onboarding.store`. Backfilled the entire store: 18 specs across 9 actions (`addUserMessage`, `startAssistantMessage`, `appendTokenToCurrentMessage`, `completeCurrentMessage`, `setError`, `loadUsage`, `clearConversation`, `sendMessage`, `retryLastMessage`). Mocking mirrors `onboarding.store.spec.ts`: axios mocked via `jest.unstable_mockModule`; `websocketService` is a singleton instance so `jest.spyOn(websocketService, 'emit')` is the cleanest path (module-mocking relative paths is flaky under ts-jest ESM, noted in the prior store specs).
+
+### `7e2888d` (2026-05-28) — Tap-to-save: OnHomeBadge becomes pressable
+
+Closes the deferred Phase-13 polish item. Previously `OnHomeBadge` was display-only because the browser cannot detect its own public IP, so the "Away from home" state offered the user no path forward.
+
+**Server.** New `POST /api/v1/networks/:id/set-home-ip` (no body). Reads `req.ip` via the established pattern (X-Forwarded-For aware via `app.set('trust proxy', 1)` per `9e0c3d4`). `NetworksService.setHomeIpFromRequest` loads the network and delegates to `updateNetwork` with a one-field changeset. That reuses the existing optimistic-concurrency dance and — critically — the `homePublicIp` trigger that already calls `recomputeOnHomeForUser`. No new emit code; the WS push cascades through the recompute pathway.
+
+**Client.** `OnHomeBadge` becomes a `TouchableOpacity` only when `!onHome && !savingHomeIp`. Tap fires `window.confirm` (same RN-Web pattern as `3943096`). On confirm, `network.store.setHomeIp()` POSTs the endpoint, strips `homePublicIp` from the response, updates the cached `NetworkSummary` optimistically. The badge cycles through a spinner+"Saving home IP…" state until the response or WS push completes. The WS `NETWORK_UPDATED` + `NETWORK_ON_HOME_CHANGED` then update all other open tabs.
+
+**Tests:** +3 service specs, +2 controller e2e specs, +5 store specs. API unit 213/213, web jest 63/63.
+
+### Alert.alert leftovers (this commit, 2026-05-28)
+
+Four `Alert.alert` call sites remained active despite RN-Web's stub. Swapped to `window.alert` with the `typeof window !== 'undefined'` guard, matching `3943096`'s pattern:
+- `apps/web/app/(app)/map.tsx:144` — failed device save toast
+- `apps/web/app/(app)/equipment.tsx:93` — failed device save toast
+- `apps/web/app/(app)/circuits.tsx:66` — failed circuit save toast
+- `apps/web/app/(app)/settings.tsx:82` — successful profile save toast
+
+`Alert` removed from all four files' `react-native` imports. Comments referring back to "RN-Web Alert.alert is a stub — see comment in map.tsx" remain as breadcrumbs for future readers.
+
+### Verification at end of post-Phase-13 polish (2026-05-28)
+
+| Suite | Result |
+|---|---|
+| API Unit | 16/16 suites, **213/213** tests |
+| Web Jest | 5/5 suites, **63/63** tests |
+| `tsc --noEmit` apps/api | clean |
+| `tsc --noEmit` apps/web | clean |
+| API Integration / E2E | not re-run in this session (no docker access) — 2 new networks.controller.e2e specs land here for next local run |
+| Web bundle entry chunk | deferred to Windows; lightningcss linux-x64-gnu binding missing in the sandbox. No new heavy deps since `412 KB` baseline on 2026-05-16 |
+| Manual browser smoke | still outstanding from Phase 13. User explicitly deferred during this polish session. |
