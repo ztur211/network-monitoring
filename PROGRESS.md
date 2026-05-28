@@ -1393,7 +1393,7 @@ Four `Alert.alert` call sites remained active despite RN-Web's stub. Swapped to 
 
 `Alert` removed from all four files' `react-native` imports. Comments referring back to "RN-Web Alert.alert is a stub — see comment in map.tsx" remain as breadcrumbs for future readers.
 
-### device.store + circuits.store unit specs (this commit, 2026-05-28)
+### device.store + circuits.store unit specs (`77069ef`, 2026-05-28)
 
 Backfilled the remaining store specs after the same audit that flagged `ai.store`'s missing spec. Both stores share the optimistic-CRUD + offline-queue shape introduced in earlier phases — covering them aligns the test discipline across the entire `apps/web/store/` directory.
 
@@ -1410,6 +1410,25 @@ Backfilled the remaining store specs after the same audit that flagged `ai.store
 - `deleteCircuit()` — also clamps `total` at zero to defend against the rare "already-stale total + extra delete" race.
 
 **Jest cap on apps/web/package.json.** Running `npm test` against the now-7 suites surfaced the same OOM cascade fixed in `6dda8a3` for API tests: web's jest script was uncapped, the sandbox forked workers per core, and 2 suites died with SIGKILL after ~3 hours of wall-clock spin (most of which was the sandbox stalled, not real work). Added `--maxWorkers=2 --workerIdleMemoryLimit=512MB` to apps/web/package.json. Run time dropped from "killed" to **19s for 7 suites / 100 tests**. Web jest now matches API jest's resource discipline.
+
+### Tap-to-relocate existing device (this commit, 2026-05-28)
+
+Closes the deferred follow-up from `8cf7f5e`: tap-to-place existed for create but editing a device left coords read-only — the user had to delete + recreate to move a device.
+
+`DeviceForm` gains `onRelocate?: () => void`. When set (edit mode only), a "Tap to relocate" link renders in the Location row's header next to the read-only coord text. Press routes back to `map.tsx`, which:
+1. `handleStartRelocation` — captures the in-flight `editDevice` into a new `relocatingDevice` state, closes the form (`formMode = null`), enters placement mode.
+2. Map shows the existing placement banner with copy switched to "Tap the map to relocate \<name\>".
+3. User taps map → `handleMapClick` sees `relocatingDevice` is set, captures `pickedCoords`, re-opens the form (`formMode = 'edit'`, same `editDevice` reference), clears `relocatingDevice`.
+4. Form renders with `placedLatitude`/`placedLongitude` carrying the new pick; `effectiveLatitude` in `formatCoord` resolves to the new value first.
+5. User taps Save → `handleFormSubmit` calls `updateDevice(id, editDevice, input)`; `device.store.updateDevice` diffs the input against `editDevice` (which still holds the OLD coords). Latitude and longitude land in the changeset and PATCH /devices/:id. Optimistic update is applied immediately on the map.
+
+The `placedLatitude` / `placedLongitude` guard in `DeviceForm` render switched from `formMode === 'create' ? ... : null` to a direct passthrough — they're correct for both modes now (edit-mode `pickedCoords` is non-null only after a relocate round trip).
+
+`handleCancelPlacement` and `handleFormClose` both clear `relocatingDevice` so the state can't leak across flows.
+
+**Known limitation flagged for follow-up:** Unsaved form fields are lost across the relocate round trip. `formMode` is set to `null` during placement, so the `DeviceForm` unmounts; the `useForm` state is recreated on remount and the `useEffect` at line 103 resets values to the device's persisted fields. If the user typed half a new name then clicked "Tap to relocate", their typing is gone. Acceptable for v1 — most relocate flows aren't combined with simultaneous text edits. A future improvement would keep `DeviceForm` mounted but visually hidden during placement (e.g. via a `hidden` prop or `display:none` wrapper) so `useForm` state survives.
+
+Tests: device.store.updateDevice is already covered by `77069ef`'s spec — the diff + optimistic + rollback paths exercise the same data path the relocate uses. The UI orchestration in `DeviceForm` + `map.tsx` falls under the project's "Playwright covers RN/JSX, not jest" convention (see Phase 13 slice 4). No new jest specs.
 
 ### Verification at end of post-Phase-13 polish (2026-05-28)
 
