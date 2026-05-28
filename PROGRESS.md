@@ -1383,7 +1383,7 @@ Closes the deferred Phase-13 polish item. Previously `OnHomeBadge` was display-o
 
 **Tests:** +3 service specs, +2 controller e2e specs, +5 store specs. API unit 213/213, web jest 63/63.
 
-### Alert.alert leftovers (this commit, 2026-05-28)
+### Alert.alert leftovers (`7791ddc`, 2026-05-28)
 
 Four `Alert.alert` call sites remained active despite RN-Web's stub. Swapped to `window.alert` with the `typeof window !== 'undefined'` guard, matching `3943096`'s pattern:
 - `apps/web/app/(app)/map.tsx:144` — failed device save toast
@@ -1392,6 +1392,24 @@ Four `Alert.alert` call sites remained active despite RN-Web's stub. Swapped to 
 - `apps/web/app/(app)/settings.tsx:82` — successful profile save toast
 
 `Alert` removed from all four files' `react-native` imports. Comments referring back to "RN-Web Alert.alert is a stub — see comment in map.tsx" remain as breadcrumbs for future readers.
+
+### device.store + circuits.store unit specs (this commit, 2026-05-28)
+
+Backfilled the remaining store specs after the same audit that flagged `ai.store`'s missing spec. Both stores share the optimistic-CRUD + offline-queue shape introduced in earlier phases — covering them aligns the test discipline across the entire `apps/web/store/` directory.
+
+`device.store.spec.ts` — 17 specs across 7 actions:
+- `loadDevices()` — happy path, in-flight short-circuit, error path leaves `devices` unchanged and `loaded` false.
+- `upsertDevice` / `removeDevice` — direct setters.
+- `createDevice()` — optimistic placeholder inserted with `temp-<ts>` id; mid-flight snapshot proves it's visible; server row swaps it; rollback removes the placeholder *and* queues an offline op on failure.
+- `updateDevice()` — diff-based changeset; no PATCH and same-ref return when input has no real changes; optimistic apply; rollback to previous + queue on failure.
+- `deleteDevice()` — optimistic remove; restore + queue on failure; silent no-op when the deviceId doesn't match.
+- `flushOfflineQueue()` — drains the queue through the normal CRUD paths; remaining ops re-queue themselves if they fail individually, so the queue partially shrinks rather than all-or-nothing.
+
+`circuits.store.spec.ts` — 18 specs, same shape plus pagination:
+- `loadCircuits()` / `loadNextPage()` — including the cursor URL-encoding subtlety (`abc/def+ghi` → `abc%2Fdef%2Bghi`) and the dual-guard "no nextCursor OR already loading" no-op.
+- `deleteCircuit()` — also clamps `total` at zero to defend against the rare "already-stale total + extra delete" race.
+
+**Jest cap on apps/web/package.json.** Running `npm test` against the now-7 suites surfaced the same OOM cascade fixed in `6dda8a3` for API tests: web's jest script was uncapped, the sandbox forked workers per core, and 2 suites died with SIGKILL after ~3 hours of wall-clock spin (most of which was the sandbox stalled, not real work). Added `--maxWorkers=2 --workerIdleMemoryLimit=512MB` to apps/web/package.json. Run time dropped from "killed" to **19s for 7 suites / 100 tests**. Web jest now matches API jest's resource discipline.
 
 ### Verification at end of post-Phase-13 polish (2026-05-28)
 
