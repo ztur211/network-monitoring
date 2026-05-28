@@ -230,6 +230,57 @@ describe('NetworksService', () => {
     });
   });
 
+  describe('setHomeIpFromRequest', () => {
+    it('updates the network with the request IP and triggers the on-home recompute', async () => {
+      const network = makeNetwork({ homePublicIp: null });
+      mockRepo.findByIdAndUserId.mockResolvedValue(network);
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
+      );
+
+      const result = await service.setHomeIpFromRequest('user-1', 'net-1', '203.0.113.42');
+
+      expect(mockRepo.updateWithVersion).toHaveBeenCalledWith(
+        'net-1',
+        'user-1',
+        expect.objectContaining({ homePublicIp: '203.0.113.42' }),
+        1,
+      );
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
+      expect(result.homePublicIp).toBe('203.0.113.42');
+    });
+
+    it('throws NETWORK_002 when the target network does not belong to the user', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(null);
+
+      await expect(
+        service.setHomeIpFromRequest('user-1', 'missing', '203.0.113.42'),
+      ).rejects.toThrow(NodeScopeException);
+      expect(mockRepo.updateWithVersion).not.toHaveBeenCalled();
+      expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
+    });
+
+    it('emits v1:network:updated through the conflict service', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork({ homePublicIp: null }));
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
+      );
+
+      await service.setHomeIpFromRequest('user-1', 'net-1', '203.0.113.42');
+
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:network:updated',
+        expect.objectContaining({
+          networkId: 'net-1',
+          network: expect.objectContaining({ homePublicIp: '203.0.113.42' }),
+        }),
+        'user-1',
+      );
+    });
+  });
+
   describe('checkOnHome', () => {
     it('returns onHome=false and networkId=null when user has no network', async () => {
       mockRepo.findAllByUserId.mockResolvedValue([]);

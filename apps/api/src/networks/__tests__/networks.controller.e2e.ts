@@ -153,6 +153,29 @@ describe('NetworksController (e2e)', () => {
     });
   });
 
+  describe('POST /api/v1/networks/:id/set-home-ip', () => {
+    it('returns 200 with NetworkDetail; homePublicIp now reflects the request IP', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/networks/${networkId}/set-home-ip`)
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(typeof res.body.data.homePublicIp).toBe('string');
+      expect(res.body.data.homePublicIp.length).toBeGreaterThan(0);
+      // 1 (create) + 1 (PATCH isp) + 1 (set-home-ip) = 3
+      expect(res.body.data.version).toBe(3);
+    });
+
+    it('returns 404 NETWORK_002 when target network does not exist', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/networks/00000000-0000-0000-0000-000000000000/set-home-ip')
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NETWORK_002');
+    });
+  });
+
   describe('DELETE /api/v1/networks/:id', () => {
     it('returns 200 and removes network', async () => {
       const res = await request(app.getHttpServer())

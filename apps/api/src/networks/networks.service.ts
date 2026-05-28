@@ -98,6 +98,27 @@ export class NetworksService {
     return detail;
   }
 
+  async setHomeIpFromRequest(
+    userId: string,
+    networkId: string,
+    requestIp: string,
+  ): Promise<NetworkDetail> {
+    const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
+    if (!network) {
+      throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    return this.updateNetwork(userId, networkId, {
+      baseVersion: network.version,
+      changes: [
+        {
+          field: 'homePublicIp',
+          oldValue: network.homePublicIp,
+          newValue: requestIp,
+        },
+      ],
+    });
+  }
+
   async deleteNetwork(userId: string, networkId: string): Promise<void> {
     const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
     if (!network) {

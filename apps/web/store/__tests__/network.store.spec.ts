@@ -12,11 +12,13 @@ const jestEsm = jest as typeof jest & {
 };
 
 const mockGet = jest.fn();
+const mockPost = jest.fn();
 
 jestEsm.unstable_mockModule('axios', () => ({
   default: {
     create: jest.fn(() => ({
       get: mockGet,
+      post: mockPost,
       interceptors: { response: { use: jest.fn() } },
     })),
     isAxiosError: jest.fn(() => false),
@@ -49,12 +51,15 @@ function resetStore(): void {
     isLoading: false,
     loaded: false,
     error: null,
+    savingHomeIp: false,
+    setHomeIpError: null,
   });
 }
 
 describe('network.store', () => {
   beforeEach(() => {
     mockGet.mockReset();
+    mockPost.mockReset();
     resetStore();
   });
 
@@ -160,6 +165,90 @@ describe('network.store', () => {
       useNetworkStore.getState().setNetwork(null);
 
       expect(useNetworkStore.getState().network).toBeNull();
+    });
+  });
+
+  describe('setHomeIp()', () => {
+    it('POSTs /networks/:id/set-home-ip and updates `network` with the returned summary (stripping homePublicIp)', async () => {
+      useNetworkStore.setState({ network: freshSummary({ id: 'net-7' }) });
+      mockPost.mockResolvedValueOnce({
+        data: {
+          success: true,
+          data: { ...freshSummary({ id: 'net-7', version: 2 }), homePublicIp: '203.0.113.42' },
+        },
+      });
+
+      await useNetworkStore.getState().setHomeIp();
+      const state = useNetworkStore.getState();
+
+      expect(mockPost).toHaveBeenCalledWith('/networks/net-7/set-home-ip');
+      expect(state.network).toEqual(freshSummary({ id: 'net-7', version: 2 }));
+      expect(state.network as unknown as { homePublicIp?: string }).not.toHaveProperty(
+        'homePublicIp',
+      );
+      expect(state.savingHomeIp).toBe(false);
+      expect(state.setHomeIpError).toBeNull();
+    });
+
+    it('is a no-op when there is no cached network (pre-onboarding)', async () => {
+      useNetworkStore.setState({ network: null });
+
+      await useNetworkStore.getState().setHomeIp();
+
+      expect(mockPost).not.toHaveBeenCalled();
+    });
+
+    it('flips savingHomeIp true mid-flight and false after success', async () => {
+      useNetworkStore.setState({ network: freshSummary() });
+      let midFlight: boolean | undefined;
+      mockPost.mockImplementationOnce(() => {
+        midFlight = useNetworkStore.getState().savingHomeIp;
+        return Promise.resolve({
+          data: { success: true, data: { ...freshSummary({ version: 2 }), homePublicIp: '1.2.3.4' } },
+        });
+      });
+
+      await useNetworkStore.getState().setHomeIp();
+
+      expect(midFlight).toBe(true);
+      expect(useNetworkStore.getState().savingHomeIp).toBe(false);
+    });
+
+    it('is a no-op while a previous setHomeIp is in flight', async () => {
+      useNetworkStore.setState({ network: freshSummary() });
+      mockPost.mockReturnValueOnce(
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                data: {
+                  success: true,
+                  data: { ...freshSummary({ version: 2 }), homePublicIp: '1.2.3.4' },
+                },
+              }),
+            5,
+          );
+        }),
+      );
+
+      const first = useNetworkStore.getState().setHomeIp();
+      await useNetworkStore.getState().setHomeIp(); // should short-circuit
+      await first;
+
+      expect(mockPost).toHaveBeenCalledTimes(1);
+    });
+
+    it('records setHomeIpError on failure and leaves network unchanged', async () => {
+      const original = freshSummary({ id: 'net-7' });
+      useNetworkStore.setState({ network: original });
+      mockPost.mockRejectedValueOnce(new Error('boom'));
+
+      await useNetworkStore.getState().setHomeIp();
+      const state = useNetworkStore.getState();
+
+      expect(state.network).toEqual(original);
+      expect(state.savingHomeIp).toBe(false);
+      expect(state.setHomeIpError).toBe('Failed to save home IP');
     });
   });
 });

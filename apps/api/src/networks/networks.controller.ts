@@ -9,7 +9,9 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { CreateNetworkDto, PatchNetworkDto } from './networks.dto';
@@ -51,6 +53,18 @@ export class NetworksController {
     @Body() patch: PatchNetworkDto,
   ) {
     const data = await this.networksService.updateNetwork(user.id, id, patch);
+    return { success: true, data, timestamp: new Date().toISOString() };
+  }
+
+  @Post(':id/set-home-ip')
+  @HttpCode(HttpStatus.OK)
+  async setHomeIp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0';
+    const data = await this.networksService.setHomeIpFromRequest(user.id, id, ip);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
