@@ -42,6 +42,7 @@ interface AiStore {
   clearConversation: () => Promise<void>;
   loadUsage: () => Promise<void>;
   sendMessage: (content: string) => void;
+  retryLastMessage: () => void;
 }
 
 function tempId(): string {
@@ -160,6 +161,32 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     websocketService.emit(WS_EVENTS.AI_MESSAGE, {
       content,
+      conversationId,
+    });
+  },
+
+  retryLastMessage: () => {
+    const { isStreaming, conversationId, messages } = get();
+    if (isStreaming) return;
+
+    let lastUserContent: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserContent = messages[i].content;
+        break;
+      }
+    }
+    if (!lastUserContent) return;
+
+    set((state) => ({
+      messages: state.messages.filter(
+        (m) => !(m.role === 'assistant' && m.streaming && m.content === ''),
+      ),
+      error: null,
+    }));
+    get().startAssistantMessage();
+    websocketService.emit(WS_EVENTS.AI_MESSAGE, {
+      content: lastUserContent,
       conversationId,
     });
   },
