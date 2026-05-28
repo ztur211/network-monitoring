@@ -8,6 +8,7 @@ import { NodeScopeException } from '../../common/filters/global-exception.filter
 const makeNetwork = (overrides = {}) => ({
   id: 'net-1',
   userId: 'user-1',
+  propertyId: null,
   name: 'Home',
   homeAddress: null,
   homeLatitude: null,

@@ -91,13 +91,13 @@ describe('OnboardingService', () => {
   });
 
   describe('handleTurn', () => {
-    it('throws ONBOARD_001 ALREADY_COMPLETE when a network exists AND no in-flight state', async () => {
+    it('throws ONBOARD_002 ONBOARDING_ALREADY_COMPLETE when a network exists AND no in-flight state', async () => {
       mockNetworksRepo.countByUserId.mockResolvedValue(1);
       mockRedis.get.mockResolvedValue(null); // no redis state — user has truly completed before
 
       await expect(
         service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' }),
-      ).rejects.toThrow(NodeScopeException);
+      ).rejects.toMatchObject({ code: 'ONBOARD_002' });
     });
 
     it('proceeds mid-flow even after SaveNetwork created a Network row (regression: 2026-05-21 smoke)', async () => {
