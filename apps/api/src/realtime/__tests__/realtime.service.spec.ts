@@ -94,13 +94,11 @@ describe('RealtimeGateway — service interface', () => {
 
   describe('pushToTier', () => {
     it('emits to tier:{tier} room', () => {
-      gateway.pushToTier('PERSONAL_FREE', 'v1:connection:status', { status: 'connected', message: null });
+      const payload = { bandwidthDown: 100, bandwidthUp: 20, latency: 15, connectionQuality: 'good', timestamp: '2026-05-28T00:00:00.000Z' };
+      gateway.pushToTier('PERSONAL_FREE', 'v1:metrics:update', payload);
 
       expect(mockServer.to).toHaveBeenCalledWith('tier:PERSONAL_FREE');
-      expect(mockRoom.emit).toHaveBeenCalledWith('v1:connection:status', {
-        status: 'connected',
-        message: null,
-      });
+      expect(mockRoom.emit).toHaveBeenCalledWith('v1:metrics:update', payload);
     });
   });
 
