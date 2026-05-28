@@ -62,10 +62,10 @@ describe('AiRateLimiterService', () => {
         .rejects.toMatchObject({ code: 'AI_003' });
     });
 
-    it('throws AI_001 when per-IP hourly limit is reached', async () => {
+    it('throws GEN_004 when per-IP hourly limit is reached', async () => {
       mockRedis.mget.mockResolvedValue(['5', '10', '50000', '50']);
       await expect(service.checkRateLimits('user-1', '127.0.0.1'))
-        .rejects.toMatchObject({ code: 'AI_001' });
+        .rejects.toMatchObject({ code: 'GEN_004' });
     });
   });
 

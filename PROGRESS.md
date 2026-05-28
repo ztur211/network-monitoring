@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-19
+Last updated: 2026-05-28
 
 ---
 
@@ -1441,3 +1441,15 @@ Tests: device.store.updateDevice is already covered by `77069ef`'s spec — the 
 | API Integration / E2E | not re-run in this session (no docker access) — 2 new networks.controller.e2e specs land here for next local run |
 | Web bundle entry chunk | deferred to Windows; lightningcss linux-x64-gnu binding missing in the sandbox. No new heavy deps since `412 KB` baseline on 2026-05-16 |
 | Manual browser smoke | still outstanding from Phase 13. User explicitly deferred during this polish session. |
+
+### Docs audit + per-IP AI rate-limit code split (this commit, 2026-05-28)
+
+Cross-doc + docs-vs-code audit across CLAUDE.md, PRD, API Design, DB Schema, and PROGRESS.md. Three parallel scan agents surfaced findings, fixes applied in three batches.
+
+**Batch A — doc-only consistency.** `MULTI_PROPERTY` added to both AccountTier blocks in `docs/DB_Schema.md` (Prisma had it; doc didn't). DeviceMetric §5 picked up the `deviceId String?` + `tag String?` + per-device-time index that Phase 13 added but the canonical block hadn't. Network header de-Phase'd (it's MVP) and added to the §1 summary table. `docs/PRD.md` `AI_MODEL` corrected to `claude-sonnet-4-6` (was stale `claude-sonnet-4-20250514`). WS event counts updated 17 → 20 in `CLAUDE.md` and `docs/API_Design.md` header to match the Doc Control section. AI_004 reworded in three places to reflect that it's only thrown when fallback context assembly itself fails — normal Claude API outages return 200 with `providerStatus: 'unavailable'`; the response shape doc now lists `providerStatus`. PROGRESS.md "Last updated" header bumped from 2026-05-19 → 2026-05-28.
+
+**Batch B — password reset endpoint.** Verified against `node_modules/better-auth/dist/api/routes/password.mjs:20` that Better Auth 1.x's canonical route is `/request-password-reset`; `/forget-password` is an alias (rate limiter honors both). `docs/API_Design.md` had it backwards in three spots (§2.5 rate-limit table, §4 endpoint heading, the "Better Auth's chosen path" note). Canonical name applied everywhere; alias relationship now documented. `apps/api/src/auth/better-auth.config.ts` comment also updated to reference the canonical route.
+
+**Batch C — `set-home-ip` docs + GEN_004 split.** `docs/API_Design.md` §14.6 added: empty body, returns `NetworkDetail`, emits same WS events as a PATCH-with-IP-change. Per-IP AI rate limit was throwing `AI_001 AI_RATE_LIMIT_HOURLY` — same code as the per-user hourly check, ambiguous. Swapped to `GEN_004 RATE_LIMITED` to separate anti-abuse from per-user quota; matches Better Auth's own per-IP convention (`docs/API_Design.md` lines 430, 483). Spec test renamed and re-asserted. `docs/PRD.md` §6.5.2 rate-limit list reordered to match code execution (hourly → daily → monthly tokens → per-IP) with the GEN_004 vs AI_001 distinction annotated.
+
+Tests: `npm run test:unit --workspace=apps/api` → **16/16 suites, 213/213 tests** pass after the GEN_004 rename. Tracked changes (4 files): `PROGRESS.md`, `ai-rate-limiter.service.ts`, `ai-rate-limiter.service.spec.ts`, `better-auth.config.ts`. The `docs/**` edits are local-only (gitignored per CLAUDE.md).
