@@ -70,7 +70,7 @@ export function MapView({
   const [livePosition, setLivePosition] = useState<[number, number] | null>(null);
 
   const { devices, upsertDevice } = useDeviceStore();
-  const { mapCenter, mapZoom, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
+  const { mapCenter, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
     useUiStore();
   const user = useAuthStore((s) => s.user);
   const metrics = useRealtimeStore((s) => s.metrics);
