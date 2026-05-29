@@ -49,6 +49,18 @@ function tempId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * Returns the content of the most recent user message, or null when the
+ * transcript has none. Extracted from retryLastMessage so the reverse scan
+ * is independently testable.
+ */
+export function findLastUserContent(messages: AiMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].content;
+  }
+  return null;
+}
+
 export const useAiStore = create<AiStore>((set, get) => ({
   messages: [],
   conversationId: null,
@@ -169,13 +181,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { isStreaming, conversationId, messages } = get();
     if (isStreaming) return;
 
-    let lastUserContent: string | null = null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        lastUserContent = messages[i].content;
-        break;
-      }
-    }
+    const lastUserContent = findLastUserContent(messages);
     if (!lastUserContent) return;
 
     set((state) => ({
