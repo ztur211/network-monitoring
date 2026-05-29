@@ -12,6 +12,14 @@ interface OpenAiResponse {
   usage: { prompt_tokens: number; completion_tokens: number };
 }
 
+function buildMessages(payload: AiCompletionPayload): OpenAiMessage[] {
+  return [
+    { role: 'system', content: payload.systemPrompt },
+    ...payload.history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: payload.userMessage },
+  ];
+}
+
 export class OpenAICompatibleAdapter implements AiProviderAdapter {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -24,11 +32,7 @@ export class OpenAICompatibleAdapter implements AiProviderAdapter {
   }
 
   async complete(payload: AiCompletionPayload): Promise<AiResponse> {
-    const messages: OpenAiMessage[] = [
-      { role: 'system', content: payload.systemPrompt },
-      ...payload.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: payload.userMessage },
-    ];
+    const messages = buildMessages(payload);
 
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -55,11 +59,7 @@ export class OpenAICompatibleAdapter implements AiProviderAdapter {
     payload: AiCompletionPayload,
     onChunk: (token: string) => void,
   ): Promise<AiResponse> {
-    const messages: OpenAiMessage[] = [
-      { role: 'system', content: payload.systemPrompt },
-      ...payload.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: payload.userMessage },
-    ];
+    const messages = buildMessages(payload);
 
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
