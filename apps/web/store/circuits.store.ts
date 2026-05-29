@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { CircuitDto } from '@nodescope/shared';
 import { api } from '../lib/api.service';
 import { drainOfflineQueue } from './offline-queue';
+import { upsertById } from './upsert-by-id';
+import { buildVersionedChangeset } from './version-changeset';
 
 export interface CreateCircuitInput {
   ispName: string;
@@ -62,13 +64,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
   offlineQueue: [],
 
   upsertCircuit: (circuit) =>
-    set((state) => {
-      const idx = state.circuits.findIndex((c) => c.id === circuit.id);
-      if (idx === -1) return { circuits: [...state.circuits, circuit] };
-      const next = [...state.circuits];
-      next[idx] = circuit;
-      return { circuits: next };
-    }),
+    set((state) => ({ circuits: upsertById(state.circuits, circuit) })),
 
   removeCircuit: (circuitId) =>
     set((state) => ({ circuits: state.circuits.filter((c) => c.id !== circuitId) })),
@@ -150,14 +146,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
   },
 
   updateCircuit: async (circuitId, original, input) => {
-    const changes: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
-    for (const [field, newValue] of Object.entries(input)) {
-      const oldValue = original[field as keyof CircuitDto];
-      if (oldValue !== newValue) {
-        changes.push({ field, oldValue, newValue });
-      }
-    }
-
+    const changes = buildVersionedChangeset(original, input);
     if (changes.length === 0) return original;
 
     const optimistic: CircuitDto = {
