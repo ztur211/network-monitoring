@@ -14,7 +14,7 @@
     "test:e2e": "npm run test:e2e --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "postinstall": "patch-package && prisma generate --schema=apps/api/prisma/schema.prisma"
+    "postinstall": "patch-package && prisma generate --schema=apps/api/prisma/schema.prisma && npm run build --workspace=packages/shared"
   },
   "engines": {
     "node": ">=20.0.0",
