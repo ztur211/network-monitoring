@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { CircuitDto } from '@nodescope/shared';
 import { api } from '../lib/api.service';
+import { drainOfflineQueue } from './offline-queue';
 
 export interface CreateCircuitInput {
   ispName: string;
@@ -215,23 +216,16 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
     }
   },
 
-  flushOfflineQueue: async () => {
-    const ops = get().offlineQueue;
-    if (ops.length === 0) return;
-    set({ offlineQueue: [] });
-
-    for (const op of ops) {
-      try {
-        if (op.type === 'create') {
-          await get().createCircuit(op.input);
-        } else if (op.type === 'update') {
-          await get().updateCircuit(op.circuitId, op.previousCircuit, op.input);
-        } else if (op.type === 'delete') {
-          await get().deleteCircuit(op.circuitId);
+  flushOfflineQueue: () =>
+    drainOfflineQueue(
+      () => get().offlineQueue,
+      () => set({ offlineQueue: [] }),
+      (op) => {
+        if (op.type === 'create') return get().createCircuit(op.input);
+        if (op.type === 'update') {
+          return get().updateCircuit(op.circuitId, op.previousCircuit, op.input);
         }
-      } catch {
-        // Individual op failed; it re-queues itself
-      }
-    }
-  },
+        return get().deleteCircuit(op.circuitId);
+      },
+    ),
 }));
