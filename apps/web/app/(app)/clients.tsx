@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { api } from '../../lib/api.service';
 import { useRealtimeStore } from '../../store/realtime.store';
 import { Timestamp } from '../../components/Timestamp';
 import { StaleDataOverlay } from '../../components/StaleDataOverlay';
+import { ListScreenStatus } from '../../components/ListScreenStatus';
 
 interface ClientsData {
   currentDevice: {
@@ -47,26 +48,16 @@ export default function ClientsScreen() {
   }, []);
 
   if (screenState === 'loading') {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ListScreenStatus state="loading" />;
   }
 
   if (screenState === 'error') {
     return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
-        <Text className="text-red-500 dark:text-red-400 text-center mb-4">
-          Failed to load client information.
-        </Text>
-        <TouchableOpacity
-          onPress={() => void load()}
-          className="bg-blue-600 px-6 py-2 rounded-lg"
-        >
-          <Text className="text-white font-medium">Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <ListScreenStatus
+        state="error"
+        error="Failed to load client information."
+        onRetry={() => void load()}
+      />
     );
   }
 
