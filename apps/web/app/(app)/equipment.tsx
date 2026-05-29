@@ -5,13 +5,13 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
 import { DeviceForm } from '../../components/DeviceForm';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
 import { Timestamp } from '../../components/Timestamp';
+import { ListScreenStatus } from '../../components/ListScreenStatus';
 import { formatDeviceCategory } from '../../lib/format-category';
 
 const CATEGORY_GROUPS: { label: string; values: DeviceCategory[] }[] = [
@@ -118,25 +118,11 @@ export default function EquipmentScreen() {
   );
 
   if (isLoading && devices.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ListScreenStatus state="loading" />;
   }
 
   if (error && devices.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
-        <Text className="text-red-500 dark:text-red-400 text-center mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => void loadDevices()}
-          className="bg-blue-600 px-6 py-2 rounded-lg"
-        >
-          <Text className="text-white font-medium">Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ListScreenStatus state="error" error={error} onRetry={() => void loadDevices()} />;
   }
 
   return (
