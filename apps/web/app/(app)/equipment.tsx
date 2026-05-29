@@ -12,6 +12,7 @@ import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../stor
 import { DeviceForm } from '../../components/DeviceForm';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
 import { Timestamp } from '../../components/Timestamp';
+import { formatDeviceCategory } from '../../lib/format-category';
 
 const CATEGORY_GROUPS: { label: string; values: DeviceCategory[] }[] = [
   { label: 'All', values: [] },
@@ -294,7 +295,7 @@ function DeviceCard({
             {device.name}
           </Text>
           <Text className="text-xs text-gray-500 dark:text-gray-400">
-            {formatCategory(device.category)}
+            {formatDeviceCategory(device.category)}
             {device.floor !== null
               ? ` · ${device.floorLabel ?? (device.floor === 0 ? 'Ground' : `Floor ${device.floor}`)}`
               : ''}
@@ -329,14 +330,4 @@ function DeviceCard({
   );
 }
 
-function formatCategory(category: string): string {
-  const labels: Record<string, string> = {
-    ROUTER: 'Router', SWITCH: 'Switch', ACCESS_POINT: 'Access Point', FIREWALL: 'Firewall',
-    MODEM: 'Modem', ONT: 'ONT', RAD: 'RAD', DSLAM: 'DSLAM',
-    FIBER_MEDIA_CONVERTER: 'Fiber Converter', WIFI_EXTENDER: 'Wi-Fi Extender',
-    WIRELESS_BRIDGE: 'Wireless Bridge', SERVER_RACK: 'Server Rack', PATCH_PANEL: 'Patch Panel',
-    UPS: 'UPS', COMPUTER: 'Computer', PHONE: 'Phone', TABLET: 'Tablet',
-    PRINTER: 'Printer', IOT_DEVICE: 'IoT Device', CUSTOM: 'Custom',
-  };
-  return labels[category] ?? category;
-}
+// Category display labels now live in lib/format-category.ts (formatDeviceCategory).
