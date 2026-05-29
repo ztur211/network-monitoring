@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { CreateDeviceInput, UpdateDeviceInput } from '../store/device.store';
+import { formatDeviceCategory } from '../lib/format-category';
 
 const DEVICE_CATEGORIES: DeviceCategory[] = [
   'ROUTER', 'SWITCH', 'ACCESS_POINT', 'FIREWALL', 'MODEM', 'ONT', 'RAD', 'DSLAM',
@@ -192,7 +193,7 @@ export function DeviceForm({
                             value === cat ? 'text-white font-medium' : 'text-gray-600 dark:text-gray-400'
                           }`}
                         >
-                          {formatCategory(cat)}
+                          {formatDeviceCategory(cat)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -365,30 +366,4 @@ function FormField({
       {error && <Text className="text-red-500 text-xs mt-1">{error}</Text>}
     </View>
   );
-}
-
-function formatCategory(category: string): string {
-  const labels: Record<string, string> = {
-    ROUTER: 'Router',
-    SWITCH: 'Switch',
-    ACCESS_POINT: 'Access Point',
-    FIREWALL: 'Firewall',
-    MODEM: 'Modem',
-    ONT: 'ONT',
-    RAD: 'RAD',
-    DSLAM: 'DSLAM',
-    FIBER_MEDIA_CONVERTER: 'Fiber Converter',
-    WIFI_EXTENDER: 'Wi-Fi Extender',
-    WIRELESS_BRIDGE: 'Wireless Bridge',
-    SERVER_RACK: 'Server Rack',
-    PATCH_PANEL: 'Patch Panel',
-    UPS: 'UPS',
-    COMPUTER: 'Computer',
-    PHONE: 'Phone',
-    TABLET: 'Tablet',
-    PRINTER: 'Printer',
-    IOT_DEVICE: 'IoT Device',
-    CUSTOM: 'Custom',
-  };
-  return labels[category] ?? category;
 }
