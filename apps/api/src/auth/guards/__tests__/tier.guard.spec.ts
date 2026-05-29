@@ -95,14 +95,23 @@ describe('TierGuard', () => {
     });
   });
 
-  describe('unknown required tier — fail-open behavior', () => {
-    // The guard maps unknown tier names to rank 0 via `?? 0`, so an unrecognized
-    // required tier becomes `userRank < 0` — never true, every caller passes.
-    // This is fail-open today; if the policy ever changes to fail-closed (e.g.
-    // throw on unknown required tier), this spec must flip too.
-    it('allows any user through when the required tier is not in TIER_ORDER', () => {
+  describe('unknown required tier — fail-closed behavior', () => {
+    // An unrecognized REQUIRED tier name (e.g. a typo in @RequireTier) must
+    // DENY access rather than silently grant it. Previously the guard mapped
+    // unknown names to rank 0 via `?? 0`, making `userRank < 0` never true, so
+    // every caller passed (fail-open). The guard now fails closed.
+    it('denies access (throws) when the required tier is not in TIER_ORDER', () => {
       reflector.getAllAndOverride.mockReturnValueOnce('NOT_A_REAL_TIER');
-      expect(guard.canActivate(buildContext({ tier: 'PERSONAL_FREE' }))).toBe(true);
+      expect(() => guard.canActivate(buildContext({ tier: 'PERSONAL_FREE' }))).toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('denies even the highest known user tier when the required tier is unknown', () => {
+      reflector.getAllAndOverride.mockReturnValueOnce('TYPO_TIER');
+      expect(() => guard.canActivate(buildContext({ tier: 'ENTERPRISE' }))).toThrow(
+        ForbiddenException,
+      );
     });
   });
 });

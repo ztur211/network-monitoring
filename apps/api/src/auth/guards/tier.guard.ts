@@ -21,10 +21,18 @@ export class TierGuard implements CanActivate {
 
     if (!requiredTier) return true;
 
+    const requiredRank = TIER_ORDER[requiredTier];
+    // Fail closed: an unrecognized required tier name (e.g. a typo in
+    // @RequireTier) denies access rather than silently granting it.
+    if (requiredRank === undefined) {
+      throw new ForbiddenException({ code: 'AUTH_003', message: 'INSUFFICIENT_TIER' });
+    }
+
     const request = context.switchToHttp().getRequest();
     const userTier: string = request.user?.tier ?? 'PERSONAL_FREE';
+    const userRank = TIER_ORDER[userTier] ?? 0;
 
-    if ((TIER_ORDER[userTier] ?? 0) < (TIER_ORDER[requiredTier] ?? 0)) {
+    if (userRank < requiredRank) {
       throw new ForbiddenException({ code: 'AUTH_003', message: 'INSUFFICIENT_TIER' });
     }
 
