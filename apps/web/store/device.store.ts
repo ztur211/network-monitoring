@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DeviceDto } from '@nodescope/shared';
 import { api } from '../lib/api.service';
+import { drainOfflineQueue } from './offline-queue';
 
 export interface CreateDeviceInput {
   name: string;
@@ -191,23 +192,16 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
     }
   },
 
-  flushOfflineQueue: async () => {
-    const ops = get().offlineQueue;
-    if (ops.length === 0) return;
-    set({ offlineQueue: [] });
-
-    for (const op of ops) {
-      try {
-        if (op.type === 'create') {
-          await get().createDevice(op.input);
-        } else if (op.type === 'update') {
-          await get().updateDevice(op.deviceId, op.previousDevice, op.input);
-        } else if (op.type === 'delete') {
-          await get().deleteDevice(op.deviceId);
+  flushOfflineQueue: () =>
+    drainOfflineQueue(
+      () => get().offlineQueue,
+      () => set({ offlineQueue: [] }),
+      (op) => {
+        if (op.type === 'create') return get().createDevice(op.input);
+        if (op.type === 'update') {
+          return get().updateDevice(op.deviceId, op.previousDevice, op.input);
         }
-      } catch {
-        // Individual op failed; it re-queues itself
-      }
-    }
-  },
+        return get().deleteDevice(op.deviceId);
+      },
+    ),
 }));
