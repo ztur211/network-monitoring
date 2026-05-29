@@ -30,7 +30,7 @@ jestEsm.unstable_mockModule('axios', () => ({
   },
 }));
 
-const { useAiStore } = await import('../ai.store');
+const { useAiStore, findLastUserContent } = await import('../ai.store');
 const { websocketService } = await import('../../lib/websocket.service');
 
 const emitSpy = jest.spyOn(websocketService, 'emit').mockImplementation(() => undefined);
@@ -396,6 +396,37 @@ describe('ai.store', () => {
       // Error stays — there's nothing to retry, so clearing it would hide
       // the user's reason to act
       expect(useAiStore.getState().error).toBe('something');
+    });
+  });
+
+  describe('findLastUserContent (pure helper)', () => {
+    const msg = (role: 'user' | 'assistant', content: string) => ({
+      id: content,
+      role,
+      content,
+      streaming: false,
+      timestamp: '',
+      usageWarning: null,
+      providerStatus: 'ok' as const,
+    });
+
+    it('returns the content of the most recent user message', () => {
+      expect(
+        findLastUserContent([
+          msg('user', 'first'),
+          msg('assistant', 'reply'),
+          msg('user', 'second'),
+          msg('assistant', 'reply2'),
+        ]),
+      ).toBe('second');
+    });
+
+    it('returns null when there are no user messages', () => {
+      expect(findLastUserContent([msg('assistant', 'only assistant')])).toBeNull();
+    });
+
+    it('returns null for an empty transcript', () => {
+      expect(findLastUserContent([])).toBeNull();
     });
   });
 });
