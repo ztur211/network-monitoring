@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { DeviceMobility } from '@prisma/client';
 import { OnboardingService } from '../onboarding.service';
 import { NetworksService } from '../../networks/networks.service';
 import { NetworksRepository } from '../../networks/networks.repository';
@@ -10,7 +9,6 @@ import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { RedisService } from '../../redis/redis.service';
 import { GEOCODING_PROVIDER } from '../../map/geocoding/geocoding.interface';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
-import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 const mockRedis = {
   get: jest.fn(),

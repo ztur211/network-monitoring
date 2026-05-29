@@ -15,7 +15,6 @@ import {
   ValidateNested,
   ArrayMinSize,
   ArrayMaxSize,
-  IsNumber,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { DeviceCategory } from '@prisma/client';
