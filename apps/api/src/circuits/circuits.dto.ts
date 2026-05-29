@@ -1,5 +1,4 @@
 import {
-  Allow,
   IsArray,
   IsInt,
   IsNumber,
@@ -15,6 +14,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 
 export const CIRCUIT_WRITABLE_FIELDS = [
   'ispName',
@@ -58,17 +58,6 @@ export class CreateCircuitDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
-}
-
-class ChangesetChangeDto {
-  @IsString()
-  field: string;
-
-  @Allow()
-  oldValue: unknown;
-
-  @Allow()
-  newValue: unknown;
 }
 
 export class PatchCircuitDto {
