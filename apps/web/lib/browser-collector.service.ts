@@ -138,9 +138,10 @@ class BrowserCollectorService {
 export const browserCollectorService = new BrowserCollectorService();
 
 export function subscribeToMetricsUpdates(): () => void {
-  const handler = (data: { metrics: import('@nodescope/shared').MetricsDto; sourceTypes: string[] }) => {
+  return websocketService.subscribe<{
+    metrics: import('@nodescope/shared').MetricsDto;
+    sourceTypes: string[];
+  }>(WS_EVENTS.METRICS_UPDATE, (data) => {
     useRealtimeStore.getState().setMetrics(data.metrics, data.sourceTypes);
-  };
-  websocketService.on(WS_EVENTS.METRICS_UPDATE, handler);
-  return () => websocketService.off(WS_EVENTS.METRICS_UPDATE, handler as (...args: unknown[]) => void);
+  });
 }

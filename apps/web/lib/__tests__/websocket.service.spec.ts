@@ -183,6 +183,19 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('subscribe() registers a handler and the returned unsubscribe removes it', () => {
+    const handler = jest.fn();
+    const unsubscribe = websocketService.subscribe('v1:device:updated', handler);
+
+    websocketService.connect();
+    mockSocket._emit('v1:device:updated', { device: { id: 'd1' } });
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    mockSocket._emit('v1:device:updated', { device: { id: 'd2' } });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('subscriptions survive disconnect → connect (re-attach to the new socket)', () => {
     const handler = jest.fn();
     websocketService.on('v1:device:updated', handler);

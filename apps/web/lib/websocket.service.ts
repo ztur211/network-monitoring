@@ -132,6 +132,16 @@ class WebSocketService {
     }
   }
 
+  /**
+   * Registers `handler` for `event` and returns an unsubscribe function that
+   * removes exactly that handler. Wraps the on/return-off-with-cast dance the
+   * feature subscribe* helpers all repeat.
+   */
+  subscribe<T = unknown>(event: string, handler: (data: T) => void): () => void {
+    this.on(event, handler);
+    return () => this.off(event, handler as Listener);
+  }
+
   emit(event: string, payload?: unknown): void {
     this.socket?.emit(event, payload);
   }
