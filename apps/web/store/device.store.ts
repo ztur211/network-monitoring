@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { DeviceDto } from '@nodescope/shared';
 import { api } from '../lib/api.service';
 import { drainOfflineQueue } from './offline-queue';
+import { upsertById } from './upsert-by-id';
+import { buildVersionedChangeset } from './version-changeset';
 
 export interface CreateDeviceInput {
   name: string;
@@ -66,13 +68,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   setError: (error) => set({ error }),
 
   upsertDevice: (device) =>
-    set((state) => {
-      const idx = state.devices.findIndex((d) => d.id === device.id);
-      if (idx === -1) return { devices: [...state.devices, device] };
-      const next = [...state.devices];
-      next[idx] = device;
-      return { devices: next };
-    }),
+    set((state) => ({ devices: upsertById(state.devices, device) })),
 
   removeDevice: (deviceId) =>
     set((state) => ({ devices: state.devices.filter((d) => d.id !== deviceId) })),
@@ -129,14 +125,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   },
 
   updateDevice: async (deviceId, originalDevice, input) => {
-    const changes: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
-    for (const [field, newValue] of Object.entries(input)) {
-      const oldValue = originalDevice[field as keyof DeviceDto];
-      if (oldValue !== newValue) {
-        changes.push({ field, oldValue, newValue });
-      }
-    }
-
+    const changes = buildVersionedChangeset(originalDevice, input);
     if (changes.length === 0) return originalDevice;
 
     const optimistic: DeviceDto = {
