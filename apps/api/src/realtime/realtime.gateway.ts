@@ -36,6 +36,15 @@ interface MetricsSubmitPayload {
   tag?: string;
 }
 
+/**
+ * Socket.io types `handshake.address` loosely; coerce it to a plain string,
+ * falling back to '' when it is absent or non-string (matches checkOnHome's
+ * expectation of a string IP).
+ */
+function extractRequestIp(address: unknown): string {
+  return typeof address === 'string' ? address : '';
+}
+
 @Injectable()
 @WebSocketGateway({
   cors: {
@@ -102,8 +111,7 @@ export class RealtimeGateway
 
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
 
-    const requestIp =
-      typeof client.handshake.address === 'string' ? client.handshake.address : '';
+    const requestIp = extractRequestIp(client.handshake.address);
     const onHomeResult = await this.networksService.checkOnHome(userId, requestIp);
     client.data.onHome = onHomeResult.onHome;
     this.pushToUser(userId, WS_EVENTS.NETWORK_ON_HOME_CHANGED, onHomeResult);
@@ -146,15 +154,19 @@ export class RealtimeGateway
   }
 
   pushToUser(userId: string, event: string, payload: unknown): void {
-    this.server.to(`user:${userId}`).emit(event, payload);
+    this.emitToRoom(`user:${userId}`, event, payload);
   }
 
   pushToTier(tier: AccountTier, event: string, payload: unknown): void {
-    this.server.to(`tier:${tier}`).emit(event, payload);
+    this.emitToRoom(`tier:${tier}`, event, payload);
   }
 
   pushToOrg(orgId: string, event: string, payload: unknown): void {
-    this.server.to(`org:${orgId}`).emit(event, payload);
+    this.emitToRoom(`org:${orgId}`, event, payload);
+  }
+
+  private emitToRoom(room: string, event: string, payload: unknown): void {
+    this.server.to(room).emit(event, payload);
   }
 
   async getConnectionStatus(userId: string): Promise<ConnectionStatus> {
@@ -165,8 +177,7 @@ export class RealtimeGateway
   async recomputeOnHomeForUser(userId: string): Promise<void> {
     const sockets = await this.server.in(`user:${userId}`).fetchSockets();
     for (const socket of sockets) {
-      const requestIp =
-        typeof socket.handshake.address === 'string' ? socket.handshake.address : '';
+      const requestIp = extractRequestIp(socket.handshake.address);
       const result = await this.networksService.checkOnHome(userId, requestIp);
       socket.data.onHome = result.onHome;
       socket.emit(WS_EVENTS.NETWORK_ON_HOME_CHANGED, result);
