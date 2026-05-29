@@ -34,10 +34,3 @@ export interface CreateNetworkDto {
   downMbps?: number;
   upMbps?: number;
 }
-
-export interface BrowserDeviceInfo {
-  browserDeviceId: string;
-  name: string;
-  mobility: 'HOME_ONLY' | 'ROAMS' | 'UNKNOWN';
-  networkId?: string;
-}
