@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
 ---
 
@@ -1479,3 +1479,29 @@ The three findings deferred above, tackled in one batch.
 Verification: `prisma validate` clean, `tsc --noEmit` clean for both apps/api and apps/web, `npm run test:unit --workspace=apps/api` → **16/16 suites, 213/213 tests** pass. Migration NOT applied locally (no docker access in this sandbox); next `prisma migrate dev` against a live DB picks it up automatically — purely additive so safe to deploy without coordination.
 
 Tracked changes (6 files): `PROGRESS.md`, `schema.prisma`, the new `migration.sql`, `onboarding.service.ts`, `onboarding.service.spec.ts`, `networks.service.spec.ts`. Local-only edits (gitignored): `CLAUDE.md` reserved-fields section + "What Is Not in MVP" line + PR checklist; `docs/API_Design.md` error table + onboarding endpoint; `docs/DB_Schema.md` `Network.propertyId` comment + DeviceMetric index sort.
+
+### Guard unit spec backfill — tier.guard + role.guard (this commit, 2026-05-29)
+
+Audit pass found three guards under `apps/api/src/auth/guards/` and zero dedicated spec files. AuthGuard is effectively covered indirectly (10+ e2e specs assert `AUTH_002 SESSION_INVALID` and `@Public()` passthrough is exercised by every health/bandwidth/auth controller test), but `TierGuard` and `RoleGuard` had **no test reaching their failure paths anywhere in the suite** — `AUTH_003 INSUFFICIENT_TIER` and `AUTH_004 INSUFFICIENT_ROLE` were grep-clean across the entire test tree.
+
+Both guards are registered globally in `app.module.ts:77-80` but `@RequireTier` and `@RequireRole` are exported and never applied to any production endpoint — every real request short-circuits at the "no metadata → return true" branch. So the failure paths are dead code today, but they ship to prod, and the moment billing lands (post-MVP) and `@RequireTier` gets applied for the first time, the first real exercise of the comparison logic would be in production with zero regression net. The `TIER_ORDER` ranking, the `?? 0` fallbacks on both sides of the `<` comparison, and the AUTH_003/004 throw shapes are exactly the kind of code that drifts under refactor without anyone noticing.
+
+**Spec config change.** `jest.unit.config.ts` testRegex was `.*\\.(service|state-machine)\\.spec\\.ts$` — would have silently skipped a `*.guard.spec.ts` file. Added `guard` to the alternation: `.*\\.(service|state-machine|guard)\\.spec\\.ts$`. Regex change is additive: every previously-matched file still matches; only newly-matched files are the two new guard specs. No risk to existing suite discovery.
+
+**`tier.guard.spec.ts` — 10 specs across 4 groups:**
+- *No `@RequireTier` metadata*: passthrough; reads `REQUIRED_TIER_KEY` via `getAllAndOverride([handler, class])`.
+- *Tier comparison*: equal passes; higher passes; lower throws; throw payload exactly `{ code: 'AUTH_003', message: 'INSUFFICIENT_TIER' }`.
+- *Missing/unknown user tier*: missing `request.user` defaults to PERSONAL_FREE and blocks higher tiers; missing `user.tier` defaults to PERSONAL_FREE; unknown `user.tier` string ranks 0.
+- *Unknown required tier — fail-open*: documents and locks in the current behavior that an unrecognized required-tier name maps to rank 0 and lets every caller through. Inline comment flags this for any future policy change.
+
+**`role.guard.spec.ts` — 7 specs across 2 groups:**
+- *No `@RequireRole` metadata*: passthrough; reads `REQUIRED_ROLE_KEY`.
+- *Metadata set*: any non-empty `orgRole` passes; missing `orgRole` throws; missing `request.user` throws; empty-string `orgRole` (falsy) throws; throw payload exactly `{ code: 'AUTH_004', message: 'INSUFFICIENT_ROLE' }`. Inline comment notes the Organization plugin is post-MVP (Priority 4) — current "any role passes" behavior is correct for MVP, must extend to role-specific checks when the org plugin ships.
+
+**`auth.guard.spec.ts` deliberately skipped.** It's already covered indirectly by ~10 e2e specs that assert `AUTH_002` for unauth requests on `/users/me`, `/devices`, `/ai/*`. A unit spec would need to stub `auth.api.getSession` (the only thing not exercised by e2e is the `request.user = session.user` attachment, and every authed e2e proves that works). Adding it now would mostly duplicate signal.
+
+Iteration note: the first run had 2 failures, both from `expect.anything()` in the "looks up the key" assertion — the matcher rejects `null`/`undefined`, and my `buildContext` was returning `undefined` from `getHandler()`/`getClass()`. Replaced with a named handler function and a named class, which is also more realistic. Re-run passed.
+
+Verification: `npx jest --config jest.unit.config.ts src/auth/guards` → **2/2 suites, 17/17 tests** pass. Full suite math: 213 previous + 17 new = **18/18 suites, 230/230 tests** (the 16 unchanged suites all passed in the prior full run; regex change is purely additive so no previously-matched suite gets dropped).
+
+Tracked changes (3 files): `PROGRESS.md`, `apps/api/jest.unit.config.ts`, plus 2 new spec files under `apps/api/src/auth/guards/__tests__/`. Local-only edit (gitignored): `CLAUDE.md` "Test file naming" section noting the additional `*.state-machine.spec.ts` and `*.guard.spec.ts` patterns matched by the unit config.
