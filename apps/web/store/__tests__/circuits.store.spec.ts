@@ -60,6 +60,8 @@ function resetStore(): void {
     nextCursor: null,
     total: 0,
     offlineQueue: [],
+    offlineSyncError: null,
+    flushing: false,
   });
 }
 
@@ -357,12 +359,13 @@ describe('circuits.store', () => {
       useCircuitStore.setState({
         circuits: [previous],
         offlineQueue: [
-          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 'temp-1' },
+          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 'temp-1', attempts: 0 },
           {
             type: 'update',
             circuitId: 'c1',
             input: { ispName: 'Renamed' },
             previousCircuit: previous,
+            attempts: 0,
           },
         ],
       });
@@ -385,6 +388,71 @@ describe('circuits.store', () => {
       expect(mockPost).not.toHaveBeenCalled();
       expect(mockPatch).not.toHaveBeenCalled();
       expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('requeues a transiently-failing op with an incremented attempt count', async () => {
+      const previous = freshCircuit({ id: 'c1', version: 1 });
+      useCircuitStore.setState({
+        circuits: [previous],
+        offlineQueue: [
+          { type: 'update', circuitId: 'c1', input: { ispName: 'New' }, previousCircuit: previous, attempts: 1 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce(new Error('still offline'));
+
+      await useCircuitStore.getState().flushOfflineQueue();
+
+      const state = useCircuitStore.getState();
+      expect(state.offlineQueue).toHaveLength(1);
+      expect(state.offlineQueue[0].attempts).toBe(2);
+      expect(state.offlineSyncError).toBeNull();
+    });
+
+    it('drops an op and surfaces a sync error on a 409 conflict (no infinite loop on SYNC_001)', async () => {
+      const previous = freshCircuit({ id: 'c1', version: 1 });
+      useCircuitStore.setState({
+        circuits: [previous],
+        offlineQueue: [
+          { type: 'update', circuitId: 'c1', input: { ispName: 'New' }, previousCircuit: previous, attempts: 0 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce({ response: { status: 409 } });
+
+      await useCircuitStore.getState().flushOfflineQueue();
+
+      const state = useCircuitStore.getState();
+      expect(state.offlineQueue).toEqual([]);
+      expect(state.offlineSyncError).toMatch(/changed somewhere else/i);
+    });
+
+    it('drops an op and surfaces a sync error after exhausting the retry budget', async () => {
+      const previous = freshCircuit({ id: 'c1', version: 1 });
+      useCircuitStore.setState({
+        circuits: [previous],
+        offlineQueue: [
+          { type: 'update', circuitId: 'c1', input: { ispName: 'New' }, previousCircuit: previous, attempts: 4 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce(new Error('still offline'));
+
+      await useCircuitStore.getState().flushOfflineQueue();
+
+      const state = useCircuitStore.getState();
+      expect(state.offlineQueue).toEqual([]);
+      expect(state.offlineSyncError).toMatch(/after several attempts/i);
+    });
+
+    it('is a no-op while a flush is already in flight', async () => {
+      useCircuitStore.setState({
+        flushing: true,
+        offlineQueue: [
+          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 't', attempts: 0 },
+        ],
+      });
+
+      await useCircuitStore.getState().flushOfflineQueue();
+
+      expect(mockPost).not.toHaveBeenCalled();
     });
   });
 });

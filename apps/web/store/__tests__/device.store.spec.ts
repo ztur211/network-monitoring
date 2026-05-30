@@ -62,6 +62,8 @@ function resetStore(): void {
     loadedAt: null,
     error: null,
     offlineQueue: [],
+    offlineSyncError: null,
+    flushing: false,
   });
 }
 
@@ -296,12 +298,13 @@ describe('device.store', () => {
       useDeviceStore.setState({
         devices: [previous],
         offlineQueue: [
-          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-old' },
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-old', attempts: 0 },
           {
             type: 'update',
             deviceId: 'd1',
             input: { name: 'Renamed' },
             previousDevice: previous,
+            attempts: 0,
           },
         ],
       });
@@ -332,13 +335,14 @@ describe('device.store', () => {
         devices: [previous],
         offlineQueue: [
           // First op fails — re-queues itself via createDevice's catch
-          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-1' },
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-1', attempts: 0 },
           // Second op succeeds
           {
             type: 'update',
             deviceId: 'd1',
             input: { name: 'Renamed' },
             previousDevice: previous,
+            attempts: 0,
           },
         ],
       });
@@ -353,6 +357,71 @@ describe('device.store', () => {
       const state = useDeviceStore.getState();
       expect(state.offlineQueue).toHaveLength(1);
       expect(state.offlineQueue[0].type).toBe('create');
+    });
+
+    it('requeues a transiently-failing op with an incremented attempt count', async () => {
+      const previous = freshDevice({ id: 'd1', version: 1 });
+      useDeviceStore.setState({
+        devices: [previous],
+        offlineQueue: [
+          { type: 'update', deviceId: 'd1', input: { name: 'New' }, previousDevice: previous, attempts: 1 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce(new Error('still offline'));
+
+      await useDeviceStore.getState().flushOfflineQueue();
+
+      const state = useDeviceStore.getState();
+      expect(state.offlineQueue).toHaveLength(1);
+      expect(state.offlineQueue[0].attempts).toBe(2);
+      expect(state.offlineSyncError).toBeNull();
+    });
+
+    it('drops an op and surfaces a sync error on a 409 conflict (no infinite loop on SYNC_001)', async () => {
+      const previous = freshDevice({ id: 'd1', version: 1 });
+      useDeviceStore.setState({
+        devices: [previous],
+        offlineQueue: [
+          { type: 'update', deviceId: 'd1', input: { name: 'New' }, previousDevice: previous, attempts: 0 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce({ response: { status: 409 } });
+
+      await useDeviceStore.getState().flushOfflineQueue();
+
+      const state = useDeviceStore.getState();
+      expect(state.offlineQueue).toEqual([]);
+      expect(state.offlineSyncError).toMatch(/changed somewhere else/i);
+    });
+
+    it('drops an op and surfaces a sync error after exhausting the retry budget', async () => {
+      const previous = freshDevice({ id: 'd1', version: 1 });
+      useDeviceStore.setState({
+        devices: [previous],
+        offlineQueue: [
+          { type: 'update', deviceId: 'd1', input: { name: 'New' }, previousDevice: previous, attempts: 4 },
+        ],
+      });
+      mockPatch.mockRejectedValueOnce(new Error('still offline'));
+
+      await useDeviceStore.getState().flushOfflineQueue();
+
+      const state = useDeviceStore.getState();
+      expect(state.offlineQueue).toEqual([]);
+      expect(state.offlineSyncError).toMatch(/after several attempts/i);
+    });
+
+    it('is a no-op while a flush is already in flight', async () => {
+      useDeviceStore.setState({
+        flushing: true,
+        offlineQueue: [
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 't', attempts: 0 },
+        ],
+      });
+
+      await useDeviceStore.getState().flushOfflineQueue();
+
+      expect(mockPost).not.toHaveBeenCalled();
     });
   });
 });
