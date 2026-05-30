@@ -89,5 +89,24 @@ describe('DataSourcesRepository', () => {
       // Most recent should have latency 20
       expect(results[0].latency).toBe(20);
     });
+
+    it('includes Phase-13 columns (deviceId, tag) in returned rows', async () => {
+      // The raw SELECT lists columns explicitly; a column it omits comes back
+      // undefined despite the DeviceMetric[] cast. Pin deviceId/tag here.
+      await prisma.deviceMetric.create({
+        data: {
+          userId: 'test-datasources-user',
+          sourceType: 'browser',
+          deviceId: 'device-xyz',
+          tag: 'speedtest',
+          latency: 5,
+          time: new Date('2026-02-01T00:00:00.000Z'),
+        },
+      });
+      const results = await repository.findLatestForUsers(['test-datasources-user']);
+      expect(results).toHaveLength(1);
+      expect(results[0].deviceId).toBe('device-xyz');
+      expect(results[0].tag).toBe('speedtest');
+    });
   });
 });
