@@ -31,6 +31,10 @@ interface PersistedState {
 
 const STATE_TTL_SECONDS = 24 * 60 * 60;
 const DISMISSED_TTL_SECONDS = 30 * 24 * 60 * 60;
+// Long-lived on purpose: the "did this user finish onboarding?" marker must
+// outlive the 24h in-flight state TTL, otherwise an expired mid-flow session
+// would be indistinguishable from a finished one.
+const COMPLETED_TTL_SECONDS = 365 * 24 * 60 * 60;
 
 function stateKey(userId: string): string {
   return `onboarding:state:${userId}`;
@@ -38,6 +42,10 @@ function stateKey(userId: string): string {
 
 function dismissedKey(userId: string): string {
   return `onboarding:dismissed:${userId}`;
+}
+
+function completedKey(userId: string): string {
+  return `onboarding:completed:${userId}`;
 }
 
 @Injectable()
@@ -61,13 +69,20 @@ export class OnboardingService {
     ip: string,
     dto: OnboardingTurnDto,
   ): Promise<OnboardingTurnResponse> {
-    // The wizard creates the Network row early (at the address step) and
-    // updates it through later steps. So "user already has a network" is NOT
-    // by itself proof of completion — we must also check that no in-flight
-    // wizard state exists in Redis. Only then is the user truly trying to
-    // restart a finished onboarding.
+    // Decide whether this is a new/in-flight wizard or a restart of a FINISHED
+    // one. This must NOT key on "user already has a Network": the wizard creates
+    // the Network row early (at the address step) and keeps editing it, so a
+    // network exists for most of the flow. The previous code threw ONBOARD_002
+    // whenever there was no Redis state but a network existed — which
+    // permanently locked a user out if their 24h state TTL expired mid-flow.
+    // We gate instead on a durable "completed" marker written only when the
+    // wizard actually finishes. No marker + no state ⇒ an abandoned/expired
+    // session, which we resume from the top; the side effects are idempotent
+    // (createBrowserDevice upserts, persistNetworkFields updates the existing
+    // network, infra-device create swallows duplicate-name errors), so
+    // re-walking the steps never duplicates data.
     const persisted = await this.redis.get(stateKey(userId));
-    if (!persisted && (await this.userHasNetwork(userId))) {
+    if (!persisted && (await this.isCompleted(userId))) {
       throw new NodeScopeException('ONBOARD_002', 'ONBOARDING_ALREADY_COMPLETE', HttpStatus.CONFLICT);
     }
 
@@ -92,6 +107,7 @@ export class OnboardingService {
     await this.saveState(userId, { stepId: result.nextStepId, progress: result.progress });
     if (result.complete) {
       await this.redis.del(stateKey(userId));
+      await this.markCompleted(userId);
     }
 
     const response: OnboardingTurnResponse = {
@@ -121,9 +137,12 @@ export class OnboardingService {
     return (await this.redis.get(dismissedKey(userId))) === '1';
   }
 
-  private async userHasNetwork(userId: string): Promise<boolean> {
-    const count = await this.networksRepository.countByUserId(userId);
-    return count > 0;
+  private async markCompleted(userId: string): Promise<void> {
+    await this.redis.set(completedKey(userId), '1', 'EX', COMPLETED_TTL_SECONDS);
+  }
+
+  private async isCompleted(userId: string): Promise<boolean> {
+    return (await this.redis.get(completedKey(userId))) === '1';
   }
 
   private async loadState(userId: string): Promise<PersistedState> {

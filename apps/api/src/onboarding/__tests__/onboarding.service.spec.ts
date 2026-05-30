@@ -89,13 +89,33 @@ describe('OnboardingService', () => {
   });
 
   describe('handleTurn', () => {
-    it('throws ONBOARD_002 ONBOARDING_ALREADY_COMPLETE when a network exists AND no in-flight state', async () => {
-      mockNetworksRepo.countByUserId.mockResolvedValue(1);
-      mockRedis.get.mockResolvedValue(null); // no redis state — user has truly completed before
+    it('throws ONBOARD_002 when the durable completion marker is set and no in-flight state exists', async () => {
+      // A genuinely finished user trying to restart: no in-flight Redis state,
+      // but the durable completion marker is present.
+      mockRedis.get.mockImplementation((key: string) =>
+        Promise.resolve(key === 'onboarding:completed:user-1' ? '1' : null),
+      );
 
       await expect(
         service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' }),
       ).rejects.toMatchObject({ code: 'ONBOARD_002' });
+    });
+
+    it('resumes from the top (no ONBOARD_002) when a Network exists but onboarding was never completed', async () => {
+      // The lockout regression: the 24h state TTL expired after SaveNetwork
+      // created the Network row. With no completion marker we must resume the
+      // wizard rather than throw — otherwise the user is locked out forever.
+      mockNetworksRepo.countByUserId.mockResolvedValue(1);
+      mockNetworksRepo.findAllByUserId.mockResolvedValue([
+        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      ]);
+      mockRedis.get.mockResolvedValue(null); // no in-flight state, no completion marker
+
+      const result = await service.handleTurn('user-1', '127.0.0.1', {
+        browserDeviceId: 'bd-1',
+      });
+
+      expect(result.stepId).toBe('networkName'); // welcome → networkName, not a 409
     });
 
     it('proceeds mid-flow even after SaveNetwork created a Network row (regression: 2026-05-21 smoke)', async () => {
@@ -297,6 +317,24 @@ describe('OnboardingService', () => {
 
       expect(result.complete).toBe(true);
       expect(mockRedis.del).toHaveBeenCalledWith('onboarding:state:user-1');
+    });
+
+    it('writes a durable completion marker when complete=true', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({ stepId: 'speeds', progress: { networkName: 'Home' } }),
+      );
+
+      await service.handleTurn('user-1', '127.0.0.1', {
+        browserDeviceId: 'bd-1',
+        chipChoice: 'skip',
+      });
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'onboarding:completed:user-1',
+        '1',
+        'EX',
+        365 * 24 * 60 * 60,
+      );
     });
   });
 

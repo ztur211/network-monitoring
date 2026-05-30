@@ -124,7 +124,16 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           },
         ],
       }));
-    } catch {
+    } catch (err) {
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
+        ?.error?.code;
+      if (code === 'ONBOARD_002') {
+        // Server says onboarding is already complete (e.g. a finished user
+        // re-opened the wizard, or a stale tab). Close it rather than surface a
+        // Retry that would re-POST the same 409 forever.
+        set({ submitting: false, error: null, complete: true, wizardOpen: false });
+        return;
+      }
       set({ submitting: false, error: 'Failed to send message' });
     }
   },
