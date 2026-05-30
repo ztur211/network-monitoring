@@ -12,11 +12,13 @@ type BboxCoords = {
 // The Device table has a `location geometry(Point, 4326)` column added by raw
 // SQL migration that Prisma's schema doesn't know about. `$queryRaw` returning
 // `d.*` therefore tries to deserialize geometry and throws — we must list
-// every Prisma-tracked column explicitly. Keep this in sync with schema.prisma.
+// every Prisma-tracked column explicitly. Keep this in sync with schema.prisma:
+// any new Device column must be added here, or it returns as `undefined` on the
+// map payload (the cast to Device[] makes the omission silent).
 const DEVICE_COLUMNS = `
-  d.id, d."userId", d.name, d.category, d.latitude, d.longitude,
-  d.floor, d."floorLabel", d."ipAddress", d."macAddress", d.notes,
-  d.version, d."createdAt", d."updatedAt"
+  d.id, d."userId", d."networkId", d.name, d.category, d.mobility,
+  d."browserDeviceId", d.latitude, d.longitude, d.floor, d."floorLabel",
+  d."ipAddress", d."macAddress", d.notes, d.version, d."createdAt", d."updatedAt"
 `;
 
 @Injectable()
