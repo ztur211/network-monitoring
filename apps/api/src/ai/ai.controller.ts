@@ -53,7 +53,7 @@ export class AiController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('conversationId') conversationId: string,
   ): Promise<ApiSuccess<null>> {
-    const deleted = await this.aiService.deleteConversation(conversationId);
+    const deleted = await this.aiService.deleteConversation(user.id, conversationId);
     if (!deleted) {
       throw new NodeScopeException('GEN_002', 'NOT_FOUND', HttpStatus.NOT_FOUND);
     }
