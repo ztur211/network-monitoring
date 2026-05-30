@@ -123,7 +123,7 @@ describe('AiService', () => {
 
       await service.sendMessageHttp('user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'Hello' });
 
-      expect(mockConversation.appendMessages).toHaveBeenCalledWith('new-conv-id', 'Hello', 'Hi!');
+      expect(mockConversation.appendMessages).toHaveBeenCalledWith('user-1', 'new-conv-id', 'Hello', 'Hi!');
     });
 
     it('increments usage counters after successful response', async () => {
@@ -154,7 +154,7 @@ describe('AiService', () => {
         conversationId: 'existing-conv',
       });
 
-      expect(mockConversation.getHistory).toHaveBeenCalledWith('existing-conv');
+      expect(mockConversation.getHistory).toHaveBeenCalledWith('user-1', 'existing-conv');
       expect(result.conversationId).toBe('existing-conv');
     });
   });
@@ -177,8 +177,8 @@ describe('AiService', () => {
 
   describe('deleteConversation', () => {
     it('delegates to ConversationService and returns true when deleted', async () => {
-      const result = await service.deleteConversation('conv-123');
-      expect(mockConversation.deleteConversation).toHaveBeenCalledWith('conv-123');
+      const result = await service.deleteConversation('user-1', 'conv-123');
+      expect(mockConversation.deleteConversation).toHaveBeenCalledWith('user-1', 'conv-123');
       expect(result).toBe(true);
     });
   });
@@ -328,7 +328,7 @@ describe('AiService', () => {
         (_t, id) => seen.push(id),
       );
 
-      expect(mockConversation.getHistory).toHaveBeenCalledWith('existing');
+      expect(mockConversation.getHistory).toHaveBeenCalledWith('user-1', 'existing');
       expect(seen).toEqual(['existing']);
       expect(result.conversationId).toBe('existing');
     });
@@ -353,7 +353,7 @@ describe('AiService', () => {
       expect(result.providerStatus).toBe('ok');
       expect(result.content.length).toBe(300);
       expect(result.tokensUsed).toBe(80);
-      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 80);
+      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 80, 'onboarding');
     });
 
     it('does NOT call conversation history (onboarding is stateless on AI side)', async () => {
