@@ -139,12 +139,6 @@ export class OnboardingService {
     return this.usersRepository.isOnboardingComplete(userId);
   }
 
-  private async loadState(userId: string): Promise<PersistedState> {
-    const raw = await this.redis.get(stateKey(userId));
-    if (!raw) return { stepId: 'welcome', progress: {} };
-    return this.parseState(raw);
-  }
-
   private parseState(raw: string): PersistedState {
     try {
       return JSON.parse(raw) as PersistedState;
