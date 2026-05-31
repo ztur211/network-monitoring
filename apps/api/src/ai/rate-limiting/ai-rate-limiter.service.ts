@@ -67,7 +67,7 @@ export class AiRateLimiterService {
       throw new NodeScopeException('AI_003', 'AI_BUDGET_EXHAUSTED', HttpStatus.TOO_MANY_REQUESTS);
     }
     if (ipHourly >= IP_HOURLY_LIMIT) {
-      throw new NodeScopeException('AI_001', 'AI_RATE_LIMIT_HOURLY', HttpStatus.TOO_MANY_REQUESTS);
+      throw new NodeScopeException('GEN_004', 'RATE_LIMITED', HttpStatus.TOO_MANY_REQUESTS);
     }
   }
 

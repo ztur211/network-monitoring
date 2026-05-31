@@ -30,7 +30,7 @@ export interface SaveBrowserDevicePayload {
 
 export interface SaveDevicePayload {
   name: string;
-  macAddress: string;
+  macAddress: string | undefined;
 }
 
 export type OnboardingInput =
@@ -97,7 +97,7 @@ export function renderStep(stepId: OnboardingStepId): StepRender {
       return {
         chips: [SKIP_CHIP],
         fields: [
-          { key: 'name', kind: 'text', label: 'Router name', placeholder: 'Main Router' },
+          { key: 'name', kind: 'text', label: 'Router name', placeholder: 'Main Router', required: true },
           { key: 'macAddress', kind: 'mac', label: 'Router MAC (optional)' },
         ],
       };
@@ -105,7 +105,7 @@ export function renderStep(stepId: OnboardingStepId): StepRender {
       return {
         chips: [SKIP_CHIP],
         fields: [
-          { key: 'name', kind: 'text', label: 'Modem name', placeholder: 'Modem' },
+          { key: 'name', kind: 'text', label: 'Modem name', placeholder: 'Modem', required: true },
           { key: 'macAddress', kind: 'mac', label: 'Modem MAC (optional)' },
         ],
       };
@@ -204,29 +204,19 @@ export function handleStep(
       return advance(progress, 'routerMac', []);
     }
 
-    case 'routerMac': {
-      if (isSkipChip(input)) return advance(progress, 'modemMac', []);
-      const name = readField(input, 'name');
-      const macAddress = readField(input, 'macAddress');
-      if (!name || !macAddress) return stay(progress, stepId);
-      return advance(
-        { ...progress, routerMac: macAddress },
-        'modemMac',
-        [{ type: 'SaveRouterDevice', payload: { name, macAddress } }],
-      );
-    }
+    case 'routerMac':
+      return handleMacDeviceStep(stepId, progress, input, {
+        progressKey: 'routerMac',
+        nextStepId: 'modemMac',
+        effectType: 'SaveRouterDevice',
+      });
 
-    case 'modemMac': {
-      if (isSkipChip(input)) return advance(progress, 'isp', []);
-      const name = readField(input, 'name');
-      const macAddress = readField(input, 'macAddress');
-      if (!name || !macAddress) return stay(progress, stepId);
-      return advance(
-        { ...progress, modemMac: macAddress },
-        'isp',
-        [{ type: 'SaveModemDevice', payload: { name, macAddress } }],
-      );
-    }
+    case 'modemMac':
+      return handleMacDeviceStep(stepId, progress, input, {
+        progressKey: 'modemMac',
+        nextStepId: 'isp',
+        effectType: 'SaveModemDevice',
+      });
 
     case 'isp': {
       if (isSkipChip(input)) return advance(progress, 'speeds', []);
@@ -262,6 +252,32 @@ export function handleStep(
     case 'done':
       return { nextStepId: 'done', progress, sideEffects: [], complete: true };
   }
+}
+
+/**
+ * Shared transition logic for the routerMac and modemMac steps, which are
+ * identical apart from the progress key they record, the step they advance to,
+ * and the save side effect they emit.
+ */
+function handleMacDeviceStep(
+  stepId: OnboardingStepId,
+  progress: OnboardingProgress,
+  input: OnboardingInput,
+  opts: {
+    progressKey: 'routerMac' | 'modemMac';
+    nextStepId: OnboardingStepId;
+    effectType: 'SaveRouterDevice' | 'SaveModemDevice';
+  },
+): StepResult {
+  if (isSkipChip(input)) return advance(progress, opts.nextStepId, []);
+  const name = readField(input, 'name');
+  const macAddress = readField(input, 'macAddress');
+  if (!name) return stay(progress, stepId);
+  return advance({ ...progress, [opts.progressKey]: macAddress }, opts.nextStepId, [
+    // SaveRouterDevice and SaveModemDevice carry the identical SaveDevicePayload,
+    // so the union-typed `type` needs a cast to land in the discriminated union.
+    { type: opts.effectType, payload: { name, macAddress } } as OnboardingSideEffect,
+  ]);
 }
 
 function advance(

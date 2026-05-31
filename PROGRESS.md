@@ -1,6 +1,6 @@
 # NodeScope — Build Progress
 
-Last updated: 2026-05-19
+Last updated: 2026-05-29
 
 ---
 
@@ -1322,3 +1322,186 @@ The `'done'` step's `'close'` chip short-circuits to `closeWizard()` instead of 
 | `tsc --noEmit` apps/api | clean (after rebuilding `packages/shared`) |
 
 Total of **10 commits** on `feat/onboarding` (master tip `6eebbb7` is the schema-only prep that landed before the branch forked): `d408111`, `0778c40`, `f709980`, `0e2bb64`, `6bc8f87`, `9e0c3d4`, `c01b7f0`, `a947f2a`, `c73e19b`, `e0fb173`. Branch is **code-complete**; remaining work is manual verification + the existing-subscriber refactor noted above.
+
+---
+
+## Post-Phase 13 — Smoke fixes, hardening & polish (2026-05-21 → 2026-05-28)
+
+The "code-complete" tag at the close of Phase 13 turned out to need a follow-up sweep. Manual smoke, a 4-state UI audit, and cross-platform infra glitches surfaced 10 commits' worth of follow-on work. Listed below in commit order.
+
+### Smoke pass — 2026-05-21 / 2026-05-22
+
+Five commits driven by the first manual walk-through of the onboarding → map flow:
+
+- **`26f6530`** — `OnboardingTurnDto` required `browserDeviceId` (MinLength 1) on every POST, but the store only injected it when the caller supplied it. The welcome turn 400'd. Store now reads `getBrowserDeviceId()` and injects on every call.
+- **`39b421e`** — `OnboardingService.handleTurn` threw `ONBOARD_001 ALREADY_COMPLETE` whenever a Network row existed. But the wizard creates the Network row at the address step (via `SaveNetwork`), so every subsequent turn 409'd. Guard now requires *both* "no Redis state" AND "Network exists" before rejecting.
+- **`8cf7f5e`** — Tap-to-place flow. Replaced the manual lat/lng text inputs on `DeviceForm` with a "tap '+' → tap map → pre-filled form" gesture. `MapView` accepts `placementMode` + `onMapClick` props and swaps the canvas cursor to `crosshair` only while placing. Device-marker clicks bubble through their own listeners (with `stopPropagation`) so the placement handler only fires on empty map.
+- **`3c16153`** — Auto-zoom to newly created device. Every `DeviceCategory` has a `minZoom` in `DEVICE_CATEGORY_CONFIG`; markers below it are filtered out. A user placing a COMPUTER (`minZoom 18`) from zoom 13 saw nothing afterward — looked like a silent failure. After a successful create, fly to the new device at `max(category.minZoom + 0.5, 13)`. The filter itself is preserved (keeps the map readable at scale).
+- **`3943096`** — Two browser-only bugs:
+  1. Device markers snapped to (0, 0) at the end of every zoom animation. Our `applyMarkerStyles` overwrote MapLibre's `transform: translate(...)` with `transform: scale(...)`. Fix: wrap each marker so MapLibre's translate lives on the outer div and our scale on an inner child — the two transforms can no longer collide.
+  2. Delete buttons did nothing. RN-Web's `Alert.alert` is a `console.warn` stub. Swap to `window.confirm` for the destructive prompt and `window.alert` for the error toast across `map.tsx`, `equipment.tsx`, and `circuits.tsx`. Established the swap pattern this section will later finish (see "Alert.alert leftovers" below).
+
+### `bd4f8f5` (2026-05-27) — WS subscriber buffer
+
+Resolves the "pre-existing WS subscriber ordering bug" Phase 13 flagged as deferred. `websocketService.on/off` had been no-ops before `connect()`, so four subscriptions registered synchronously in `_layout.tsx` (device/circuit live updates, AI token streaming, offline-queue flush on reconnect) were silently dropped on every cold session bootstrap. Adds Socket/Manager subscription registries that survive disconnect and re-attach on every fresh socket. With buffering in place, `_layout.tsx` registers all subscribers synchronously at the top of the useEffect — Slice 6's wedge-into-`.then` workaround is gone. Includes four hardening fixes from code review: PONG listener leak in `measureLatency`, half-connected socket teardown in `connect()`, duplicate-handler skip in `on()`, and `removeAllListeners()` wired into test `afterEach`.
+
+### `6dda8a3` (2026-05-27) — On-home recompute broadcast + jest OOM cap + Prisma cross-platform
+
+**Feature.** Open browser tabs missed the on-home transition when a user confirmed their home IP via the `confirmHomeIp` chip or when a network PATCH updated `homePublicIp` directly. Each socket's `socket.data.onHome` was set once at handshake time from the request IP, and only the originating tab learned of changes.
+
+`recomputeOnHomeForUser(userId)` is now on both `IRealtimeService` and `RealtimeGateway`. It pulls all sockets in `user:{userId}` from the Socket.io room, re-runs `NetworksService.checkOnHome` per-socket (each socket has its own handshake IP), updates `socket.data.onHome`, and emits `NETWORK_ON_HOME_CHANGED` per socket. Wired into:
+- `NetworksService.updateNetwork` — triggers recompute only when `homePublicIp` is in `patch.changes`. Non-IP edits don't fire it.
+- `OnboardingService` — triggers right after `SaveHomeIp` enacts.
+
+Module wiring: `NetworksModule` and `OnboardingModule` both `forwardRef(() => RealtimeModule)`. RealtimeModule already forwardRefs both, so the cycle is broken from either side.
+
+**State machine adjustment.** `routerMac` / `modemMac` mark `name` required and `macAddress` optional. Both steps advance on name-only input; `SaveDevicePayload.macAddress` widens to `string | undefined`. Surfaced because the onboarding service spec needed a clean way to drive `SaveHomeIp` without the wizard getting stuck on a router MAC the user hadn't bothered to enter.
+
+**Jest infra.** Capped `--maxWorkers=2 --workerIdleMemoryLimit=512MB` on the API unit/integration/e2e scripts in `apps/api/package.json`. Root cause of an earlier "agent OOM'd at exit 137": the 24-core sandbox was forking ~22 unbounded ts-jest workers, each spinning up its own TS compiler against a (separately broken) module-resolution state. Capping workers is the durable fix; even with module resolution clean, parallelism > 2 is heat with no benefit on this sandbox profile.
+
+**Prisma `binaryTargets`.** `apps/api/prisma/schema.prisma`'s generator block adds `["native", "debian-openssl-3.0.x"]`. A `prisma generate` run on Windows previously produced only the Windows query engine; Linux runtimes (sandbox, DigitalOcean App Platform builds) then threw `PrismaClientInitializationError` when loading the client at test teardown. `native` still resolves so the Windows binary continues to be generated for local dev.
+
+### `c2b4c4e` (2026-05-28) — 4-state model audit fixes
+
+An audit pass on `apps/web` against CLAUDE.md's four-state UI rule flagged four candidate gaps. Three real, one false positive:
+- **`settings.tsx:55`** — data-sources fetch silently swallowed errors with `// non-critical — show empty`, rendering "No data sources configured" for both genuinely-empty and failure cases. New `sourcesError` state distinguishes them: error path shows a red row + Retry button; empty stays for the genuine zero-sources case.
+- **`AiChatWindow.tsx:87`** — error banner had no Retry. Failed `sendMessage` stranded the user — error text shown, no recovery path short of retyping. Added `retryLastMessage` to `ai.store`: walks `messages` backward to find the last user message, drops trailing empty-streaming assistant bubbles (the WS-error path leaves these), clears `error`, starts a fresh assistant message, and re-emits with the same `conversationId`. Idempotent under concurrent calls via the existing `isStreaming` guard. Preserves partial-content streaming bubbles — only fully-empty ones are dropped.
+- **`AiChatWindow.tsx:136`** — usage row had no loading state. Wired the existing `isLoadingUsage` (already on the store, just unused) to a spinner + "Loading usage…" while `loadUsage()` is in flight and `usage` is null.
+- **`clients.tsx:104`** — false positive. `Timestamp` is already nested inside the `StaleDataOverlay` at line 152, and `Timestamp.tsx:44` colors amber when stale at the 90s threshold. No change.
+
+### `7eb3dd9` (2026-05-28) — ai.store unit spec backfill
+
+`c2b4c4e` added `retryLastMessage` but `ai.store` had no spec file at all — out of step with `network.store` and `onboarding.store`. Backfilled the entire store: 18 specs across 9 actions (`addUserMessage`, `startAssistantMessage`, `appendTokenToCurrentMessage`, `completeCurrentMessage`, `setError`, `loadUsage`, `clearConversation`, `sendMessage`, `retryLastMessage`). Mocking mirrors `onboarding.store.spec.ts`: axios mocked via `jest.unstable_mockModule`; `websocketService` is a singleton instance so `jest.spyOn(websocketService, 'emit')` is the cleanest path (module-mocking relative paths is flaky under ts-jest ESM, noted in the prior store specs).
+
+### `7e2888d` (2026-05-28) — Tap-to-save: OnHomeBadge becomes pressable
+
+Closes the deferred Phase-13 polish item. Previously `OnHomeBadge` was display-only because the browser cannot detect its own public IP, so the "Away from home" state offered the user no path forward.
+
+**Server.** New `POST /api/v1/networks/:id/set-home-ip` (no body). Reads `req.ip` via the established pattern (X-Forwarded-For aware via `app.set('trust proxy', 1)` per `9e0c3d4`). `NetworksService.setHomeIpFromRequest` loads the network and delegates to `updateNetwork` with a one-field changeset. That reuses the existing optimistic-concurrency dance and — critically — the `homePublicIp` trigger that already calls `recomputeOnHomeForUser`. No new emit code; the WS push cascades through the recompute pathway.
+
+**Client.** `OnHomeBadge` becomes a `TouchableOpacity` only when `!onHome && !savingHomeIp`. Tap fires `window.confirm` (same RN-Web pattern as `3943096`). On confirm, `network.store.setHomeIp()` POSTs the endpoint, strips `homePublicIp` from the response, updates the cached `NetworkSummary` optimistically. The badge cycles through a spinner+"Saving home IP…" state until the response or WS push completes. The WS `NETWORK_UPDATED` + `NETWORK_ON_HOME_CHANGED` then update all other open tabs.
+
+**Tests:** +3 service specs, +2 controller e2e specs, +5 store specs. API unit 213/213, web jest 63/63.
+
+### Alert.alert leftovers (`7791ddc`, 2026-05-28)
+
+Four `Alert.alert` call sites remained active despite RN-Web's stub. Swapped to `window.alert` with the `typeof window !== 'undefined'` guard, matching `3943096`'s pattern:
+- `apps/web/app/(app)/map.tsx:144` — failed device save toast
+- `apps/web/app/(app)/equipment.tsx:93` — failed device save toast
+- `apps/web/app/(app)/circuits.tsx:66` — failed circuit save toast
+- `apps/web/app/(app)/settings.tsx:82` — successful profile save toast
+
+`Alert` removed from all four files' `react-native` imports. Comments referring back to "RN-Web Alert.alert is a stub — see comment in map.tsx" remain as breadcrumbs for future readers.
+
+### device.store + circuits.store unit specs (`77069ef`, 2026-05-28)
+
+Backfilled the remaining store specs after the same audit that flagged `ai.store`'s missing spec. Both stores share the optimistic-CRUD + offline-queue shape introduced in earlier phases — covering them aligns the test discipline across the entire `apps/web/store/` directory.
+
+`device.store.spec.ts` — 17 specs across 7 actions:
+- `loadDevices()` — happy path, in-flight short-circuit, error path leaves `devices` unchanged and `loaded` false.
+- `upsertDevice` / `removeDevice` — direct setters.
+- `createDevice()` — optimistic placeholder inserted with `temp-<ts>` id; mid-flight snapshot proves it's visible; server row swaps it; rollback removes the placeholder *and* queues an offline op on failure.
+- `updateDevice()` — diff-based changeset; no PATCH and same-ref return when input has no real changes; optimistic apply; rollback to previous + queue on failure.
+- `deleteDevice()` — optimistic remove; restore + queue on failure; silent no-op when the deviceId doesn't match.
+- `flushOfflineQueue()` — drains the queue through the normal CRUD paths; remaining ops re-queue themselves if they fail individually, so the queue partially shrinks rather than all-or-nothing.
+
+`circuits.store.spec.ts` — 18 specs, same shape plus pagination:
+- `loadCircuits()` / `loadNextPage()` — including the cursor URL-encoding subtlety (`abc/def+ghi` → `abc%2Fdef%2Bghi`) and the dual-guard "no nextCursor OR already loading" no-op.
+- `deleteCircuit()` — also clamps `total` at zero to defend against the rare "already-stale total + extra delete" race.
+
+**Jest cap on apps/web/package.json.** Running `npm test` against the now-7 suites surfaced the same OOM cascade fixed in `6dda8a3` for API tests: web's jest script was uncapped, the sandbox forked workers per core, and 2 suites died with SIGKILL after ~3 hours of wall-clock spin (most of which was the sandbox stalled, not real work). Added `--maxWorkers=2 --workerIdleMemoryLimit=512MB` to apps/web/package.json. Run time dropped from "killed" to **19s for 7 suites / 100 tests**. Web jest now matches API jest's resource discipline.
+
+### Tap-to-relocate existing device (this commit, 2026-05-28)
+
+Closes the deferred follow-up from `8cf7f5e`: tap-to-place existed for create but editing a device left coords read-only — the user had to delete + recreate to move a device.
+
+`DeviceForm` gains `onRelocate?: () => void`. When set (edit mode only), a "Tap to relocate" link renders in the Location row's header next to the read-only coord text. Press routes back to `map.tsx`, which:
+1. `handleStartRelocation` — captures the in-flight `editDevice` into a new `relocatingDevice` state, closes the form (`formMode = null`), enters placement mode.
+2. Map shows the existing placement banner with copy switched to "Tap the map to relocate \<name\>".
+3. User taps map → `handleMapClick` sees `relocatingDevice` is set, captures `pickedCoords`, re-opens the form (`formMode = 'edit'`, same `editDevice` reference), clears `relocatingDevice`.
+4. Form renders with `placedLatitude`/`placedLongitude` carrying the new pick; `effectiveLatitude` in `formatCoord` resolves to the new value first.
+5. User taps Save → `handleFormSubmit` calls `updateDevice(id, editDevice, input)`; `device.store.updateDevice` diffs the input against `editDevice` (which still holds the OLD coords). Latitude and longitude land in the changeset and PATCH /devices/:id. Optimistic update is applied immediately on the map.
+
+The `placedLatitude` / `placedLongitude` guard in `DeviceForm` render switched from `formMode === 'create' ? ... : null` to a direct passthrough — they're correct for both modes now (edit-mode `pickedCoords` is non-null only after a relocate round trip).
+
+`handleCancelPlacement` and `handleFormClose` both clear `relocatingDevice` so the state can't leak across flows.
+
+**Known limitation flagged for follow-up:** Unsaved form fields are lost across the relocate round trip. `formMode` is set to `null` during placement, so the `DeviceForm` unmounts; the `useForm` state is recreated on remount and the `useEffect` at line 103 resets values to the device's persisted fields. If the user typed half a new name then clicked "Tap to relocate", their typing is gone. Acceptable for v1 — most relocate flows aren't combined with simultaneous text edits. A future improvement would keep `DeviceForm` mounted but visually hidden during placement (e.g. via a `hidden` prop or `display:none` wrapper) so `useForm` state survives.
+
+Tests: device.store.updateDevice is already covered by `77069ef`'s spec — the diff + optimistic + rollback paths exercise the same data path the relocate uses. The UI orchestration in `DeviceForm` + `map.tsx` falls under the project's "Playwright covers RN/JSX, not jest" convention (see Phase 13 slice 4). No new jest specs.
+
+### Verification at end of post-Phase-13 polish (2026-05-28)
+
+| Suite | Result |
+|---|---|
+| API Unit | 16/16 suites, **213/213** tests |
+| Web Jest | 5/5 suites, **63/63** tests |
+| `tsc --noEmit` apps/api | clean |
+| `tsc --noEmit` apps/web | clean |
+| API Integration / E2E | not re-run in this session (no docker access) — 2 new networks.controller.e2e specs land here for next local run |
+| Web bundle entry chunk | deferred to Windows; lightningcss linux-x64-gnu binding missing in the sandbox. No new heavy deps since `412 KB` baseline on 2026-05-16 |
+| Manual browser smoke | still outstanding from Phase 13. User explicitly deferred during this polish session. |
+
+### Docs audit + per-IP AI rate-limit code split (this commit, 2026-05-28)
+
+Cross-doc + docs-vs-code audit across CLAUDE.md, PRD, API Design, DB Schema, and PROGRESS.md. Three parallel scan agents surfaced findings, fixes applied in three batches.
+
+**Batch A — doc-only consistency.** `MULTI_PROPERTY` added to both AccountTier blocks in `docs/DB_Schema.md` (Prisma had it; doc didn't). DeviceMetric §5 picked up the `deviceId String?` + `tag String?` + per-device-time index that Phase 13 added but the canonical block hadn't. Network header de-Phase'd (it's MVP) and added to the §1 summary table. `docs/PRD.md` `AI_MODEL` corrected to `claude-sonnet-4-6` (was stale `claude-sonnet-4-20250514`). WS event counts updated 17 → 20 in `CLAUDE.md` and `docs/API_Design.md` header to match the Doc Control section. AI_004 reworded in three places to reflect that it's only thrown when fallback context assembly itself fails — normal Claude API outages return 200 with `providerStatus: 'unavailable'`; the response shape doc now lists `providerStatus`. PROGRESS.md "Last updated" header bumped from 2026-05-19 → 2026-05-28.
+
+**Batch B — password reset endpoint.** Verified against `node_modules/better-auth/dist/api/routes/password.mjs:20` that Better Auth 1.x's canonical route is `/request-password-reset`; `/forget-password` is an alias (rate limiter honors both). `docs/API_Design.md` had it backwards in three spots (§2.5 rate-limit table, §4 endpoint heading, the "Better Auth's chosen path" note). Canonical name applied everywhere; alias relationship now documented. `apps/api/src/auth/better-auth.config.ts` comment also updated to reference the canonical route.
+
+**Batch C — `set-home-ip` docs + GEN_004 split.** `docs/API_Design.md` §14.6 added: empty body, returns `NetworkDetail`, emits same WS events as a PATCH-with-IP-change. Per-IP AI rate limit was throwing `AI_001 AI_RATE_LIMIT_HOURLY` — same code as the per-user hourly check, ambiguous. Swapped to `GEN_004 RATE_LIMITED` to separate anti-abuse from per-user quota; matches Better Auth's own per-IP convention (`docs/API_Design.md` lines 430, 483). Spec test renamed and re-asserted. `docs/PRD.md` §6.5.2 rate-limit list reordered to match code execution (hourly → daily → monthly tokens → per-IP) with the GEN_004 vs AI_001 distinction annotated.
+
+Tests: `npm run test:unit --workspace=apps/api` → **16/16 suites, 213/213 tests** pass after the GEN_004 rename. Tracked changes (4 files): `PROGRESS.md`, `ai-rate-limiter.service.ts`, `ai-rate-limiter.service.spec.ts`, `better-auth.config.ts`. The `docs/**` edits are local-only (gitignored per CLAUDE.md).
+
+### Removed unused `v1:connection:status` WS event + endpoint-count correction (this commit, 2026-05-28)
+
+Follow-up to the docs-alignment commits. A second audit pass (code-vs-now-aligned-docs) flagged two real drifts:
+
+**1. `v1:connection:status` was typed and documented but had no server-side producer.** The intended payload (`{ status, message }`) was already delivered to the client by socket.io's native `connect`/`disconnect`/`reconnect_attempt` events — `apps/web/lib/websocket.service.ts:58-75` calls `useUiStore.setConnectionStatus()` directly from those handlers. The custom event lived only in `WS_EVENTS`, an API_Design §13.3 row, a SAD §6.5 row, and a `pushToTier` test stub. Removed all four. The `ConnectionStatus` *type* stays — `RealtimeService.getConnectionStatus()` (Redis-backed socket-set lookup) and the UI store both consume it. The `pushToTier` spec was rewritten to use `v1:metrics:update` with a real `MetricsDto` payload, preserving coverage of the broadcast mechanism without referencing a dead event. WS event count: 20 → **19** (3 client→server, 16 server→client).
+
+**2. REST endpoint count was 44 in the docs but only 43 in code.** The previous docs-alignment commit took the Doc Control section's `44` at face value; counting `@Get/@Post/@Patch/@Put/@Delete` decorators across all 13 controllers gives `users 6 + devices 5 + fiber-runs 5 + connections 4 + circuits 5 + map 3 + clients 1 + ai 3 + health 1 + bandwidth 2 + networks 6 + onboarding 2 = 43`. Corrected the header + Doc Control to 43 with an audit-trail note.
+
+Tests: `npm run test:unit --workspace=apps/api` → **16/16 suites, 213/213 tests** pass (same total — the realtime spec substituted one event name, didn't add or remove tests). Tracked changes (4 files): `PROGRESS.md`, `packages/shared/src/types/realtime.types.ts`, `apps/api/src/realtime/__tests__/realtime.service.spec.ts`, `CLAUDE.md`. `docs/**` edits are gitignored.
+
+**Audit findings deferred** (not in this commit, surfaced for follow-up): (a) `ONBOARD_001` is overloaded — code throws it for `ALREADY_COMPLETE` (409) but doc reserves it for `ONBOARDING_INVALID_STEP` (400); splitting into ONBOARD_001/002 needs an architectural call. (b) `propertyId` reserved-field story is inconsistent across CLAUDE.md (Device + DeviceMetric reserved), DB_Schema.md (Network.propertyId reserved), and `schema.prisma` (none present); needs a policy decision before any migration. (c) `DeviceMetric` third index has `(sort: Desc)` in code; doc was updated without it in the prior batch — a one-line doc fix.
+
+### Reserved Network.propertyId, split ONBOARD_001/002, fixed DeviceMetric index sort (this commit, 2026-05-28)
+
+The three findings deferred above, tackled in one batch.
+
+**1. Network.propertyId reserved for the Multi-Property tier.** Decided the post-MVP data model: `User → Property (1:many) → Network (1:many) → Device (1:many)`. That puts the FK on Network — not on Device or DeviceMetric as CLAUDE.md previously claimed. Added `propertyId String?` + `@@index([userId, propertyId])` to the Network model in `schema.prisma`, plus a new migration `20260528000000_reserve_network_property_id` that adds the column and index (purely additive — nullable, no default, no behavior change). CLAUDE.md's "Reserved post-MVP" section was rewritten to name `Network.propertyId` and explicitly NOT reserve `Device.propertyId` / `DeviceMetric.propertyId` — devices reach Property via `Device → Network → Property`; denormalize only when a measured query-perf need proves the join too expensive. DB_Schema.md's existing comment ("Mirrors Device.propertyId") was wrong about the structural role and got rewritten. Test fixture in `networks.service.spec.ts` updated to include `propertyId: null` so `tsc` against the regenerated Prisma client stays clean (Jest itself was already lenient with mock shapes; only `tsc` caught the missing field).
+
+**2. `ONBOARD_001` overload split.** `onboarding.service.ts:71` was throwing `ONBOARD_001 ALREADY_COMPLETE` with HTTP 409, but the doc reserved `ONBOARD_001` for `ONBOARDING_INVALID_STEP` with HTTP 400 — two genuinely different conditions sharing one code. Created `ONBOARD_002 ONBOARDING_ALREADY_COMPLETE` (409) for the "user has a Network and no in-flight wizard state — can't restart" case; kept `ONBOARD_001 ONBOARDING_INVALID_STEP` (400) for state-machine input rejection. Updated the throw, the unit-test expectation, and the API_Design.md §2.7 error code table + §15.1 endpoint Errors line.
+
+**3. DeviceMetric `(userId, deviceId, time)` index — added `(sort: Desc)` in doc.** Code (`schema.prisma:304`) has `time(sort: Desc)`; the canonical model block in DB_Schema.md §5 didn't include `Desc` (residual from the earlier Phase 13 view). DESC matches the latest-first scan pattern the read-side actually uses (`getLatestForUser`, `getRecentForUser`). §5 model block + §9 indexes summary updated.
+
+Verification: `prisma validate` clean, `tsc --noEmit` clean for both apps/api and apps/web, `npm run test:unit --workspace=apps/api` → **16/16 suites, 213/213 tests** pass. Migration NOT applied locally (no docker access in this sandbox); next `prisma migrate dev` against a live DB picks it up automatically — purely additive so safe to deploy without coordination.
+
+Tracked changes (6 files): `PROGRESS.md`, `schema.prisma`, the new `migration.sql`, `onboarding.service.ts`, `onboarding.service.spec.ts`, `networks.service.spec.ts`. Local-only edits (gitignored): `CLAUDE.md` reserved-fields section + "What Is Not in MVP" line + PR checklist; `docs/API_Design.md` error table + onboarding endpoint; `docs/DB_Schema.md` `Network.propertyId` comment + DeviceMetric index sort.
+
+### Guard unit spec backfill — tier.guard + role.guard (this commit, 2026-05-29)
+
+Audit pass found three guards under `apps/api/src/auth/guards/` and zero dedicated spec files. AuthGuard is effectively covered indirectly (10+ e2e specs assert `AUTH_002 SESSION_INVALID` and `@Public()` passthrough is exercised by every health/bandwidth/auth controller test), but `TierGuard` and `RoleGuard` had **no test reaching their failure paths anywhere in the suite** — `AUTH_003 INSUFFICIENT_TIER` and `AUTH_004 INSUFFICIENT_ROLE` were grep-clean across the entire test tree.
+
+Both guards are registered globally in `app.module.ts:77-80` but `@RequireTier` and `@RequireRole` are exported and never applied to any production endpoint — every real request short-circuits at the "no metadata → return true" branch. So the failure paths are dead code today, but they ship to prod, and the moment billing lands (post-MVP) and `@RequireTier` gets applied for the first time, the first real exercise of the comparison logic would be in production with zero regression net. The `TIER_ORDER` ranking, the `?? 0` fallbacks on both sides of the `<` comparison, and the AUTH_003/004 throw shapes are exactly the kind of code that drifts under refactor without anyone noticing.
+
+**Spec config change.** `jest.unit.config.ts` testRegex was `.*\\.(service|state-machine)\\.spec\\.ts$` — would have silently skipped a `*.guard.spec.ts` file. Added `guard` to the alternation: `.*\\.(service|state-machine|guard)\\.spec\\.ts$`. Regex change is additive: every previously-matched file still matches; only newly-matched files are the two new guard specs. No risk to existing suite discovery.
+
+**`tier.guard.spec.ts` — 10 specs across 4 groups:**
+- *No `@RequireTier` metadata*: passthrough; reads `REQUIRED_TIER_KEY` via `getAllAndOverride([handler, class])`.
+- *Tier comparison*: equal passes; higher passes; lower throws; throw payload exactly `{ code: 'AUTH_003', message: 'INSUFFICIENT_TIER' }`.
+- *Missing/unknown user tier*: missing `request.user` defaults to PERSONAL_FREE and blocks higher tiers; missing `user.tier` defaults to PERSONAL_FREE; unknown `user.tier` string ranks 0.
+- *Unknown required tier — fail-open*: documents and locks in the current behavior that an unrecognized required-tier name maps to rank 0 and lets every caller through. Inline comment flags this for any future policy change.
+
+**`role.guard.spec.ts` — 7 specs across 2 groups:**
+- *No `@RequireRole` metadata*: passthrough; reads `REQUIRED_ROLE_KEY`.
+- *Metadata set*: any non-empty `orgRole` passes; missing `orgRole` throws; missing `request.user` throws; empty-string `orgRole` (falsy) throws; throw payload exactly `{ code: 'AUTH_004', message: 'INSUFFICIENT_ROLE' }`. Inline comment notes the Organization plugin is post-MVP (Priority 4) — current "any role passes" behavior is correct for MVP, must extend to role-specific checks when the org plugin ships.
+
+**`auth.guard.spec.ts` deliberately skipped.** It's already covered indirectly by ~10 e2e specs that assert `AUTH_002` for unauth requests on `/users/me`, `/devices`, `/ai/*`. A unit spec would need to stub `auth.api.getSession` (the only thing not exercised by e2e is the `request.user = session.user` attachment, and every authed e2e proves that works). Adding it now would mostly duplicate signal.
+
+Iteration note: the first run had 2 failures, both from `expect.anything()` in the "looks up the key" assertion — the matcher rejects `null`/`undefined`, and my `buildContext` was returning `undefined` from `getHandler()`/`getClass()`. Replaced with a named handler function and a named class, which is also more realistic. Re-run passed.
+
+Verification: `npx jest --config jest.unit.config.ts src/auth/guards` → **2/2 suites, 17/17 tests** pass. Full suite math: 213 previous + 17 new = **18/18 suites, 230/230 tests** (the 16 unchanged suites all passed in the prior full run; regex change is purely additive so no previously-matched suite gets dropped).
+
+Tracked changes (3 files): `PROGRESS.md`, `apps/api/jest.unit.config.ts`, plus 2 new spec files under `apps/api/src/auth/guards/__tests__/`. Local-only edit (gitignored): `CLAUDE.md` "Test file naming" section noting the additional `*.state-machine.spec.ts` and `*.guard.spec.ts` patterns matched by the unit config.

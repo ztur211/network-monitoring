@@ -1,5 +1,4 @@
 import {
-  Allow,
   IsArray,
   IsEnum,
   IsInt,
@@ -16,10 +15,10 @@ import {
   ValidateNested,
   ArrayMinSize,
   ArrayMaxSize,
-  IsNumber,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { DeviceCategory } from '@prisma/client';
+import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 
 export const DEVICE_WRITABLE_FIELDS = [
   'name',
@@ -78,17 +77,6 @@ export class CreateDeviceDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
-}
-
-class ChangesetChangeDto {
-  @IsString()
-  field: string;
-
-  @Allow()
-  oldValue: unknown;
-
-  @Allow()
-  newValue: unknown;
 }
 
 export class PatchDeviceDto {

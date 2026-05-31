@@ -26,14 +26,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const timestamp = new Date().toISOString();
 
     if (exception instanceof ThrottlerException) {
-      response.status(HttpStatus.TOO_MANY_REQUESTS).json({
-        success: false,
-        error: { code: 'GEN_004', message: 'RATE_LIMITED' },
-        timestamp,
-      });
+      this.sendError(response, HttpStatus.TOO_MANY_REQUESTS, 'GEN_004', 'RATE_LIMITED');
       return;
     }
 
@@ -44,60 +39,52 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       // Any exception that carries a { code, message } body (NodeScopeException, guard errors)
       if (typeof body === 'object' && body !== null && 'code' in body) {
         const coded = body as { code: string; message: string };
-        response.status(status).json({
-          success: false,
-          error: { code: coded.code, message: coded.message },
-          timestamp,
-        });
+        this.sendError(response, status, coded.code, coded.message);
         return;
       }
 
       // ValidationPipe errors — body.message is an array of constraint strings
       if (status === HttpStatus.BAD_REQUEST) {
         const validationBody = body as { message?: unknown };
-        response.status(status).json({
-          success: false,
-          error: {
-            code: 'GEN_001',
-            message: 'VALIDATION_ERROR',
-            details: validationBody.message,
-          },
-          timestamp,
-        });
+        this.sendError(response, status, 'GEN_001', 'VALIDATION_ERROR', validationBody.message);
         return;
       }
 
       if (status === HttpStatus.UNAUTHORIZED) {
-        response.status(status).json({
-          success: false,
-          error: { code: 'AUTH_002', message: 'SESSION_INVALID' },
-          timestamp,
-        });
+        this.sendError(response, status, 'AUTH_002', 'SESSION_INVALID');
         return;
       }
 
       if (status === HttpStatus.NOT_FOUND) {
-        response.status(status).json({
-          success: false,
-          error: { code: 'GEN_002', message: 'NOT_FOUND' },
-          timestamp,
-        });
+        this.sendError(response, status, 'GEN_002', 'NOT_FOUND');
         return;
       }
 
-      response.status(status).json({
-        success: false,
-        error: { code: 'GEN_003', message: 'INTERNAL_ERROR' },
-        timestamp,
-      });
+      this.sendError(response, status, 'GEN_003', 'INTERNAL_ERROR');
       return;
     }
 
     this.logger.error({ exception }, 'Unhandled exception');
-    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+    this.sendError(response, HttpStatus.INTERNAL_SERVER_ERROR, 'GEN_003', 'INTERNAL_ERROR');
+  }
+
+  /**
+   * Writes the standard error envelope. `details` is omitted from the payload
+   * when undefined — matching the prior inline blocks, where an undefined
+   * `details` was dropped by JSON serialization anyway.
+   */
+  private sendError(
+    response: Response,
+    status: number,
+    code: string,
+    message: string,
+    details?: unknown,
+  ): void {
+    const error = details === undefined ? { code, message } : { code, message, details };
+    response.status(status).json({
       success: false,
-      error: { code: 'GEN_003', message: 'INTERNAL_ERROR' },
-      timestamp,
+      error,
+      timestamp: new Date().toISOString(),
     });
   }
 }

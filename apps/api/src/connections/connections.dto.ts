@@ -1,12 +1,10 @@
 import {
-  Allow,
   IsArray,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
-  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -15,6 +13,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ConnectionType } from '@prisma/client';
+import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 
 export const CONNECTION_WRITABLE_FIELDS = ['connectionType', 'notes'] as const;
 
@@ -32,17 +31,6 @@ export class CreateConnectionDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
-}
-
-class ChangesetChangeDto {
-  @IsString()
-  field: string;
-
-  @Allow()
-  oldValue: unknown;
-
-  @Allow()
-  newValue: unknown;
 }
 
 export class PatchConnectionDto {

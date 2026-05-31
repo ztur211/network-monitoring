@@ -42,10 +42,23 @@ interface AiStore {
   clearConversation: () => Promise<void>;
   loadUsage: () => Promise<void>;
   sendMessage: (content: string) => void;
+  retryLastMessage: () => void;
 }
 
 function tempId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Returns the content of the most recent user message, or null when the
+ * transcript has none. Extracted from retryLastMessage so the reverse scan
+ * is independently testable.
+ */
+export function findLastUserContent(messages: AiMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].content;
+  }
+  return null;
 }
 
 export const useAiStore = create<AiStore>((set, get) => ({
@@ -160,6 +173,26 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     websocketService.emit(WS_EVENTS.AI_MESSAGE, {
       content,
+      conversationId,
+    });
+  },
+
+  retryLastMessage: () => {
+    const { isStreaming, conversationId, messages } = get();
+    if (isStreaming) return;
+
+    const lastUserContent = findLastUserContent(messages);
+    if (!lastUserContent) return;
+
+    set((state) => ({
+      messages: state.messages.filter(
+        (m) => !(m.role === 'assistant' && m.streaming && m.content === ''),
+      ),
+      error: null,
+    }));
+    get().startAssistantMessage();
+    websocketService.emit(WS_EVENTS.AI_MESSAGE, {
+      content: lastUserContent,
       conversationId,
     });
   },

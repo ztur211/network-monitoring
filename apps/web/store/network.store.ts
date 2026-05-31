@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { NetworkSummary } from '@nodescope/shared';
+import { NetworkDetail, NetworkSummary } from '@nodescope/shared';
 import { api } from '../lib/api.service';
 
 interface NetworkStore {
@@ -8,10 +8,13 @@ interface NetworkStore {
   isLoading: boolean;
   loaded: boolean;
   error: string | null;
+  savingHomeIp: boolean;
+  setHomeIpError: string | null;
 
   setNetwork: (network: NetworkSummary | null) => void;
   setOnHome: (onHome: boolean) => void;
   load: () => Promise<void>;
+  setHomeIp: () => Promise<void>;
 }
 
 export const useNetworkStore = create<NetworkStore>((set, get) => ({
@@ -20,6 +23,8 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   isLoading: false,
   loaded: false,
   error: null,
+  savingHomeIp: false,
+  setHomeIpError: null,
 
   setNetwork: (network) => set({ network }),
 
@@ -34,6 +39,23 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
       set({ network, isLoading: false, loaded: true });
     } catch {
       set({ isLoading: false, error: 'Failed to load network' });
+    }
+  },
+
+  setHomeIp: async () => {
+    const { network, savingHomeIp } = get();
+    if (!network || savingHomeIp) return;
+    set({ savingHomeIp: true, setHomeIpError: null });
+    try {
+      const res = await api.post<{ success: true; data: NetworkDetail }>(
+        `/networks/${network.id}/set-home-ip`,
+      );
+      // Strip homePublicIp before caching — store holds NetworkSummary, list
+      // endpoints omit it too. Mirrors network-events.service.
+      const { homePublicIp: _homePublicIp, ...summary } = res.data.data;
+      set({ network: summary as NetworkSummary, savingHomeIp: false });
+    } catch {
+      set({ savingHomeIp: false, setHomeIpError: 'Failed to save home IP' });
     }
   },
 }));
