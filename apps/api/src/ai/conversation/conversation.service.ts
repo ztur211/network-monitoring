@@ -5,8 +5,14 @@ import { RedisService } from '../../redis/redis.service';
 const CONV_TTL_SECONDS = 86400; // 24 hours
 const MAX_HISTORY_PAIRS = 20;
 
-function convKey(conversationId: string): string {
-  return `ai:conv:${conversationId}`;
+// The conversationId is a server-generated UUID the client echoes back on each
+// turn. Namespacing the Redis key by the authenticated userId means a client
+// that supplies someone else's conversationId resolves a key under its OWN
+// userId — so it can never read, append to, or delete another user's
+// conversation. Without this, conversationId-only keys let any authenticated
+// user reach any conversation by UUID (mitigated only by UUID unguessability).
+function convKey(userId: string, conversationId: string): string {
+  return `ai:conv:${userId}:${conversationId}`;
 }
 
 @Injectable()
@@ -17,8 +23,8 @@ export class ConversationService {
     return crypto.randomUUID();
   }
 
-  async getHistory(conversationId: string): Promise<ConversationMessage[]> {
-    const raw = await this.redis.get(convKey(conversationId));
+  async getHistory(userId: string, conversationId: string): Promise<ConversationMessage[]> {
+    const raw = await this.redis.get(convKey(userId, conversationId));
     if (!raw) return [];
     try {
       return JSON.parse(raw) as ConversationMessage[];
@@ -28,11 +34,12 @@ export class ConversationService {
   }
 
   async appendMessages(
+    userId: string,
     conversationId: string,
     userMessage: string,
     assistantMessage: string,
   ): Promise<void> {
-    const history = await this.getHistory(conversationId);
+    const history = await this.getHistory(userId, conversationId);
 
     history.push({ role: 'user', content: userMessage });
     history.push({ role: 'assistant', content: assistantMessage });
@@ -41,11 +48,16 @@ export class ConversationService {
     const maxMessages = MAX_HISTORY_PAIRS * 2;
     const trimmed = history.length > maxMessages ? history.slice(-maxMessages) : history;
 
-    await this.redis.set(convKey(conversationId), JSON.stringify(trimmed), 'EX', CONV_TTL_SECONDS);
+    await this.redis.set(
+      convKey(userId, conversationId),
+      JSON.stringify(trimmed),
+      'EX',
+      CONV_TTL_SECONDS,
+    );
   }
 
-  async deleteConversation(conversationId: string): Promise<boolean> {
-    const deleted = await this.redis.del(convKey(conversationId));
+  async deleteConversation(userId: string, conversationId: string): Promise<boolean> {
+    const deleted = await this.redis.del(convKey(userId, conversationId));
     return deleted > 0;
   }
 }

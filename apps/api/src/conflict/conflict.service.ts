@@ -1,13 +1,11 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ChangesetDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
-import { RedisService } from '../redis/redis.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 
 @Injectable()
 export class ConflictResolutionService {
   constructor(
-    private readonly redis: RedisService,
     @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
   ) {}
 
@@ -39,12 +37,5 @@ export class ConflictResolutionService {
       ...payload,
       timestamp: new Date().toISOString(),
     });
-  }
-
-  async publishEntityUpdate(entityType: string, entityId: string, userId: string): Promise<void> {
-    await this.redis.publish(
-      'nodescope:entity:updated',
-      JSON.stringify({ entityType, entityId, userId, timestamp: new Date().toISOString() }),
-    );
   }
 }

@@ -4,6 +4,7 @@ import { NetworksService } from '../../networks/networks.service';
 import { NetworksRepository } from '../../networks/networks.repository';
 import { DevicesService } from '../../devices/devices.service';
 import { DevicesRepository } from '../../devices/devices.repository';
+import { UsersRepository } from '../../users/users.repository';
 import { AiService } from '../../ai/ai.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { RedisService } from '../../redis/redis.service';
@@ -32,6 +33,11 @@ const mockDevicesService = {
 
 const mockDevicesRepo = {
   create: jest.fn(),
+};
+
+const mockUsersRepo = {
+  markOnboardingComplete: jest.fn(),
+  isOnboardingComplete: jest.fn(),
 };
 
 const mockAi = {
@@ -66,6 +72,7 @@ describe('OnboardingService', () => {
         { provide: NetworksRepository, useValue: mockNetworksRepo },
         { provide: DevicesService, useValue: mockDevicesService },
         { provide: DevicesRepository, useValue: mockDevicesRepo },
+        { provide: UsersRepository, useValue: mockUsersRepo },
         { provide: AiService, useValue: mockAi },
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: GEOCODING_PROVIDER, useValue: mockGeocoder },
@@ -78,6 +85,8 @@ describe('OnboardingService', () => {
 
     mockNetworksRepo.countByUserId.mockResolvedValue(0);
     mockNetworksRepo.findAllByUserId.mockResolvedValue([]);
+    mockUsersRepo.isOnboardingComplete.mockResolvedValue(false);
+    mockUsersRepo.markOnboardingComplete.mockResolvedValue(undefined);
     mockRedis.get.mockResolvedValue(null);
     mockRedis.set.mockResolvedValue('OK');
     mockRedis.del.mockResolvedValue(1);
@@ -89,13 +98,33 @@ describe('OnboardingService', () => {
   });
 
   describe('handleTurn', () => {
-    it('throws ONBOARD_002 ONBOARDING_ALREADY_COMPLETE when a network exists AND no in-flight state', async () => {
-      mockNetworksRepo.countByUserId.mockResolvedValue(1);
-      mockRedis.get.mockResolvedValue(null); // no redis state — user has truly completed before
+    it('throws ONBOARD_002 when the durable completion marker is set and no in-flight state exists', async () => {
+      // A genuinely finished user trying to restart: no in-flight Redis state,
+      // but the durable DB completion marker is set.
+      mockRedis.get.mockResolvedValue(null);
+      mockUsersRepo.isOnboardingComplete.mockResolvedValue(true);
 
       await expect(
         service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' }),
       ).rejects.toMatchObject({ code: 'ONBOARD_002' });
+    });
+
+    it('resumes from the top (no ONBOARD_002) when a Network exists but onboarding was never completed', async () => {
+      // The lockout regression: the 24h state TTL expired after SaveNetwork
+      // created the Network row. With no completion marker we must resume the
+      // wizard rather than throw — otherwise the user is locked out forever.
+      mockNetworksRepo.countByUserId.mockResolvedValue(1);
+      mockNetworksRepo.findAllByUserId.mockResolvedValue([
+        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      ]);
+      mockRedis.get.mockResolvedValue(null); // no in-flight state
+      mockUsersRepo.isOnboardingComplete.mockResolvedValue(false); // never completed
+
+      const result = await service.handleTurn('user-1', '127.0.0.1', {
+        browserDeviceId: 'bd-1',
+      });
+
+      expect(result.stepId).toBe('networkName'); // welcome → networkName, not a 409
     });
 
     it('proceeds mid-flow even after SaveNetwork created a Network row (regression: 2026-05-21 smoke)', async () => {
@@ -297,6 +326,19 @@ describe('OnboardingService', () => {
 
       expect(result.complete).toBe(true);
       expect(mockRedis.del).toHaveBeenCalledWith('onboarding:state:user-1');
+    });
+
+    it('writes the durable completion marker (DB) when complete=true', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({ stepId: 'speeds', progress: { networkName: 'Home' } }),
+      );
+
+      await service.handleTurn('user-1', '127.0.0.1', {
+        browserDeviceId: 'bd-1',
+        chipChoice: 'skip',
+      });
+
+      expect(mockUsersRepo.markOnboardingComplete).toHaveBeenCalledWith('user-1');
     });
   });
 

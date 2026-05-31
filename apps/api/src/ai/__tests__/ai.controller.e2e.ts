@@ -3,20 +3,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConversationService } from '../conversation/conversation.service';
 import { AI_PROVIDER_TOKEN } from '../adapters/ai-provider.interface';
 
+// AI messaging is WebSocket-only; the HTTP surface is just GET /usage and
+// DELETE /conversation/:id. The adapter is mocked only so AppModule boots
+// without constructing a live Claude client.
 const mockAdapter = {
-  complete: jest.fn().mockResolvedValue({
-    content: 'You have 3 documented devices.',
-    inputTokens: 200,
-    outputTokens: 30,
-  }),
+  complete: jest.fn(),
   stream: jest.fn(),
 };
 
 describe('AiController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let testUserId: string;
   const testEmail = `e2e-ai-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -36,88 +37,19 @@ describe('AiController (e2e)', () => {
 
     const signUpRes = await request(app.getHttpServer())
       .post('/api/auth/sign-up/email')
-      .send({
-        email: testEmail,
-        password: 'Password123!',
-        name: 'AI E2E User',
-      });
+      .send({ email: testEmail, password: 'Password123!', name: 'AI E2E User' });
 
     const setCookie = signUpRes.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+
+    const user = await app.get(PrismaService).user.findUnique({ where: { email: testEmail } });
+    testUserId = user!.id;
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
-  });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockAdapter.complete.mockResolvedValue({
-      content: 'You have 3 documented devices.',
-      inputTokens: 200,
-      outputTokens: 30,
-    });
-  });
-
-  describe('POST /api/v1/ai/message', () => {
-    it('returns 200 with AI response for authenticated user', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({ content: 'How many devices do I have?' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.content).toBeTruthy();
-      expect(res.body.data.conversationId).toBeTruthy();
-      expect(typeof res.body.data.tokensUsed).toBe('number');
-    });
-
-    it('returns 401 AUTH_002 without authentication', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .send({ content: 'Hello' });
-
-      expect(res.status).toBe(401);
-      expect(res.body.error.code).toBe('AUTH_002');
-    });
-
-    it('returns 400 GEN_001 when content is missing', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({});
-
-      expect(res.status).toBe(400);
-    });
-
-    it('returns 400 GEN_001 when content exceeds 2000 characters', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({ content: 'x'.repeat(2001) });
-
-      expect(res.status).toBe(400);
-    });
-
-    it('continues existing conversation when conversationId is provided', async () => {
-      const firstRes = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({ content: 'First message' });
-
-      const convId = firstRes.body.data.conversationId;
-
-      const secondRes = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({ content: 'Second message', conversationId: convId });
-
-      expect(secondRes.status).toBe(200);
-      expect(secondRes.body.data.conversationId).toBe(convId);
-    });
   });
 
   describe('GET /api/v1/ai/usage', () => {
@@ -141,13 +73,11 @@ describe('AiController (e2e)', () => {
   });
 
   describe('DELETE /api/v1/ai/conversation/:conversationId', () => {
-    it('returns 200 after deleting a conversation', async () => {
-      const msgRes = await request(app.getHttpServer())
-        .post('/api/v1/ai/message')
-        .set('Cookie', sessionCookie)
-        .send({ content: 'Start a conversation' });
-
-      const convId = msgRes.body.data.conversationId;
+    it('returns 200 after deleting an existing (seeded) conversation', async () => {
+      // No HTTP message endpoint to create one, so seed history directly under
+      // the user-scoped key via ConversationService.
+      const convId = 'a1111111-1111-4111-8111-111111111111';
+      await app.get(ConversationService).appendMessages(testUserId, convId, 'q', 'a');
 
       const deleteRes = await request(app.getHttpServer())
         .delete(`/api/v1/ai/conversation/${convId}`)
@@ -157,9 +87,17 @@ describe('AiController (e2e)', () => {
       expect(deleteRes.body.success).toBe(true);
     });
 
-    it('returns 401 AUTH_002 without authentication', async () => {
+    it('returns 404 GEN_002 for a conversation that does not exist', async () => {
       const res = await request(app.getHttpServer())
-        .delete('/api/v1/ai/conversation/some-id');
+        .delete('/api/v1/ai/conversation/00000000-0000-4000-8000-000000000000')
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('GEN_002');
+    });
+
+    it('returns 401 AUTH_002 without authentication', async () => {
+      const res = await request(app.getHttpServer()).delete('/api/v1/ai/conversation/some-id');
       expect(res.status).toBe(401);
     });
   });

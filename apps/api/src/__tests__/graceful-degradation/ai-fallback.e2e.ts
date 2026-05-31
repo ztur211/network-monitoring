@@ -65,12 +65,16 @@ describe('Graceful degradation — AI provider unavailable', () => {
     mockConversation.createConversationId.mockReturnValue('fallback-conv-id');
   });
 
-  it('HTTP path: returns providerStatus unavailable when adapter.complete throws network error', async () => {
-    mockAdapter.complete.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'));
+  it('returns providerStatus unavailable when the adapter throws a network error', async () => {
+    mockAdapter.stream.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'));
 
-    const result = await service.sendMessageHttp('user-1', 'PERSONAL_FREE', '127.0.0.1', {
-      content: 'Is my network healthy?',
-    });
+    const result = await service.sendMessageStream(
+      'user-1',
+      'PERSONAL_FREE',
+      '127.0.0.1',
+      { content: 'Is my network healthy?' },
+      () => {},
+    );
 
     expect(result.providerStatus).toBe('unavailable');
     expect(result.tokensUsed).toBe(0);
@@ -78,25 +82,29 @@ describe('Graceful degradation — AI provider unavailable', () => {
     expect(result.content).toContain('5 devices');
   });
 
-  it('HTTP path: returns providerStatus unavailable when adapter throws 503', async () => {
+  it('returns providerStatus unavailable when the adapter throws a 503', async () => {
     const httpErr = Object.assign(new Error('Service Unavailable'), { status: 503 });
-    mockAdapter.complete.mockRejectedValue(httpErr);
+    mockAdapter.stream.mockRejectedValue(httpErr);
 
-    const result = await service.sendMessageHttp('user-1', 'PERSONAL_FREE', '127.0.0.1', {
-      content: 'What is my network topology?',
-    });
+    const result = await service.sendMessageStream(
+      'user-1',
+      'PERSONAL_FREE',
+      '127.0.0.1',
+      { content: 'What is my network topology?' },
+      () => {},
+    );
 
     expect(result.providerStatus).toBe('unavailable');
     expect(result.tokensUsed).toBe(0);
   });
 
-  it('HTTP path: still throws NodeScopeException (rate limit) even when adapter would fail', async () => {
+  it('still throws NodeScopeException (rate limit) even when the adapter would fail', async () => {
     mockRateLimiter.checkRateLimits.mockRejectedValue(
       new NodeScopeException('AI_001', 'HOURLY_LIMIT_REACHED', 429),
     );
 
     await expect(
-      service.sendMessageHttp('user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'Hello' }),
+      service.sendMessageStream('user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'Hello' }, () => {}),
     ).rejects.toThrow(NodeScopeException);
   });
 
@@ -122,11 +130,15 @@ describe('Graceful degradation — AI provider unavailable', () => {
     mockContextBuilder.buildSystemPrompt.mockResolvedValue(
       '## Documented Network\n3 devices: Router, Switch, Firewall\n## Other Section\nstuff',
     );
-    mockAdapter.complete.mockRejectedValue(new Error('timeout'));
+    mockAdapter.stream.mockRejectedValue(new Error('timeout'));
 
-    const result = await service.sendMessageHttp('user-1', 'PERSONAL_FREE', '127.0.0.1', {
-      content: 'What devices do I have?',
-    });
+    const result = await service.sendMessageStream(
+      'user-1',
+      'PERSONAL_FREE',
+      '127.0.0.1',
+      { content: 'What devices do I have?' },
+      () => {},
+    );
 
     expect(result.content).toContain('3 devices: Router, Switch, Firewall');
   });

@@ -12,6 +12,7 @@ import {
   PRODUCT_CONTEXT_PROVIDER,
 } from './context/context-provider.interface';
 import { NetworkContextProvider } from './context/network-context.provider';
+import { NetworkContextRepository } from './context/network-context.repository';
 import { RealtimeContextProvider } from './context/realtime-context.provider';
 import { AccountContextProvider } from './context/account-context.provider';
 import { ProductContextProvider } from './context/product-context.provider';
@@ -35,6 +36,7 @@ import { AiController } from './ai.controller';
       },
     },
     { provide: NETWORK_CONTEXT_PROVIDER, useClass: NetworkContextProvider },
+    NetworkContextRepository,
     { provide: REALTIME_CONTEXT_PROVIDER, useClass: RealtimeContextProvider },
     { provide: ACCOUNT_CONTEXT_PROVIDER, useClass: AccountContextProvider },
     { provide: PRODUCT_CONTEXT_PROVIDER, useClass: ProductContextProvider },

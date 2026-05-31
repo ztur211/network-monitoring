@@ -2,7 +2,6 @@ import { AccountTier, ConnectionStatus } from '@nodescope/shared';
 
 export const REALTIME_SERVICE = Symbol('REALTIME_SERVICE');
 
-export const REDIS_CHANNEL_ENTITY_UPDATED = 'nodescope:entity:updated';
 export const REDIS_KEY_CONNECTIONS = (userId: string) => `nodescope:connections:${userId}`;
 export const REDIS_KEY_PUSH_SCHEDULER_LOCK = 'nodescope:lock:push_scheduler';
 

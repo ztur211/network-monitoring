@@ -14,6 +14,7 @@ import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocodin
 import { NetworksRepository } from '../networks/networks.repository';
 import { NetworksService } from '../networks/networks.service';
 import { RedisService } from '../redis/redis.service';
+import { UsersRepository } from '../users/users.repository';
 import { AiService } from '../ai/ai.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import { OnboardingTurnDto } from './onboarding.dto';
@@ -50,6 +51,7 @@ export class OnboardingService {
     private readonly networksRepository: NetworksRepository,
     private readonly devicesService: DevicesService,
     private readonly devicesRepository: DevicesRepository,
+    private readonly usersRepository: UsersRepository,
     private readonly aiService: AiService,
     private readonly conflictService: ConflictResolutionService,
     @Inject(GEOCODING_PROVIDER) private readonly geocoder: GeocodingProvider,
@@ -61,13 +63,20 @@ export class OnboardingService {
     ip: string,
     dto: OnboardingTurnDto,
   ): Promise<OnboardingTurnResponse> {
-    // The wizard creates the Network row early (at the address step) and
-    // updates it through later steps. So "user already has a network" is NOT
-    // by itself proof of completion — we must also check that no in-flight
-    // wizard state exists in Redis. Only then is the user truly trying to
-    // restart a finished onboarding.
+    // Decide whether this is a new/in-flight wizard or a restart of a FINISHED
+    // one. This must NOT key on "user already has a Network": the wizard creates
+    // the Network row early (at the address step) and keeps editing it, so a
+    // network exists for most of the flow. The previous code threw ONBOARD_002
+    // whenever there was no Redis state but a network existed — which
+    // permanently locked a user out if their 24h state TTL expired mid-flow.
+    // We gate instead on a durable "completed" marker written only when the
+    // wizard actually finishes. No marker + no state ⇒ an abandoned/expired
+    // session, which we resume from the top; the side effects are idempotent
+    // (createBrowserDevice upserts, persistNetworkFields updates the existing
+    // network, infra-device create swallows duplicate-name errors), so
+    // re-walking the steps never duplicates data.
     const persisted = await this.redis.get(stateKey(userId));
-    if (!persisted && (await this.userHasNetwork(userId))) {
+    if (!persisted && (await this.isCompleted(userId))) {
       throw new NodeScopeException('ONBOARD_002', 'ONBOARDING_ALREADY_COMPLETE', HttpStatus.CONFLICT);
     }
 
@@ -92,6 +101,7 @@ export class OnboardingService {
     await this.saveState(userId, { stepId: result.nextStepId, progress: result.progress });
     if (result.complete) {
       await this.redis.del(stateKey(userId));
+      await this.markCompleted(userId);
     }
 
     const response: OnboardingTurnResponse = {
@@ -121,9 +131,12 @@ export class OnboardingService {
     return (await this.redis.get(dismissedKey(userId))) === '1';
   }
 
-  private async userHasNetwork(userId: string): Promise<boolean> {
-    const count = await this.networksRepository.countByUserId(userId);
-    return count > 0;
+  private async markCompleted(userId: string): Promise<void> {
+    await this.usersRepository.markOnboardingComplete(userId);
+  }
+
+  private async isCompleted(userId: string): Promise<boolean> {
+    return this.usersRepository.isOnboardingComplete(userId);
   }
 
   private async loadState(userId: string): Promise<PersistedState> {
