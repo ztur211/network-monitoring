@@ -14,6 +14,7 @@ import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocodin
 import { NetworksRepository } from '../networks/networks.repository';
 import { NetworksService } from '../networks/networks.service';
 import { RedisService } from '../redis/redis.service';
+import { UsersRepository } from '../users/users.repository';
 import { AiService } from '../ai/ai.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import { OnboardingTurnDto } from './onboarding.dto';
@@ -31,10 +32,6 @@ interface PersistedState {
 
 const STATE_TTL_SECONDS = 24 * 60 * 60;
 const DISMISSED_TTL_SECONDS = 30 * 24 * 60 * 60;
-// Long-lived on purpose: the "did this user finish onboarding?" marker must
-// outlive the 24h in-flight state TTL, otherwise an expired mid-flow session
-// would be indistinguishable from a finished one.
-const COMPLETED_TTL_SECONDS = 365 * 24 * 60 * 60;
 
 function stateKey(userId: string): string {
   return `onboarding:state:${userId}`;
@@ -42,10 +39,6 @@ function stateKey(userId: string): string {
 
 function dismissedKey(userId: string): string {
   return `onboarding:dismissed:${userId}`;
-}
-
-function completedKey(userId: string): string {
-  return `onboarding:completed:${userId}`;
 }
 
 @Injectable()
@@ -58,6 +51,7 @@ export class OnboardingService {
     private readonly networksRepository: NetworksRepository,
     private readonly devicesService: DevicesService,
     private readonly devicesRepository: DevicesRepository,
+    private readonly usersRepository: UsersRepository,
     private readonly aiService: AiService,
     private readonly conflictService: ConflictResolutionService,
     @Inject(GEOCODING_PROVIDER) private readonly geocoder: GeocodingProvider,
@@ -138,11 +132,11 @@ export class OnboardingService {
   }
 
   private async markCompleted(userId: string): Promise<void> {
-    await this.redis.set(completedKey(userId), '1', 'EX', COMPLETED_TTL_SECONDS);
+    await this.usersRepository.markOnboardingComplete(userId);
   }
 
   private async isCompleted(userId: string): Promise<boolean> {
-    return (await this.redis.get(completedKey(userId))) === '1';
+    return this.usersRepository.isOnboardingComplete(userId);
   }
 
   private async loadState(userId: string): Promise<PersistedState> {

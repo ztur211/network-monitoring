@@ -84,6 +84,10 @@ model User {
   homeLatitude  Float?
   homeLongitude Float?
   mapPreferences Json    @default("{}")
+  // Set once the first-run onboarding wizard completes. Durable source of truth
+  // for "has this user finished onboarding?" — survives a full Redis flush (the
+  // short-lived Redis wizard state cannot be relied on for this).
+  onboardingCompletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
