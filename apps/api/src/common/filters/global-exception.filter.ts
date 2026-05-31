@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import type { ApiError } from '@nodescope/shared';
 import { Response } from 'express';
 
 export class NodeScopeException extends HttpException {
@@ -81,10 +82,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     details?: unknown,
   ): void {
     const error = details === undefined ? { code, message } : { code, message, details };
-    response.status(status).json({
+    const payload: ApiError = {
       success: false,
       error,
       timestamp: new Date().toISOString(),
-    });
+    };
+    response.status(status).json(payload);
   }
 }
