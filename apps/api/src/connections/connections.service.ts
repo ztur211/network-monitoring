@@ -72,6 +72,7 @@ export class ConnectionsService {
       patch,
       CONNECTION_WRITABLE_FIELDS,
       connection.version,
+      CreateConnectionDto,
     );
 
     const updated = await this.connectionsRepository.updateWithVersion(
