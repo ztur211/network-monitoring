@@ -180,6 +180,38 @@ describe('RealtimeGateway — service interface', () => {
     });
   });
 
+  describe('runPushScheduler', () => {
+    const run = () =>
+      (gateway as unknown as { runPushScheduler: () => Promise<void> }).runPushScheduler();
+
+    it('does not reject when the lock acquisition (redis.set) fails — logs and skips', async () => {
+      const errorSpy = jest
+        .spyOn((gateway as unknown as { logger: { error: jest.Mock } }).logger, 'error')
+        .mockImplementation(() => undefined);
+      mockRedis.set.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(run()).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalled();
+      expect(mockDataSources.getLatestMetrics).not.toHaveBeenCalled();
+    });
+
+    it('skips the cycle when the lock is not acquired (set → null)', async () => {
+      mockRedis.set.mockResolvedValueOnce(null);
+      await run();
+      expect(mockDataSources.getLatestMetrics).not.toHaveBeenCalled();
+    });
+
+    it('runs the push cycle when the lock is acquired', async () => {
+      mockRedis.set.mockResolvedValueOnce('OK');
+      const fetchSockets = jest.fn().mockResolvedValue([]);
+      (mockServer as unknown as { fetchSockets: jest.Mock }).fetchSockets = fetchSockets;
+
+      await run();
+
+      expect(fetchSockets).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('handlePing', () => {
     it('returns PONG event with null data', () => {
       const response = gateway.handlePing();
