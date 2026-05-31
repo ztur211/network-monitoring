@@ -54,4 +54,11 @@ describe('ConversationService (userId-scoped keys)', () => {
     expect(mockRedis.get).toHaveBeenNthCalledWith(1, 'ai:conv:user-A:shared-id');
     expect(mockRedis.get).toHaveBeenNthCalledWith(2, 'ai:conv:user-B:shared-id');
   });
+
+  it('returns empty history (does not throw) when the Redis read fails', async () => {
+    // History is a best-effort context source — a Redis blip must not bubble up
+    // and fail the chat request from outside AiService's stream try/catch.
+    mockRedis.get.mockRejectedValueOnce(new Error('redis down'));
+    await expect(service.getHistory('user-A', 'conv-1')).resolves.toEqual([]);
+  });
 });

@@ -210,6 +210,26 @@ describe('AiService', () => {
       expect(result.content).toContain('No devices documented yet');
     });
 
+    it('returns a success envelope (not the fallback) when post-stream accounting fails', async () => {
+      // The answer has already streamed; a Redis blip on the usage write must not
+      // relabel a healthy response as provider-unavailable.
+      mockAdapter.stream.mockImplementation(async (_req, onToken) => {
+        onToken('answer');
+        return { content: 'answer', inputTokens: 100, outputTokens: 20 };
+      });
+      mockRateLimiter.incrementUsage.mockRejectedValueOnce(new Error('redis down'));
+
+      const tokens: string[] = [];
+      const result = await service.sendMessageStream(
+        'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' },
+        (t) => tokens.push(t),
+      );
+
+      expect(tokens).toEqual(['answer']);
+      expect(result.providerStatus).toBe('ok');
+      expect(result.tokensUsed).toBe(120);
+    });
+
     it('reuses existing conversationId and forwards it to onToken', async () => {
       mockConversation.getHistory.mockResolvedValue([
         { role: 'user', content: 'prev q' },
