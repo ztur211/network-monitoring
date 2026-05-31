@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConversationMessage } from '@nodescope/shared';
 import { RedisService } from '../../redis/redis.service';
 
@@ -17,6 +17,8 @@ function convKey(userId: string, conversationId: string): string {
 
 @Injectable()
 export class ConversationService {
+  private readonly logger = new Logger(ConversationService.name);
+
   constructor(private readonly redis: RedisService) {}
 
   createConversationId(): string {
@@ -24,7 +26,17 @@ export class ConversationService {
   }
 
   async getHistory(userId: string, conversationId: string): Promise<ConversationMessage[]> {
-    const raw = await this.redis.get(convKey(userId, conversationId));
+    let raw: string | null;
+    try {
+      raw = await this.redis.get(convKey(userId, conversationId));
+    } catch (err) {
+      // Conversation history is a best-effort context source (CLAUDE.md AI
+      // context-assembly source #3); a Redis blip on the read must degrade to
+      // empty history, not fail the whole chat request from outside the
+      // AiService stream try/catch.
+      this.logger.warn({ err, userId }, 'Conversation history read failed — using empty history');
+      return [];
+    }
     if (!raw) return [];
     try {
       return JSON.parse(raw) as ConversationMessage[];

@@ -71,12 +71,17 @@ export class AiService {
       );
 
       const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
-      await Promise.all([
-        this.conversation.appendMessages(userId, conversationId, dto.content, adapterResponse.content),
-        this.rateLimiter.incrementUsage(userId, totalTokens),
-      ]);
+      // Persistence + usage accounting is best-effort: the answer has already
+      // streamed to the user via onToken, so a Redis failure here must not be
+      // caught below and relabel a healthy response as provider-unavailable.
+      const usage = await this.recordUsageBestEffort(
+        userId,
+        conversationId,
+        dto.content,
+        adapterResponse.content,
+        totalTokens,
+      );
 
-      const usage = await this.rateLimiter.getUsageCounts(userId);
       return this.buildSuccessEnvelope(
         conversationId,
         adapterResponse.content,
@@ -92,6 +97,40 @@ export class AiService {
 
       const usage = await this.rateLimiter.getUsageCounts(userId);
       return this.buildFallbackEnvelope(conversationId, fallback, usage);
+    }
+  }
+
+  /**
+   * Persists the exchange, increments usage, and reads the usage counts — all
+   * best-effort. A Redis failure in this post-stream accounting is logged and
+   * swallowed (returning zeroed usage) rather than thrown, because the assistant
+   * answer has already streamed to the client; letting it surface as the
+   * provider-unavailable fallback would contradict what the user just saw.
+   */
+  private async recordUsageBestEffort(
+    userId: string,
+    conversationId: string,
+    userMessage: string,
+    assistantMessage: string,
+    totalTokens: number,
+  ): Promise<AiUsageDto> {
+    try {
+      await Promise.all([
+        this.conversation.appendMessages(userId, conversationId, userMessage, assistantMessage),
+        this.rateLimiter.incrementUsage(userId, totalTokens),
+      ]);
+      return await this.rateLimiter.getUsageCounts(userId);
+    } catch (err) {
+      this.logger.warn({ err }, 'AI post-stream accounting failed — returning success with best-effort usage');
+      return {
+        hourlyUsed: 0,
+        hourlyLimit: 0,
+        dailyUsed: 0,
+        dailyLimit: 0,
+        monthlyTokensUsed: 0,
+        monthlyTokenBudget: 0,
+        resetsAt: new Date().toISOString(),
+      };
     }
   }
 
