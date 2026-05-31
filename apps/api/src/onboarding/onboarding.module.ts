@@ -5,6 +5,7 @@ import { DevicesModule } from '../devices/devices.module';
 import { MapModule } from '../map/map.module';
 import { NetworksModule } from '../networks/networks.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { UsersModule } from '../users/users.module';
 import { OnboardingController } from './onboarding.controller';
 import { OnboardingService } from './onboarding.service';
 
@@ -15,6 +16,7 @@ import { OnboardingService } from './onboarding.service';
     DevicesModule,
     MapModule,
     NetworksModule,
+    UsersModule,
     forwardRef(() => RealtimeModule),
   ],
   controllers: [OnboardingController],

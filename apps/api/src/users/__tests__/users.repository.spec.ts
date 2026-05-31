@@ -132,4 +132,24 @@ describe('UsersRepository (integration)', () => {
       expect(after?.tier).toBe(before?.tier);
     });
   });
+
+  describe('onboarding completion marker', () => {
+    it('isOnboardingComplete is false for a fresh user', async () => {
+      expect(await repository.isOnboardingComplete(testUserId)).toBe(false);
+    });
+
+    it('markOnboardingComplete sets the durable timestamp and flips isOnboardingComplete', async () => {
+      await repository.markOnboardingComplete(testUserId);
+
+      expect(await repository.isOnboardingComplete(testUserId)).toBe(true);
+      const fresh = await prisma.user.findUnique({ where: { id: testUserId } });
+      expect(fresh?.onboardingCompletedAt).toBeInstanceOf(Date);
+    });
+
+    it('isOnboardingComplete is false for an unknown user', async () => {
+      expect(
+        await repository.isOnboardingComplete('00000000-0000-0000-0000-000000000000'),
+      ).toBe(false);
+    });
+  });
 });

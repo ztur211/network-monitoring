@@ -45,4 +45,19 @@ export class UsersRepository {
       data: { mapPreferences: prefs as Prisma.InputJsonValue },
     });
   }
+
+  async markOnboardingComplete(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { onboardingCompletedAt: new Date() },
+    });
+  }
+
+  async isOnboardingComplete(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { onboardingCompletedAt: true },
+    });
+    return user?.onboardingCompletedAt != null;
+  }
 }
