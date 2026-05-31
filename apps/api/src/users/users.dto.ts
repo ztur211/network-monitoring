@@ -9,13 +9,13 @@ import {
   IsLatitude,
   IsLongitude,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsBooleanRecord } from '../common/validators/is-boolean-record.validator';
 
 export class UpdateMeDto {
   @IsOptional()
@@ -55,7 +55,7 @@ export class UpdatePreferencesDto {
   buildingsVisible?: boolean;
 
   @IsOptional()
-  @IsObject()
+  @IsBooleanRecord()
   layerToggles?: Record<string, boolean>;
 
   @IsOptional()
