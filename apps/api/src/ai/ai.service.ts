@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AiMessageResponseDto,
   AiUsageDto,
@@ -75,20 +75,12 @@ export class AiService {
       ]);
 
       const usage = await this.rateLimiter.getUsageCounts(userId);
-      const usageWarning = this.rateLimiter.buildUsageWarning({
-        hourlyUsed: usage.hourlyUsed,
-        dailyUsed: usage.dailyUsed,
-        monthlyTokensUsed: usage.monthlyTokensUsed,
-      });
-
-      response = {
-        content: adapterResponse.content,
+      response = this.buildSuccessEnvelope(
         conversationId,
-        tokensUsed: totalTokens,
-        monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
-        usageWarning,
-        providerStatus: 'ok',
-      };
+        adapterResponse.content,
+        totalTokens,
+        usage,
+      );
     } catch (err) {
       if (err instanceof NodeScopeException) throw err;
 
@@ -96,14 +88,7 @@ export class AiService {
       const fallback = this.buildFallbackResponse(systemPrompt);
 
       const usage = await this.rateLimiter.getUsageCounts(userId);
-      response = {
-        content: fallback,
-        conversationId,
-        tokensUsed: 0,
-        monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
-        usageWarning: null,
-        providerStatus: 'unavailable',
-      };
+      response = this.buildFallbackEnvelope(conversationId, fallback, usage);
     }
 
     return response;
@@ -139,20 +124,12 @@ export class AiService {
       ]);
 
       const usage = await this.rateLimiter.getUsageCounts(userId);
-      const usageWarning = this.rateLimiter.buildUsageWarning({
-        hourlyUsed: usage.hourlyUsed,
-        dailyUsed: usage.dailyUsed,
-        monthlyTokensUsed: usage.monthlyTokensUsed,
-      });
-
-      return {
-        content: adapterResponse.content,
+      return this.buildSuccessEnvelope(
         conversationId,
-        tokensUsed: totalTokens,
-        monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
-        usageWarning,
-        providerStatus: 'ok',
-      };
+        adapterResponse.content,
+        totalTokens,
+        usage,
+      );
     } catch (err) {
       if (err instanceof NodeScopeException) throw err;
 
@@ -161,14 +138,7 @@ export class AiService {
       onToken(fallback, conversationId);
 
       const usage = await this.rateLimiter.getUsageCounts(userId);
-      return {
-        content: fallback,
-        conversationId,
-        tokensUsed: 0,
-        monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
-        usageWarning: null,
-        providerStatus: 'unavailable',
-      };
+      return this.buildFallbackEnvelope(conversationId, fallback, usage);
     }
   }
 
@@ -228,6 +198,50 @@ export class AiService {
         tokensUsed: 0,
       };
     }
+  }
+
+  /**
+   * Builds the success response envelope for a completed AI exchange, deriving
+   * the usage warning and remaining monthly budget from the usage counts.
+   */
+  private buildSuccessEnvelope(
+    conversationId: string,
+    content: string,
+    tokensUsed: number,
+    usage: AiUsageDto,
+  ): AiMessageResponseDto {
+    return {
+      content,
+      conversationId,
+      tokensUsed,
+      monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
+      usageWarning: this.rateLimiter.buildUsageWarning({
+        hourlyUsed: usage.hourlyUsed,
+        dailyUsed: usage.dailyUsed,
+        monthlyTokensUsed: usage.monthlyTokensUsed,
+      }),
+      providerStatus: 'ok',
+    };
+  }
+
+  /**
+   * Builds the graceful-degradation response envelope used when the AI
+   * provider is unavailable: no tokens charged, no usage warning, and
+   * providerStatus 'unavailable' (see CLAUDE.md graceful-degradation Option 2).
+   */
+  private buildFallbackEnvelope(
+    conversationId: string,
+    content: string,
+    usage: AiUsageDto,
+  ): AiMessageResponseDto {
+    return {
+      content,
+      conversationId,
+      tokensUsed: 0,
+      monthlyBudgetRemaining: Math.max(0, usage.monthlyTokenBudget - usage.monthlyTokensUsed),
+      usageWarning: null,
+      providerStatus: 'unavailable',
+    };
   }
 
   private buildOnboardingSystemPrompt(step: OnboardingStepId, progress: OnboardingProgress): string {

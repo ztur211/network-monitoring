@@ -21,8 +21,17 @@ const PLACEHOLDER_MESSAGES = [
 ];
 
 export function AiChatWindow() {
-  const { messages, isStreaming, error, sendMessage, clearConversation, usage, loadUsage } =
-    useAiStore();
+  const {
+    messages,
+    isStreaming,
+    error,
+    sendMessage,
+    clearConversation,
+    usage,
+    loadUsage,
+    isLoadingUsage,
+    retryLastMessage,
+  } = useAiStore();
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
@@ -85,8 +94,15 @@ export function AiChatWindow() {
             <AiMessage key={msg.id} message={msg} />
           ))}
           {error && (
-            <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-3">
-              <Text className="text-sm text-red-700">{error}</Text>
+            <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-3 flex-row items-center justify-between">
+              <Text className="text-sm text-red-700 flex-1">{error}</Text>
+              <TouchableOpacity
+                onPress={retryLastMessage}
+                disabled={isStreaming}
+                className="bg-red-600 px-3 py-1.5 rounded-lg ml-3"
+              >
+                <Text className="text-white text-xs font-medium">Retry</Text>
+              </TouchableOpacity>
             </View>
           )}
           <View className="h-4" />
@@ -133,11 +149,16 @@ export function AiChatWindow() {
             )}
           </TouchableOpacity>
         </View>
-        {usage && (
+        {isLoadingUsage && !usage ? (
+          <View className="flex-row items-center justify-center mt-1 gap-1.5">
+            <ActivityIndicator size="small" color="#9ca3af" />
+            <Text className="text-xs text-gray-400">Loading usage…</Text>
+          </View>
+        ) : usage ? (
           <Text className="text-xs text-gray-400 text-center mt-1">
             {usage.hourlyUsed}/{usage.hourlyLimit} messages this hour
           </Text>
-        )}
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );

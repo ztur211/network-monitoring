@@ -5,14 +5,14 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { useDeviceStore, CreateDeviceInput, UpdateDeviceInput } from '../../store/device.store';
 import { DeviceForm } from '../../components/DeviceForm';
 import { DeviceLimitBanner } from '../../components/map/DeviceLimitBanner';
 import { Timestamp } from '../../components/Timestamp';
+import { ListScreenStatus } from '../../components/ListScreenStatus';
+import { formatDeviceCategory } from '../../lib/format-category';
 
 const CATEGORY_GROUPS: { label: string; values: DeviceCategory[] }[] = [
   { label: 'All', values: [] },
@@ -91,7 +91,9 @@ export default function EquipmentScreen() {
         setFormMode(null);
         setEditDevice(null);
       } catch {
-        Alert.alert('Error', 'Failed to save device. Queued for retry.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save device. Queued for retry.');
+        }
         setFormMode(null);
         setEditDevice(null);
       } finally {
@@ -116,25 +118,11 @@ export default function EquipmentScreen() {
   );
 
   if (isLoading && devices.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ListScreenStatus state="loading" />;
   }
 
   if (error && devices.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
-        <Text className="text-red-500 dark:text-red-400 text-center mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => void loadDevices()}
-          className="bg-blue-600 px-6 py-2 rounded-lg"
-        >
-          <Text className="text-white font-medium">Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ListScreenStatus state="error" error={error} onRetry={() => void loadDevices()} />;
   }
 
   return (
@@ -293,7 +281,7 @@ function DeviceCard({
             {device.name}
           </Text>
           <Text className="text-xs text-gray-500 dark:text-gray-400">
-            {formatCategory(device.category)}
+            {formatDeviceCategory(device.category)}
             {device.floor !== null
               ? ` · ${device.floorLabel ?? (device.floor === 0 ? 'Ground' : `Floor ${device.floor}`)}`
               : ''}
@@ -328,14 +316,4 @@ function DeviceCard({
   );
 }
 
-function formatCategory(category: string): string {
-  const labels: Record<string, string> = {
-    ROUTER: 'Router', SWITCH: 'Switch', ACCESS_POINT: 'Access Point', FIREWALL: 'Firewall',
-    MODEM: 'Modem', ONT: 'ONT', RAD: 'RAD', DSLAM: 'DSLAM',
-    FIBER_MEDIA_CONVERTER: 'Fiber Converter', WIFI_EXTENDER: 'Wi-Fi Extender',
-    WIRELESS_BRIDGE: 'Wireless Bridge', SERVER_RACK: 'Server Rack', PATCH_PANEL: 'Patch Panel',
-    UPS: 'UPS', COMPUTER: 'Computer', PHONE: 'Phone', TABLET: 'Tablet',
-    PRINTER: 'Printer', IOT_DEVICE: 'IoT Device', CUSTOM: 'Custom',
-  };
-  return labels[category] ?? category;
-}
+// Category display labels now live in lib/format-category.ts (formatDeviceCategory).

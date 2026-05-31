@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { CircuitDto } from '@nodescope/shared';
 import { api } from '../lib/api.service';
+import { drainOfflineQueue } from './offline-queue';
+import { upsertById } from './upsert-by-id';
+import { buildVersionedChangeset } from './version-changeset';
 
 export interface CreateCircuitInput {
   ispName: string;
@@ -61,13 +64,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
   offlineQueue: [],
 
   upsertCircuit: (circuit) =>
-    set((state) => {
-      const idx = state.circuits.findIndex((c) => c.id === circuit.id);
-      if (idx === -1) return { circuits: [...state.circuits, circuit] };
-      const next = [...state.circuits];
-      next[idx] = circuit;
-      return { circuits: next };
-    }),
+    set((state) => ({ circuits: upsertById(state.circuits, circuit) })),
 
   removeCircuit: (circuitId) =>
     set((state) => ({ circuits: state.circuits.filter((c) => c.id !== circuitId) })),
@@ -149,14 +146,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
   },
 
   updateCircuit: async (circuitId, original, input) => {
-    const changes: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
-    for (const [field, newValue] of Object.entries(input)) {
-      const oldValue = original[field as keyof CircuitDto];
-      if (oldValue !== newValue) {
-        changes.push({ field, oldValue, newValue });
-      }
-    }
-
+    const changes = buildVersionedChangeset(original, input);
     if (changes.length === 0) return original;
 
     const optimistic: CircuitDto = {
@@ -215,23 +205,16 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
     }
   },
 
-  flushOfflineQueue: async () => {
-    const ops = get().offlineQueue;
-    if (ops.length === 0) return;
-    set({ offlineQueue: [] });
-
-    for (const op of ops) {
-      try {
-        if (op.type === 'create') {
-          await get().createCircuit(op.input);
-        } else if (op.type === 'update') {
-          await get().updateCircuit(op.circuitId, op.previousCircuit, op.input);
-        } else if (op.type === 'delete') {
-          await get().deleteCircuit(op.circuitId);
+  flushOfflineQueue: () =>
+    drainOfflineQueue(
+      () => get().offlineQueue,
+      () => set({ offlineQueue: [] }),
+      (op) => {
+        if (op.type === 'create') return get().createCircuit(op.input);
+        if (op.type === 'update') {
+          return get().updateCircuit(op.circuitId, op.previousCircuit, op.input);
         }
-      } catch {
-        // Individual op failed; it re-queues itself
-      }
-    }
-  },
+        return get().deleteCircuit(op.circuitId);
+      },
+    ),
 }));

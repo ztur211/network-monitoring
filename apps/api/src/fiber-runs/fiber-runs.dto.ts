@@ -1,5 +1,4 @@
 import {
-  Allow,
   IsArray,
   IsInt,
   IsNumber,
@@ -15,6 +14,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 
 export const FIBER_RUN_WRITABLE_FIELDS = ['name', 'cableType', 'lengthMeters', 'notes'] as const;
 
@@ -47,17 +47,6 @@ export class CreateFiberRunDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
-}
-
-class ChangesetChangeDto {
-  @IsString()
-  field: string;
-
-  @Allow()
-  oldValue: unknown;
-
-  @Allow()
-  newValue: unknown;
 }
 
 export class PatchFiberRunDto {

@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { DeviceDto } from '@nodescope/shared';
+import { formatDeviceCategory } from '../../lib/format-category';
 
 interface DeviceDetailPanelProps {
   device: DeviceDto;
@@ -26,7 +27,7 @@ export function DeviceDetailPanel({ device, onClose, onEdit, onDelete }: DeviceD
             {device.name}
           </Text>
           <Text className="text-sm text-gray-500 dark:text-gray-400">
-            {formatCategory(device.category)}
+            {formatDeviceCategory(device.category)}
             {device.floor !== null ? ` · Floor ${device.floorLabel ?? device.floor}` : ''}
           </Text>
         </View>
@@ -100,8 +101,4 @@ function DetailRow({
       </Text>
     </View>
   );
-}
-
-function formatCategory(category: string): string {
-  return category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

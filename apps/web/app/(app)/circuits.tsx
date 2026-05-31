@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Modal,
 } from 'react-native';
 import { CircuitDto } from '@nodescope/shared';
@@ -17,6 +16,7 @@ import {
 import { useDeviceStore } from '../../store/device.store';
 import { CircuitForm } from '../../components/CircuitForm';
 import { Timestamp } from '../../components/Timestamp';
+import { ListScreenStatus } from '../../components/ListScreenStatus';
 
 type FormMode = 'create' | 'edit' | null;
 
@@ -64,7 +64,9 @@ export default function CircuitsScreen() {
         setFormMode(null);
         setEditCircuit(null);
       } catch {
-        Alert.alert('Error', 'Failed to save circuit. Queued for retry.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save circuit. Queued for retry.');
+        }
         setFormMode(null);
         setEditCircuit(null);
       } finally {
@@ -89,25 +91,11 @@ export default function CircuitsScreen() {
   );
 
   if (isLoading && circuits.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ListScreenStatus state="loading" />;
   }
 
   if (error && circuits.length === 0) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
-        <Text className="text-red-500 dark:text-red-400 text-center mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => void loadCircuits()}
-          className="bg-blue-600 px-6 py-2 rounded-lg"
-        >
-          <Text className="text-white font-medium">Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ListScreenStatus state="error" error={error} onRetry={() => void loadCircuits()} />;
   }
 
   return (

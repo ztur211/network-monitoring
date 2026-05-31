@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
+import { formatDeviceCategory } from '../../lib/format-category';
 import { useUiStore } from '../../store/ui.store';
 
 const CATEGORY_GROUPS: { label: string; categories: DeviceCategory[] }[] = [
@@ -127,7 +128,7 @@ export function MapControls({ currentZoom }: MapControlsProps) {
                           : 'text-gray-700 dark:text-gray-300'
                       }`}
                     >
-                      {formatCategory(category)}
+                      {formatDeviceCategory(category)}
                     </Text>
                     {faded && (
                       <Text className="text-xs text-gray-400 dark:text-gray-600 ml-1">
@@ -151,8 +152,4 @@ function getZoomLabel(zoom: number): string {
   if (zoom >= 13) return 'Core infrastructure';
   if (zoom >= 10) return 'ISP equipment';
   return 'City view';
-}
-
-function formatCategory(category: string): string {
-  return category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

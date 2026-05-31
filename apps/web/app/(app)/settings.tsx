@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Switch,
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
@@ -40,6 +39,7 @@ export default function SettingsScreen() {
   // Data sources
   const [sources, setSources] = useState<DataSourceStatus[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesError, setSourcesError] = useState(false);
 
   useEffect(() => {
     void loadDataSources();
@@ -47,13 +47,14 @@ export default function SettingsScreen() {
 
   const loadDataSources = async () => {
     setSourcesLoading(true);
+    setSourcesError(false);
     try {
       const res = await api.get<{ success: true; data: { sources: DataSourceStatus[] } }>(
         '/users/me/data-sources',
       );
       setSources(res.data.data.sources);
     } catch {
-      // non-critical — show empty
+      setSourcesError(true);
     } finally {
       setSourcesLoading(false);
     }
@@ -78,7 +79,9 @@ export default function SettingsScreen() {
       if (user) {
         setUser({ ...user, name: res.data.data.name, email: res.data.data.email });
       }
-      Alert.alert('Saved', 'Profile updated successfully.');
+      if (typeof window !== 'undefined') {
+        window.alert('Profile updated successfully.');
+      }
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
         ?.error?.code;
@@ -255,6 +258,18 @@ export default function SettingsScreen() {
           {sourcesLoading ? (
             <View className="py-6 items-center">
               <ActivityIndicator size="small" color="#6b7280" />
+            </View>
+          ) : sourcesError ? (
+            <View className="px-4 py-4 flex-row items-center justify-between">
+              <Text className="text-sm text-red-500 dark:text-red-400 flex-1">
+                Failed to load data sources.
+              </Text>
+              <TouchableOpacity
+                onPress={() => void loadDataSources()}
+                className="bg-blue-600 px-3 py-1.5 rounded-lg ml-3"
+              >
+                <Text className="text-white text-sm font-medium">Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : sources.length === 0 ? (
             <View className="px-4 py-4">

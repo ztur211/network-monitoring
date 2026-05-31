@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { DeviceDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
@@ -36,6 +35,10 @@ export default function MapScreen() {
   const [pickedCoords, setPickedCoords] = useState<{ latitude: number; longitude: number } | null>(
     null,
   );
+  // When set, the next map click feeds new coords back into this device's
+  // edit form rather than opening a create form. Cleared on form close /
+  // cancel / successful submit.
+  const [relocatingDevice, setRelocatingDevice] = useState<DeviceDto | null>(null);
   // One-shot fly target. `key` is monotonically increasing so MapView re-runs
   // its fly even when consecutive devices happen to be at the same coords.
   const [flyTarget, setFlyTarget] = useState<{
@@ -93,6 +96,7 @@ export default function MapScreen() {
     setEditDevice(null);
     setPickedCoords(null);
     setPlacementMode('idle');
+    setRelocatingDevice(null);
   }, []);
 
   const handleStartPlacement = useCallback(() => {
@@ -102,16 +106,34 @@ export default function MapScreen() {
   const handleCancelPlacement = useCallback(() => {
     setPlacementMode('idle');
     setPickedCoords(null);
+    setRelocatingDevice(null);
   }, []);
+
+  // Edit-mode "Tap to relocate" handler. Closes the form, remembers which
+  // device is being relocated, and enters placement mode. The next map click
+  // re-opens the same edit form with new pickedCoords prefilled.
+  const handleStartRelocation = useCallback(() => {
+    if (!editDevice) return;
+    setRelocatingDevice(editDevice);
+    setFormMode(null);
+    setPlacementMode('placing');
+  }, [editDevice]);
 
   const handleMapClick = useCallback(
     (lngLat: { longitude: number; latitude: number }) => {
       if (placementMode !== 'placing') return;
       setPickedCoords(lngLat);
       setPlacementMode('idle');
-      setFormMode('create');
+      if (relocatingDevice) {
+        // Re-open the edit form for the same device with the new pick.
+        setEditDevice(relocatingDevice);
+        setRelocatingDevice(null);
+        setFormMode('edit');
+      } else {
+        setFormMode('create');
+      }
     },
-    [placementMode],
+    [placementMode, relocatingDevice],
   );
 
   const handleFormSubmit = useCallback(
@@ -142,7 +164,9 @@ export default function MapScreen() {
         }
         handleFormClose();
       } catch {
-        Alert.alert('Error', 'Failed to save device. It has been queued for retry when reconnected.');
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save device. It has been queued for retry when reconnected.');
+        }
         handleFormClose();
       } finally {
         setIsSubmitting(false);
@@ -206,10 +230,16 @@ export default function MapScreen() {
         <OnHomeBadge />
       </View>
 
-      {/* Placement-mode banner */}
+      {/* Placement-mode banner — copy differs for create vs relocate so the
+          user knows which device is being placed when "Tap to relocate" is
+          mid-flight. */}
       {placementMode === 'placing' && (
         <View className="absolute top-12 left-1/2 -translate-x-1/2 bg-blue-600 rounded-full px-4 py-2 shadow-lg flex-row items-center gap-3">
-          <Text className="text-white text-sm font-medium">Tap the map to place a device</Text>
+          <Text className="text-white text-sm font-medium">
+            {relocatingDevice
+              ? `Tap the map to relocate ${relocatingDevice.name}`
+              : 'Tap the map to place a device'}
+          </Text>
           <TouchableOpacity onPress={handleCancelPlacement}>
             <Text className="text-white text-xs underline">Cancel</Text>
           </TouchableOpacity>
@@ -239,13 +269,17 @@ export default function MapScreen() {
         />
       )}
 
-      {/* Device form (create / edit) */}
+      {/* Device form (create / edit). placedLatitude/Longitude apply to both
+          modes: in create it's the user's first map pick; in edit it's set
+          only when the form was re-opened after a "Tap to relocate" round
+          trip, overriding the device's existing coords. */}
       {formMode && (
         <DeviceForm
           device={formMode === 'edit' ? editDevice : null}
-          placedLatitude={formMode === 'create' ? pickedCoords?.latitude ?? null : null}
-          placedLongitude={formMode === 'create' ? pickedCoords?.longitude ?? null : null}
+          placedLatitude={pickedCoords?.latitude ?? null}
+          placedLongitude={pickedCoords?.longitude ?? null}
           isSubmitting={isSubmitting}
+          onRelocate={formMode === 'edit' ? handleStartRelocation : undefined}
           onClose={handleFormClose}
           onSubmit={handleFormSubmit}
         />

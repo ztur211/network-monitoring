@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DeviceDto, DeviceCategory } from '@nodescope/shared';
 import { CreateDeviceInput, UpdateDeviceInput } from '../store/device.store';
+import { formatDeviceCategory } from '../lib/format-category';
 
 const DEVICE_CATEGORIES: DeviceCategory[] = [
   'ROUTER', 'SWITCH', 'ACCESS_POINT', 'FIREWALL', 'MODEM', 'ONT', 'RAD', 'DSLAM',
@@ -54,11 +55,17 @@ type FormValues = z.input<typeof schema>;
 interface DeviceFormProps {
   device?: DeviceDto | null;
   // For create: lat/lng captured from the placement-mode map click.
-  // For edit: usually omitted — the existing device.latitude/longitude are used.
-  // Provided again only when the user invokes "Move on map" (future).
+  // For edit: normally omitted (the existing device.latitude/longitude render).
+  // Provided again when the user invokes "Tap to relocate" and picks fresh
+  // coords on the map — the form then re-opens prefilled with the new value.
   placedLatitude?: number | null;
   placedLongitude?: number | null;
   isSubmitting?: boolean;
+  // Edit-mode "Tap to relocate" handler. When set, a button renders next to
+  // the read-only coord row; pressing it returns control to the map screen,
+  // which closes the form, enters placement mode, captures a tap, and
+  // re-opens the form with placedLatitude/Longitude reflecting the new pick.
+  onRelocate?: () => void;
   onClose: () => void;
   onSubmit: (input: CreateDeviceInput | UpdateDeviceInput) => Promise<void>;
 }
@@ -75,6 +82,7 @@ export function DeviceForm({
   placedLatitude,
   placedLongitude,
   isSubmitting,
+  onRelocate,
   onClose,
   onSubmit,
 }: DeviceFormProps) {
@@ -185,7 +193,7 @@ export function DeviceForm({
                             value === cat ? 'text-white font-medium' : 'text-gray-600 dark:text-gray-400'
                           }`}
                         >
-                          {formatCategory(cat)}
+                          {formatDeviceCategory(cat)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -198,11 +206,26 @@ export function DeviceForm({
             </View>
 
             {/* Location is captured by tapping the map before the form opens —
-                see placement-mode flow in app/(app)/map.tsx. No text inputs. */}
+                see placement-mode flow in app/(app)/map.tsx. No text inputs.
+                In edit mode, "Tap to relocate" re-enters placement mode and
+                re-opens this form with the new pick prefilled. */}
             <View>
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Location
-              </Text>
+              <View className="flex-row items-center justify-between mb-1">
+                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Location
+                </Text>
+                {isEdit && onRelocate && (
+                  <TouchableOpacity onPress={onRelocate} disabled={isSubmitting}>
+                    <Text
+                      className={`text-sm font-medium ${
+                        isSubmitting ? 'text-blue-300' : 'text-blue-600'
+                      }`}
+                    >
+                      Tap to relocate
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <View className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-800">
                 <Text className="text-sm text-gray-700 dark:text-gray-300">
                   {coordLine ?? 'Tap the map to place this device'}
@@ -343,30 +366,4 @@ function FormField({
       {error && <Text className="text-red-500 text-xs mt-1">{error}</Text>}
     </View>
   );
-}
-
-function formatCategory(category: string): string {
-  const labels: Record<string, string> = {
-    ROUTER: 'Router',
-    SWITCH: 'Switch',
-    ACCESS_POINT: 'Access Point',
-    FIREWALL: 'Firewall',
-    MODEM: 'Modem',
-    ONT: 'ONT',
-    RAD: 'RAD',
-    DSLAM: 'DSLAM',
-    FIBER_MEDIA_CONVERTER: 'Fiber Converter',
-    WIFI_EXTENDER: 'Wi-Fi Extender',
-    WIRELESS_BRIDGE: 'Wireless Bridge',
-    SERVER_RACK: 'Server Rack',
-    PATCH_PANEL: 'Patch Panel',
-    UPS: 'UPS',
-    COMPUTER: 'Computer',
-    PHONE: 'Phone',
-    TABLET: 'Tablet',
-    PRINTER: 'Printer',
-    IOT_DEVICE: 'IoT Device',
-    CUSTOM: 'Custom',
-  };
-  return labels[category] ?? category;
 }

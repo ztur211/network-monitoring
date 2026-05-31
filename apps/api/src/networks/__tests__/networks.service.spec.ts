@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NetworksService } from '../networks.service';
 import { NetworksRepository } from '../networks.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 const makeNetwork = (overrides = {}) => ({
   id: 'net-1',
   userId: 'user-1',
+  propertyId: null,
   name: 'Home',
   homeAddress: null,
   homeLatitude: null,
@@ -36,6 +38,14 @@ const mockConflict: jest.Mocked<ConflictResolutionService> = {
   emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
+const mockRealtime = {
+  pushToUser: jest.fn(),
+  pushToTier: jest.fn(),
+  pushToOrg: jest.fn(),
+  getConnectionStatus: jest.fn(),
+  recomputeOnHomeForUser: jest.fn(),
+};
+
 describe('NetworksService', () => {
   let service: NetworksService;
 
@@ -45,6 +55,7 @@ describe('NetworksService', () => {
         NetworksService,
         { provide: NetworksRepository, useValue: mockRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
+        { provide: REALTIME_SERVICE, useValue: mockRealtime },
       ],
     }).compile();
 
@@ -175,6 +186,34 @@ describe('NetworksService', () => {
         'user-1',
       );
     });
+
+    it('triggers RealtimeService.recomputeOnHomeForUser when homePublicIp is in changes', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork());
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.5' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.5', version: 2 }),
+      );
+
+      await service.updateNetwork('user-1', 'net-1', {
+        baseVersion: 1,
+        changes: [{ field: 'homePublicIp', oldValue: null, newValue: '203.0.113.5' }],
+      });
+
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('does NOT trigger recomputeOnHomeForUser when only non-IP fields change', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork());
+      mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
+      mockRepo.updateWithVersion.mockResolvedValue(makeNetwork({ name: 'Renamed', version: 2 }));
+
+      await service.updateNetwork('user-1', 'net-1', {
+        baseVersion: 1,
+        changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
+      });
+
+      expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteNetwork', () => {
@@ -189,6 +228,57 @@ describe('NetworksService', () => {
       mockRepo.findByIdAndUserId.mockResolvedValue(null);
       await expect(service.deleteNetwork('user-1', 'missing')).rejects.toThrow(NodeScopeException);
       expect(mockRepo.deleteByIdAndUserId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setHomeIpFromRequest', () => {
+    it('updates the network with the request IP and triggers the on-home recompute', async () => {
+      const network = makeNetwork({ homePublicIp: null });
+      mockRepo.findByIdAndUserId.mockResolvedValue(network);
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
+      );
+
+      const result = await service.setHomeIpFromRequest('user-1', 'net-1', '203.0.113.42');
+
+      expect(mockRepo.updateWithVersion).toHaveBeenCalledWith(
+        'net-1',
+        'user-1',
+        expect.objectContaining({ homePublicIp: '203.0.113.42' }),
+        1,
+      );
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
+      expect(result.homePublicIp).toBe('203.0.113.42');
+    });
+
+    it('throws NETWORK_002 when the target network does not belong to the user', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(null);
+
+      await expect(
+        service.setHomeIpFromRequest('user-1', 'missing', '203.0.113.42'),
+      ).rejects.toThrow(NodeScopeException);
+      expect(mockRepo.updateWithVersion).not.toHaveBeenCalled();
+      expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
+    });
+
+    it('emits v1:network:updated through the conflict service', async () => {
+      mockRepo.findByIdAndUserId.mockResolvedValue(makeNetwork({ homePublicIp: null }));
+      mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
+      mockRepo.updateWithVersion.mockResolvedValue(
+        makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
+      );
+
+      await service.setHomeIpFromRequest('user-1', 'net-1', '203.0.113.42');
+
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:network:updated',
+        expect.objectContaining({
+          networkId: 'net-1',
+          network: expect.objectContaining({ homePublicIp: '203.0.113.42' }),
+        }),
+        'user-1',
+      );
     });
   });
 

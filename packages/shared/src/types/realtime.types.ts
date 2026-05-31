@@ -19,7 +19,6 @@ export const WS_EVENTS = {
   NETWORK_UPDATED: 'v1:network:updated',
   NETWORK_ON_HOME_CHANGED: 'v1:network:onHome:changed',
   ONBOARDING_TURN: 'v1:onboarding:turn',
-  CONNECTION_STATUS: 'v1:connection:status',
   ERROR: 'v1:error',
   PONG: 'v1:pong',
 } as const;

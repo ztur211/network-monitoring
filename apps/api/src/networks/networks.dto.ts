@@ -1,5 +1,4 @@
 import {
-  Allow,
   IsArray,
   IsInt,
   IsIP,
@@ -17,6 +16,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 
 export const NETWORK_WRITABLE_FIELDS = [
   'name',
@@ -69,17 +69,6 @@ export class CreateNetworkDto {
   @Min(0)
   @Max(100000)
   upMbps?: number;
-}
-
-class ChangesetChangeDto {
-  @IsString()
-  field: string;
-
-  @Allow()
-  oldValue: unknown;
-
-  @Allow()
-  newValue: unknown;
 }
 
 export class PatchNetworkDto {

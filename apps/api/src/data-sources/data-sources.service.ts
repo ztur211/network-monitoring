@@ -69,17 +69,6 @@ export class DataSourcesService {
     ];
   }
 
-  getStatus(): DataSourceStatus[] {
-    return [
-      {
-        type: 'browser',
-        connected: false,
-        lastSeen: null,
-        message: 'Browser monitoring inactive',
-      },
-    ];
-  }
-
   private parseRawPayload(raw: unknown): RawMetricPayload {
     if (typeof raw !== 'object' || raw === null) return {};
     const r = raw as Record<string, unknown>;
