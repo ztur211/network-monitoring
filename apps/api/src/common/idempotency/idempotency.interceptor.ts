@@ -2,6 +2,7 @@ import {
   CallHandler,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -27,6 +28,8 @@ const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(private readonly redis: RedisService) {}
 
   async intercept(
@@ -43,7 +46,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const redisKey = `idempotency:${userId}:${key}`;
 
-    const cached = await this.redis.get(redisKey);
+    let cached: string | null = null;
+    try {
+      cached = await this.redis.get(redisKey);
+    } catch (err) {
+      // Best-effort: a Redis read failure must not 500 the create. Treat it as
+      // a cache miss and run the handler (the write-back below is already
+      // fire-and-forget, so the whole interceptor degrades to a no-op).
+      this.logger.warn({ err, redisKey }, 'Idempotency cache read failed — proceeding without dedup');
+      return next.handle();
+    }
     if (cached) {
       try {
         return of(JSON.parse(cached) as unknown);

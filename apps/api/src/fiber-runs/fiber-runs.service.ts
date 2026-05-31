@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { FiberRun } from '@prisma/client';
 import { FiberRunDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -16,6 +17,12 @@ export class FiberRunsService {
   ) {}
 
   async listFiberRuns(userId: string, deviceId?: string): Promise<PaginatedResponse<FiberRunDto>> {
+    // `deviceId` is a raw query param; a malformed value (e.g. the array Express
+    // parses from `?deviceId[]=a&deviceId[]=b`) would otherwise reach Prisma as an
+    // invalid scalar filter and 500. A bad filter is client input → 400.
+    if (deviceId !== undefined && !isUUID(deviceId)) {
+      throw new NodeScopeException('GEN_001', 'INVALID_DEVICE_ID', HttpStatus.BAD_REQUEST);
+    }
     const [items, total] = await Promise.all([
       this.fiberRunsRepository.findAllByUserId(userId, deviceId),
       this.fiberRunsRepository.countByUserId(userId),
@@ -59,6 +66,7 @@ export class FiberRunsService {
       patch,
       FIBER_RUN_WRITABLE_FIELDS,
       run.version,
+      CreateFiberRunDto,
     );
 
     const updated = await this.fiberRunsRepository.updateWithVersion(

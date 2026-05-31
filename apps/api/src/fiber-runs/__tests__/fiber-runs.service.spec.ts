@@ -76,6 +76,8 @@ describe('FiberRunsService', () => {
   });
 
   describe('listFiberRuns', () => {
+    const VALID_UUID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
+
     it('returns all fiber runs for user', async () => {
       mockRepo.findAllByUserId.mockResolvedValue([makeFiberRun()]);
       mockRepo.countByUserId.mockResolvedValue(1);
@@ -83,6 +85,31 @@ describe('FiberRunsService', () => {
       const result = await service.listFiberRuns('user-1');
       expect(result.total).toBe(1);
       expect(result.items[0].id).toBe('run-1');
+    });
+
+    it('passes a valid UUID deviceId through to the repository', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([]);
+      mockRepo.countByUserId.mockResolvedValue(0);
+
+      await service.listFiberRuns('user-1', VALID_UUID);
+
+      expect(mockRepo.findAllByUserId).toHaveBeenCalledWith('user-1', VALID_UUID);
+    });
+
+    it('rejects an array-shaped deviceId with GEN_001 instead of 500-ing in Prisma', async () => {
+      const arrayDeviceId = ['dev-a', 'dev-b'] as unknown as string;
+
+      await expect(service.listFiberRuns('user-1', arrayDeviceId)).rejects.toMatchObject({
+        code: 'GEN_001',
+      });
+      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-UUID deviceId with GEN_001', async () => {
+      await expect(service.listFiberRuns('user-1', 'not-a-uuid')).rejects.toMatchObject({
+        code: 'GEN_001',
+      });
+      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
     });
   });
 

@@ -26,6 +26,8 @@ const mockRepository: jest.Mocked<UsersRepository> = {
   update: jest.fn(),
   updateLocation: jest.fn(),
   existsByEmail: jest.fn(),
+  getPreferences: jest.fn(),
+  updatePreferences: jest.fn(),
 } as unknown as jest.Mocked<UsersRepository>;
 
 const mockGeocoding = {
@@ -146,6 +148,43 @@ describe('UsersService', () => {
 
     it('throws GEN_001 when neither address nor coordinates provided', async () => {
       await expect(service.setLocation('user-1', {})).rejects.toThrow(NodeScopeException);
+    });
+  });
+
+  describe('getPreferences', () => {
+    it('returns the stored preferences wrapped in a preferences key', async () => {
+      const stored = { buildingsVisible: true, layerToggles: { ROUTER: true } };
+      mockRepository.getPreferences.mockResolvedValue(stored);
+
+      const result = await service.getPreferences('user-1');
+
+      expect(result).toEqual({ preferences: stored });
+      expect(mockRepository.getPreferences).toHaveBeenCalledWith('user-1');
+    });
+
+    it('returns empty preferences when the user has none stored', async () => {
+      mockRepository.getPreferences.mockResolvedValue({});
+
+      const result = await service.getPreferences('user-1');
+
+      expect(result).toEqual({ preferences: {} });
+    });
+  });
+
+  describe('updatePreferences', () => {
+    it('persists the preferences then returns the server-canonical re-read', async () => {
+      const input = { mapZoom: 12 };
+      // The service re-reads after writing, so the returned value comes from
+      // getPreferences (not the input) — give them different shapes to prove it.
+      const reRead = { mapZoom: 12, buildingsVisible: true };
+      mockRepository.updatePreferences.mockResolvedValue(undefined);
+      mockRepository.getPreferences.mockResolvedValue(reRead);
+
+      const result = await service.updatePreferences('user-1', input);
+
+      expect(mockRepository.updatePreferences).toHaveBeenCalledWith('user-1', input);
+      expect(mockRepository.getPreferences).toHaveBeenCalledWith('user-1');
+      expect(result).toEqual({ preferences: reRead });
     });
   });
 });

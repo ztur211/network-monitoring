@@ -73,4 +73,16 @@ describe('IdempotencyInterceptor', () => {
       IDEM_TTL,
     );
   });
+
+  it('falls through to the handler when the cache read fails (no throw)', async () => {
+    mockRedis.get.mockRejectedValue(new Error('redis down'));
+    const next: CallHandler = { handle: jest.fn(() => of({ data: 'fresh' })) };
+
+    const result = await lastValueFrom(
+      await interceptor.intercept(context({ 'idempotency-key': 'k3' }, { id: 'u1' }), next),
+    );
+
+    expect(result).toEqual({ data: 'fresh' });
+    expect(next.handle).toHaveBeenCalledTimes(1);
+  });
 });

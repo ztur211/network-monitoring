@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { DeviceConnection } from '@prisma/client';
 import { DeviceConnectionDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -16,6 +17,12 @@ export class ConnectionsService {
   ) {}
 
   async listConnections(userId: string, deviceId?: string): Promise<PaginatedResponse<DeviceConnectionDto>> {
+    // `deviceId` is a raw query param; a malformed value (e.g. the array Express
+    // parses from `?deviceId[]=a&deviceId[]=b`) would otherwise reach Prisma as an
+    // invalid scalar filter and 500. A bad filter is client input → 400.
+    if (deviceId !== undefined && !isUUID(deviceId)) {
+      throw new NodeScopeException('GEN_001', 'INVALID_DEVICE_ID', HttpStatus.BAD_REQUEST);
+    }
     const [items, total] = await Promise.all([
       this.connectionsRepository.findAllByUserId(userId, deviceId),
       this.connectionsRepository.countByUserId(userId),
@@ -72,6 +79,7 @@ export class ConnectionsService {
       patch,
       CONNECTION_WRITABLE_FIELDS,
       connection.version,
+      CreateConnectionDto,
     );
 
     const updated = await this.connectionsRepository.updateWithVersion(
