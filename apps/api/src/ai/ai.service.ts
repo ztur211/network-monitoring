@@ -47,57 +47,6 @@ export class AiService {
     private readonly conversation: ConversationService,
   ) {}
 
-  async sendMessageHttp(
-    userId: string,
-    userTier: string,
-    ip: string,
-    dto: SendAiMessageDto,
-  ): Promise<AiMessageResponseDto> {
-    await this.rateLimiter.checkRateLimits(userId, ip);
-
-    const conversationId = dto.conversationId ?? this.conversation.createConversationId();
-    const [history, systemPrompt] = await Promise.all([
-      this.conversation.getHistory(userId, conversationId),
-      this.contextBuilder.buildSystemPrompt(userId, userTier),
-    ]);
-
-    const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);
-
-    let response: AiMessageResponseDto;
-
-    try {
-      const adapterResponse = await this.adapter.complete({
-        systemPrompt,
-        history: trimmedHistory,
-        userMessage: dto.content,
-      });
-
-      const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
-      await Promise.all([
-        this.conversation.appendMessages(userId, conversationId, dto.content, adapterResponse.content),
-        this.rateLimiter.incrementUsage(userId, totalTokens),
-      ]);
-
-      const usage = await this.rateLimiter.getUsageCounts(userId);
-      response = this.buildSuccessEnvelope(
-        conversationId,
-        adapterResponse.content,
-        totalTokens,
-        usage,
-      );
-    } catch (err) {
-      if (err instanceof NodeScopeException) throw err;
-
-      this.logger.warn({ err }, 'AI provider unavailable — returning fallback response');
-      const fallback = this.buildFallbackResponse(systemPrompt);
-
-      const usage = await this.rateLimiter.getUsageCounts(userId);
-      response = this.buildFallbackEnvelope(conversationId, fallback, usage);
-    }
-
-    return response;
-  }
-
   async sendMessageStream(
     userId: string,
     userTier: string,
