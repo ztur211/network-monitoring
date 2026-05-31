@@ -69,6 +69,7 @@ export class CircuitsService {
       patch,
       CIRCUIT_WRITABLE_FIELDS,
       circuit.version,
+      CreateCircuitDto,
     );
 
     if (updatePayload.deviceId !== undefined && updatePayload.deviceId !== null) {

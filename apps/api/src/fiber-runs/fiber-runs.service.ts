@@ -59,6 +59,7 @@ export class FiberRunsService {
       patch,
       FIBER_RUN_WRITABLE_FIELDS,
       run.version,
+      CreateFiberRunDto,
     );
 
     const updated = await this.fiberRunsRepository.updateWithVersion(

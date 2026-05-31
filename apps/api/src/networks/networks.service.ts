@@ -72,6 +72,7 @@ export class NetworksService {
       patch,
       NETWORK_WRITABLE_FIELDS,
       network.version,
+      CreateNetworkDto,
     );
 
     const updated = await this.networksRepository.updateWithVersion(

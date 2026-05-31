@@ -53,7 +53,7 @@ export class DevicesService {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
-    const updatePayload = this.conflictService.buildUpdatePayload(patch, DEVICE_WRITABLE_FIELDS, device.version);
+    const updatePayload = this.conflictService.buildUpdatePayload(patch, DEVICE_WRITABLE_FIELDS, device.version, CreateDeviceDto);
 
     if (updatePayload.name !== undefined) {
       const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(
