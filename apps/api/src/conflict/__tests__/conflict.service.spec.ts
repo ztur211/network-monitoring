@@ -1,10 +1,23 @@
+import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictResolutionService } from '../conflict.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { ChangesetDto, WS_EVENTS } from '@nodescope/shared';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
+import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS } from '../../devices/devices.dto';
 
 const mockRealtimeService = { pushToUser: jest.fn() };
+
+/** Asserts a call throws a NodeScopeException carrying GEN_001 / 400. */
+function expectGen001BadRequest(fn: () => unknown): void {
+  expect(fn).toThrow(NodeScopeException);
+  try {
+    fn();
+  } catch (err) {
+    expect((err as NodeScopeException).code).toBe('GEN_001');
+    expect((err as NodeScopeException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+  }
+}
 
 describe('ConflictResolutionService', () => {
   let service: ConflictResolutionService;
@@ -91,6 +104,76 @@ describe('ConflictResolutionService', () => {
       expect(() => service.buildUpdatePayload(changeset, writableFields, 1)).toThrow(
         /createdAt/,
       );
+    });
+  });
+
+  describe('buildUpdatePayload — per-field value validation', () => {
+    // Reuses the real CreateDeviceDto decorators: the PATCH path must enforce the
+    // same per-field rules (type, length, range, format) the create endpoint does,
+    // instead of copying an unchecked value into the Prisma payload (which lets bad
+    // data persist and 500s on a type mismatch).
+    const fields = DEVICE_WRITABLE_FIELDS;
+    const patch = (field: string, newValue: unknown): ChangesetDto => ({
+      baseVersion: 1,
+      changes: [{ field, oldValue: null, newValue }],
+    });
+
+    it('accepts a valid value and returns it in the payload', () => {
+      const result = service.buildUpdatePayload(patch('name', 'Edge Router'), fields, 1, CreateDeviceDto);
+      expect(result).toEqual({ name: 'Edge Router' });
+    });
+
+    it('accepts null for an optional field (clears it)', () => {
+      const result = service.buildUpdatePayload(patch('notes', null), fields, 1, CreateDeviceDto);
+      expect(result).toEqual({ notes: null });
+    });
+
+    it('rejects an over-length string (bypassed @MaxLength) with GEN_001 400', () => {
+      expectGen001BadRequest(() =>
+        service.buildUpdatePayload(patch('name', 'x'.repeat(101)), fields, 1, CreateDeviceDto),
+      );
+    });
+
+    it('rejects a wrong-typed value instead of 500-ing in Prisma (string for latitude)', () => {
+      expectGen001BadRequest(() =>
+        service.buildUpdatePayload(patch('latitude', 'not-a-number'), fields, 1, CreateDeviceDto),
+      );
+    });
+
+    it('rejects an out-of-range latitude', () => {
+      expectGen001BadRequest(() =>
+        service.buildUpdatePayload(patch('latitude', 999), fields, 1, CreateDeviceDto),
+      );
+    });
+
+    it('rejects an invalid enum value for category', () => {
+      expectGen001BadRequest(() =>
+        service.buildUpdatePayload(patch('category', 'NOT_A_CATEGORY'), fields, 1, CreateDeviceDto),
+      );
+    });
+
+    it('rejects a malformed macAddress', () => {
+      expectGen001BadRequest(() =>
+        service.buildUpdatePayload(patch('macAddress', 'xyz'), fields, 1, CreateDeviceDto),
+      );
+    });
+
+    it('validates every change in a multi-field changeset', () => {
+      const changeset: ChangesetDto = {
+        baseVersion: 1,
+        changes: [
+          { field: 'name', oldValue: null, newValue: 'Valid Name' },
+          { field: 'floor', oldValue: null, newValue: 'top-floor' }, // not an int
+        ],
+      };
+      expectGen001BadRequest(() => service.buildUpdatePayload(changeset, fields, 1, CreateDeviceDto));
+    });
+
+    it('skips value validation when no validator class is supplied (back-compat)', () => {
+      // Without a validator class the legacy behavior stands: the field name is
+      // whitelisted but the value passes through unchecked.
+      const result = service.buildUpdatePayload(patch('latitude', 'not-a-number'), fields, 1);
+      expect(result).toEqual({ latitude: 'not-a-number' });
     });
   });
 

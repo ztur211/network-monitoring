@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { Circuit, Prisma } from '@prisma/client';
+import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateCircuitData = {
@@ -25,7 +26,7 @@ export class CircuitsRepository {
     let where: Prisma.CircuitWhereInput = { userId };
 
     if (cursor) {
-      const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as CursorPayload;
+      const decoded = this.decodeCursor(cursor);
       where = {
         userId,
         OR: [
@@ -40,6 +41,21 @@ export class CircuitsRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
+  }
+
+  /**
+   * Decodes the opaque base64 keyset cursor. The cursor comes straight from the
+   * client (`?cursor=`, only `@IsString()`-validated), so a malformed value
+   * must surface as a 400, not crash JSON.parse into a 500.
+   */
+  private decodeCursor(cursor: string): CursorPayload {
+    try {
+      return JSON.parse(
+        Buffer.from(cursor, 'base64').toString('utf-8'),
+      ) as CursorPayload;
+    } catch {
+      throw new NodeScopeException('GEN_001', 'INVALID_CURSOR', HttpStatus.BAD_REQUEST);
+    }
   }
 
   countByUserId(userId: string): Promise<number> {

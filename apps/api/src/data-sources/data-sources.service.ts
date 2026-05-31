@@ -5,6 +5,21 @@ import { DataSourcesRepository } from './data-sources.repository';
 
 const CONNECTED_THRESHOLD_MS = 90_000; // 3× the 30s interval
 
+// Bounds for browser-collector metric values. WebSocket payloads bypass the
+// global ValidationPipe, so the per-field caps the HTTP DTOs would apply are
+// enforced here instead. Generous enough for any real bandwidth/latency reading
+// while rejecting absurd attacker-controlled values (e.g. 1e308, a 10 MB tag).
+const MAX_METRIC_NUMBER = 1e9;
+const MAX_METRIC_STRING_LENGTH = 256;
+
+function isBoundedMetricNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= MAX_METRIC_NUMBER;
+}
+
+function isBoundedMetricString(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_METRIC_STRING_LENGTH;
+}
+
 @Injectable()
 export class DataSourcesService {
   private readonly logger = new Logger(DataSourcesService.name);
@@ -73,12 +88,12 @@ export class DataSourcesService {
     if (typeof raw !== 'object' || raw === null) return {};
     const r = raw as Record<string, unknown>;
     const result: RawMetricPayload = {};
-    if (typeof r.bandwidthDown === 'number') result.bandwidthDown = r.bandwidthDown;
-    if (typeof r.bandwidthUp === 'number') result.bandwidthUp = r.bandwidthUp;
-    if (typeof r.latency === 'number') result.latency = r.latency;
-    if (typeof r.connectionQuality === 'string') result.connectionQuality = r.connectionQuality;
-    if (typeof r.deviceId === 'string') result.deviceId = r.deviceId;
-    if (typeof r.tag === 'string') result.tag = r.tag;
+    if (isBoundedMetricNumber(r.bandwidthDown)) result.bandwidthDown = r.bandwidthDown;
+    if (isBoundedMetricNumber(r.bandwidthUp)) result.bandwidthUp = r.bandwidthUp;
+    if (isBoundedMetricNumber(r.latency)) result.latency = r.latency;
+    if (isBoundedMetricString(r.connectionQuality)) result.connectionQuality = r.connectionQuality;
+    if (isBoundedMetricString(r.deviceId)) result.deviceId = r.deviceId;
+    if (isBoundedMetricString(r.tag)) result.tag = r.tag;
     return result;
   }
 

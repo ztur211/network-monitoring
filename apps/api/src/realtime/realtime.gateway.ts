@@ -185,18 +185,23 @@ export class RealtimeGateway
   }
 
   private async runPushScheduler(): Promise<void> {
-    const ttl = parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10);
-    const acquired = await this.redis.set(
-      REDIS_KEY_PUSH_SCHEDULER_LOCK,
-      '1',
-      'EX',
-      ttl,
-      'NX',
-    );
-
-    if (!acquired) return;
-
+    // Fired as `void this.runPushScheduler()` from setInterval with no global
+    // unhandledRejection handler, so this must never reject. The lock-acquisition
+    // redis.set was previously outside the try: a Redis blip there became an
+    // unhandled rejection and a silently-dropped tick. Wrap the whole cycle so a
+    // transient Redis error is logged and the tick is simply skipped (next one
+    // retries).
     try {
+      const ttl = parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10);
+      const acquired = await this.redis.set(
+        REDIS_KEY_PUSH_SCHEDULER_LOCK,
+        '1',
+        'EX',
+        ttl,
+        'NX',
+      );
+      if (!acquired) return;
+
       await this.pushLatestMetricsToConnectedUsers();
     } catch (err) {
       this.logger.error({ err }, 'Push scheduler cycle failed');

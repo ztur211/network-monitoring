@@ -98,6 +98,42 @@ describe('DataSourcesService', () => {
         expect.objectContaining({ tag: null }),
       );
     });
+
+    it('drops non-finite numbers (Infinity / NaN)', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { bandwidthDown: Infinity, latency: NaN, bandwidthUp: 10 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ bandwidthDown: null, latency: null, bandwidthUp: 10 }),
+      );
+    });
+
+    it('drops an over-magnitude number', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { bandwidthDown: 1e308 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ bandwidthDown: null }),
+      );
+    });
+
+    it('accepts a large but bounded number', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', { bandwidthDown: 1_000_000 });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ bandwidthDown: 1_000_000 }),
+      );
+    });
+
+    it('drops over-length strings (connectionQuality, tag)', async () => {
+      mockRepository.createMetric.mockResolvedValue(undefined);
+      await service.ingest('user-1', {
+        connectionQuality: 'q'.repeat(300),
+        tag: 't'.repeat(300),
+        bandwidthDown: 50,
+      });
+      expect(mockRepository.createMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionQuality: null, tag: null, bandwidthDown: 50 }),
+      );
+    });
   });
 
   describe('getLatestMetric', () => {

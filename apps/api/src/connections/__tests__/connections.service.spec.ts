@@ -68,6 +68,46 @@ describe('ConnectionsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('listConnections', () => {
+    const VALID_UUID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
+
+    it('lists all connections when no deviceId filter is given', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([]);
+      mockRepo.countByUserId.mockResolvedValue(0);
+
+      const result = await service.listConnections('user-1');
+
+      expect(result).toEqual({ items: [], total: 0 });
+      expect(mockRepo.findAllByUserId).toHaveBeenCalledWith('user-1', undefined);
+    });
+
+    it('passes a valid UUID deviceId through to the repository', async () => {
+      mockRepo.findAllByUserId.mockResolvedValue([makeConnection()]);
+      mockRepo.countByUserId.mockResolvedValue(1);
+
+      await service.listConnections('user-1', VALID_UUID);
+
+      expect(mockRepo.findAllByUserId).toHaveBeenCalledWith('user-1', VALID_UUID);
+    });
+
+    it('rejects an array-shaped deviceId with GEN_001 instead of 500-ing in Prisma', async () => {
+      // Express's qs parses `?deviceId[]=a&deviceId[]=b` into an array.
+      const arrayDeviceId = ['dev-a', 'dev-b'] as unknown as string;
+
+      await expect(service.listConnections('user-1', arrayDeviceId)).rejects.toMatchObject({
+        code: 'GEN_001',
+      });
+      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-UUID deviceId with GEN_001', async () => {
+      await expect(service.listConnections('user-1', 'not-a-uuid')).rejects.toMatchObject({
+        code: 'GEN_001',
+      });
+      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createConnection', () => {
     it('creates connection for valid different devices', async () => {
       mockDevicesRepo.findByIdAndUserId
