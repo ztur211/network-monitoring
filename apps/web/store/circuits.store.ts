@@ -4,6 +4,7 @@ import { api } from '../lib/api.service';
 import {
   drainOfflineQueue,
   loadPersistedQueue,
+  newIdempotencyKey,
   persistQueue,
   type GiveUpReason,
 } from './offline-queue';
@@ -31,7 +32,7 @@ export interface UpdateCircuitInput {
 }
 
 type OfflineOp =
-  | { type: 'create'; input: CreateCircuitInput; tempId: string; attempts: number }
+  | { type: 'create'; input: CreateCircuitInput; tempId: string; idempotencyKey: string; attempts: number }
   | { type: 'update'; circuitId: string; input: UpdateCircuitInput; previousCircuit: CircuitDto; attempts: number }
   | { type: 'delete'; circuitId: string; previousCircuit: CircuitDto; attempts: number };
 
@@ -87,7 +88,9 @@ export const useCircuitStore = create<CircuitStore>((set, get) => {
   // owns the requeue/give-up decision.
   const replayOp = async (op: OfflineOp): Promise<void> => {
     if (op.type === 'create') {
-      const res = await api.post<{ success: true; data: CircuitDto }>('/circuits', op.input);
+      const res = await api.post<{ success: true; data: CircuitDto }>('/circuits', op.input, {
+        headers: { 'Idempotency-Key': op.idempotencyKey },
+      });
       get().upsertCircuit(res.data.data);
       return;
     }
@@ -167,6 +170,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => {
 
     createCircuit: async (input) => {
       const tempId = `temp-${Date.now()}`;
+      const idempotencyKey = newIdempotencyKey();
       const optimistic: CircuitDto = {
         id: tempId,
         userId: '',
@@ -184,7 +188,9 @@ export const useCircuitStore = create<CircuitStore>((set, get) => {
       set((state) => ({ circuits: [optimistic, ...state.circuits] }));
 
       try {
-        const res = await api.post<{ success: true; data: CircuitDto }>('/circuits', input);
+        const res = await api.post<{ success: true; data: CircuitDto }>('/circuits', input, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        });
         const created = res.data.data;
         set((state) => ({
           circuits: state.circuits.map((c) => (c.id === tempId ? created : c)),
@@ -193,7 +199,7 @@ export const useCircuitStore = create<CircuitStore>((set, get) => {
         return created;
       } catch {
         set((state) => ({ circuits: state.circuits.filter((c) => c.id !== tempId) }));
-        enqueue({ type: 'create', input, tempId, attempts: 0 });
+        enqueue({ type: 'create', input, tempId, idempotencyKey, attempts: 0 });
         throw new Error('Failed to create circuit');
       }
     },

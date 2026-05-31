@@ -194,6 +194,20 @@ describe('device.store', () => {
         input: { name: 'Modem', category: 'MODEM' },
       });
     });
+
+    it('sends an Idempotency-Key header so an offline create-replay cannot duplicate the row', async () => {
+      mockPost.mockResolvedValueOnce({
+        data: { success: true, data: freshDevice({ id: 'd-new' }) },
+      });
+
+      await useDeviceStore.getState().createDevice({ name: 'Modem', category: 'MODEM' });
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/devices',
+        { name: 'Modem', category: 'MODEM' },
+        { headers: { 'Idempotency-Key': expect.any(String) } },
+      );
+    });
   });
 
   describe('updateDevice()', () => {
@@ -298,7 +312,7 @@ describe('device.store', () => {
       useDeviceStore.setState({
         devices: [previous],
         offlineQueue: [
-          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-old', attempts: 0 },
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-old', idempotencyKey: 'idem-old', attempts: 0 },
           {
             type: 'update',
             deviceId: 'd1',
@@ -322,6 +336,25 @@ describe('device.store', () => {
       expect(useDeviceStore.getState().offlineQueue).toEqual([]);
     });
 
+    it('replays a queued create with the SAME idempotency key', async () => {
+      useDeviceStore.setState({
+        offlineQueue: [
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 't', idempotencyKey: 'idem-fixed', attempts: 0 },
+        ],
+      });
+      mockPost.mockResolvedValueOnce({
+        data: { success: true, data: freshDevice({ id: 'd-x' }) },
+      });
+
+      await useDeviceStore.getState().flushOfflineQueue();
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/devices',
+        { name: 'X', category: 'ROUTER' },
+        { headers: { 'Idempotency-Key': 'idem-fixed' } },
+      );
+    });
+
     it('is a no-op when the queue is empty', async () => {
       await useDeviceStore.getState().flushOfflineQueue();
       expect(mockPost).not.toHaveBeenCalled();
@@ -335,7 +368,7 @@ describe('device.store', () => {
         devices: [previous],
         offlineQueue: [
           // First op fails — re-queues itself via createDevice's catch
-          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-1', attempts: 0 },
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 'temp-1', idempotencyKey: 'idem-1', attempts: 0 },
           // Second op succeeds
           {
             type: 'update',
@@ -415,7 +448,7 @@ describe('device.store', () => {
       useDeviceStore.setState({
         flushing: true,
         offlineQueue: [
-          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 't', attempts: 0 },
+          { type: 'create', input: { name: 'X', category: 'ROUTER' }, tempId: 't', idempotencyKey: 'idem-t', attempts: 0 },
         ],
       });
 

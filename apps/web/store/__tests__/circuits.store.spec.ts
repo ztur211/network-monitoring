@@ -250,6 +250,20 @@ describe('circuits.store', () => {
         input: { ispName: 'A', serviceType: 'FIBER' },
       });
     });
+
+    it('sends an Idempotency-Key header so an offline create-replay cannot duplicate the row', async () => {
+      mockPost.mockResolvedValueOnce({
+        data: { success: true, data: freshCircuit({ id: 'c-new' }) },
+      });
+
+      await useCircuitStore.getState().createCircuit({ ispName: 'A', serviceType: 'FIBER' });
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/circuits',
+        { ispName: 'A', serviceType: 'FIBER' },
+        { headers: { 'Idempotency-Key': expect.any(String) } },
+      );
+    });
   });
 
   describe('updateCircuit()', () => {
@@ -359,7 +373,7 @@ describe('circuits.store', () => {
       useCircuitStore.setState({
         circuits: [previous],
         offlineQueue: [
-          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 'temp-1', attempts: 0 },
+          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 'temp-1', idempotencyKey: 'idem-1', attempts: 0 },
           {
             type: 'update',
             circuitId: 'c1',
@@ -388,6 +402,25 @@ describe('circuits.store', () => {
       expect(mockPost).not.toHaveBeenCalled();
       expect(mockPatch).not.toHaveBeenCalled();
       expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('replays a queued create with the SAME idempotency key', async () => {
+      useCircuitStore.setState({
+        offlineQueue: [
+          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 't', idempotencyKey: 'idem-fixed', attempts: 0 },
+        ],
+      });
+      mockPost.mockResolvedValueOnce({
+        data: { success: true, data: freshCircuit({ id: 'c-x' }) },
+      });
+
+      await useCircuitStore.getState().flushOfflineQueue();
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/circuits',
+        { ispName: 'X', serviceType: 'FIBER' },
+        { headers: { 'Idempotency-Key': 'idem-fixed' } },
+      );
     });
 
     it('requeues a transiently-failing op with an incremented attempt count', async () => {
@@ -446,7 +479,7 @@ describe('circuits.store', () => {
       useCircuitStore.setState({
         flushing: true,
         offlineQueue: [
-          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 't', attempts: 0 },
+          { type: 'create', input: { ispName: 'X', serviceType: 'FIBER' }, tempId: 't', idempotencyKey: 'idem-t', attempts: 0 },
         ],
       });
 

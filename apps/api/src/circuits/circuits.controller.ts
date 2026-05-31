@@ -10,9 +10,11 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
+import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { CreateCircuitDto, ListCircuitsQueryDto, PatchCircuitDto } from './circuits.dto';
 import { CircuitsService } from './circuits.service';
 
@@ -31,6 +33,7 @@ export class CircuitsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(IdempotencyInterceptor)
   async createCircuit(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCircuitDto) {
     const data = await this.circuitsService.createCircuit(user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };

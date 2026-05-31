@@ -24,6 +24,22 @@ export interface QueuedOp {
 
 export const MAX_REPLAY_ATTEMPTS = 5;
 
+/**
+ * Generates a stable idempotency key for a create. The SAME key is sent on the
+ * first POST and on every offline replay of that create, so if the original
+ * request reached the server but its response was lost, the server returns the
+ * already-created row instead of inserting a duplicate.
+ */
+export function newIdempotencyKey(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0;
+    const v = ch === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export type GiveUpReason = 'conflict' | 'exhausted';
 
 function getStorage(): Storage | null {

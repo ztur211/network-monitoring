@@ -4,6 +4,7 @@ import { api } from '../lib/api.service';
 import {
   drainOfflineQueue,
   loadPersistedQueue,
+  newIdempotencyKey,
   persistQueue,
   type GiveUpReason,
 } from './offline-queue';
@@ -37,7 +38,7 @@ export interface UpdateDeviceInput {
 }
 
 type OfflineOp =
-  | { type: 'create'; input: CreateDeviceInput; tempId: string; attempts: number }
+  | { type: 'create'; input: CreateDeviceInput; tempId: string; idempotencyKey: string; attempts: number }
   | { type: 'update'; deviceId: string; input: UpdateDeviceInput; previousDevice: DeviceDto; attempts: number }
   | { type: 'delete'; deviceId: string; previousDevice: DeviceDto; attempts: number };
 
@@ -90,7 +91,9 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
   // classify the error (conflict vs transient).
   const replayOp = async (op: OfflineOp): Promise<void> => {
     if (op.type === 'create') {
-      const res = await api.post<{ success: true; data: DeviceDto }>('/devices', op.input);
+      const res = await api.post<{ success: true; data: DeviceDto }>('/devices', op.input, {
+        headers: { 'Idempotency-Key': op.idempotencyKey },
+      });
       get().upsertDevice(res.data.data);
       return;
     }
@@ -143,6 +146,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
 
     createDevice: async (input) => {
       const tempId = `temp-${Date.now()}`;
+      const idempotencyKey = newIdempotencyKey();
       const optimistic: DeviceDto = {
         id: tempId,
         userId: '',
@@ -164,7 +168,9 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
       set((state) => ({ devices: [...state.devices, optimistic] }));
 
       try {
-        const res = await api.post<{ success: true; data: DeviceDto }>('/devices', input);
+        const res = await api.post<{ success: true; data: DeviceDto }>('/devices', input, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        });
         const created = res.data.data;
         set((state) => ({
           devices: state.devices.map((d) => (d.id === tempId ? created : d)),
@@ -172,7 +178,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
         return created;
       } catch {
         set((state) => ({ devices: state.devices.filter((d) => d.id !== tempId) }));
-        enqueue({ type: 'create', input, tempId, attempts: 0 });
+        enqueue({ type: 'create', input, tempId, idempotencyKey, attempts: 0 });
         throw new Error('Failed to create device');
       }
     },
