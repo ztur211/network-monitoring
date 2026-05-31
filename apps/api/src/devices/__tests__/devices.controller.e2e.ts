@@ -93,6 +93,38 @@ describe('DevicesController (e2e)', () => {
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('DEVICE_003');
     });
+
+    it('replays a create idempotently — same Idempotency-Key returns the original row, no duplicate', async () => {
+      const key = 'e2e-idem-key-1';
+      const body = { name: 'Idempotent AP', category: 'ACCESS_POINT' };
+
+      const first = await request(app.getHttpServer())
+        .post('/api/v1/devices')
+        .set('Cookie', sessionCookie)
+        .set('Idempotency-Key', key)
+        .send(body);
+      expect(first.status).toBe(201);
+      const firstId = first.body.data.id;
+
+      // Same key + same body. Without idempotency this would be 409 DEVICE_003
+      // (name already taken); instead it returns the cached original response.
+      const replay = await request(app.getHttpServer())
+        .post('/api/v1/devices')
+        .set('Cookie', sessionCookie)
+        .set('Idempotency-Key', key)
+        .send(body);
+      expect(replay.status).toBe(201);
+      expect(replay.body.data.id).toBe(firstId);
+
+      // Exactly one device with that name exists — the replay created nothing.
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/devices')
+        .set('Cookie', sessionCookie);
+      const matches = list.body.data.items.filter(
+        (d: { name: string }) => d.name === 'Idempotent AP',
+      );
+      expect(matches).toHaveLength(1);
+    });
   });
 
   describe('GET /api/v1/devices/:id', () => {

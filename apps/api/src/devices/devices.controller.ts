@@ -9,9 +9,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseInterceptors,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
+import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { CreateDeviceDto, PatchDeviceDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 
@@ -27,6 +29,7 @@ export class DevicesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(IdempotencyInterceptor)
   async createDevice(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateDeviceDto) {
     const data = await this.devicesService.createDevice(user.id, user.tier, dto);
     return { success: true, data, timestamp: new Date().toISOString() };

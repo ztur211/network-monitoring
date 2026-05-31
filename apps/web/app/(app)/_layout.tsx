@@ -11,6 +11,7 @@ import {
   subscribeToNetworkUpdates,
 } from '../../lib/network-events.service';
 import { OfflineBanner } from '../../components/OfflineBanner';
+import { SyncErrorBanner } from '../../components/SyncErrorBanner';
 import { WizardSheet } from '../../components/onboarding/WizardSheet';
 import { useDeviceStore } from '../../store/device.store';
 import { useCircuitStore } from '../../store/circuits.store';
@@ -44,12 +45,19 @@ export default function AppLayout() {
     const unsubscribeOnHome = subscribeToOnHomeUpdates();
     const unsubscribeNetworkUpdates = subscribeToNetworkUpdates();
 
-    const handleReconnect = () => {
+    // Flush queued offline mutations whenever the socket comes (back) up.
+    // Bind BOTH events: socket.io's manager-driven recovery fires 'reconnect',
+    // but the websocket service's own 30s offline-retry calls socket.connect(),
+    // which fires 'connect' (not 'reconnect') — binding only 'reconnect' left
+    // ops stranded on that common recovery path. The stores' in-flight guard
+    // makes the double-fire (both events on one recovery) a harmless no-op.
+    const handleConnected = () => {
       void flushDevices();
       void flushCircuits();
       void flushMapPreferences();
     };
-    websocketService.on('reconnect', handleReconnect);
+    websocketService.on('connect', handleConnected);
+    websocketService.on('reconnect', handleConnected);
 
     authClient.getSession().then((result) => {
       if (result.data?.user) {
@@ -89,7 +97,8 @@ export default function AppLayout() {
       unsubscribeAi();
       unsubscribeOnHome();
       unsubscribeNetworkUpdates();
-      websocketService.off('reconnect', handleReconnect);
+      websocketService.off('connect', handleConnected);
+      websocketService.off('reconnect', handleConnected);
       websocketService.disconnect();
     };
   }, []);
@@ -109,6 +118,7 @@ export default function AppLayout() {
   return (
     <View className="flex-1">
       <OfflineBanner />
+      <SyncErrorBanner />
       <Tabs
         screenOptions={{
           headerShown: false,

@@ -48,7 +48,6 @@ const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
 
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
-  publishEntityUpdate: jest.fn(),
   emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 

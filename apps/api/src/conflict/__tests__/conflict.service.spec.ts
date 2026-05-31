@@ -1,11 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictResolutionService } from '../conflict.service';
-import { RedisService } from '../../redis/redis.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { ChangesetDto, WS_EVENTS } from '@nodescope/shared';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 
-const mockRedis = { publish: jest.fn() };
 const mockRealtimeService = { pushToUser: jest.fn() };
 
 describe('ConflictResolutionService', () => {
@@ -15,7 +13,6 @@ describe('ConflictResolutionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConflictResolutionService,
-        { provide: RedisService, useValue: mockRedis },
         { provide: REALTIME_SERVICE, useValue: mockRealtimeService },
       ],
     }).compile();
@@ -94,21 +91,6 @@ describe('ConflictResolutionService', () => {
       expect(() => service.buildUpdatePayload(changeset, writableFields, 1)).toThrow(
         /createdAt/,
       );
-    });
-  });
-
-  describe('publishEntityUpdate', () => {
-    it('publishes serialized event to nodescope:entity:updated channel', async () => {
-      mockRedis.publish.mockResolvedValue(1);
-
-      await service.publishEntityUpdate('Device', 'device-1', 'user-1');
-
-      expect(mockRedis.publish).toHaveBeenCalledWith(
-        'nodescope:entity:updated',
-        expect.stringContaining('"entityType":"Device"'),
-      );
-      const payload = JSON.parse(mockRedis.publish.mock.calls[0][1] as string);
-      expect(payload).toMatchObject({ entityType: 'Device', entityId: 'device-1', userId: 'user-1' });
     });
   });
 

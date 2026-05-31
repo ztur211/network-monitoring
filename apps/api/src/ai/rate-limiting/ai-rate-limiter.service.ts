@@ -27,29 +27,36 @@ function nextMonthStart(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 }
 
-function hourlyKey(userId: string): string {
-  return `ai:rate:hourly:${userId}:${currentHourTag()}`;
+// An optional `scope` segments the counters into an independent bucket. The
+// default (no scope) preserves the original chat keys. Onboarding passes
+// 'onboarding' so its ~10-message wizard can never be blocked by — and never
+// eats into — the user's regular chat quota.
+function seg(scope?: string): string {
+  return scope ? `${scope}:` : '';
 }
-function dailyKey(userId: string): string {
-  return `ai:rate:daily:${userId}:${currentDayTag()}`;
+function hourlyKey(userId: string, scope?: string): string {
+  return `ai:rate:hourly:${seg(scope)}${userId}:${currentHourTag()}`;
 }
-function monthlyTokenKey(userId: string): string {
-  return `ai:rate:monthly_tokens:${userId}:${currentMonthTag()}`;
+function dailyKey(userId: string, scope?: string): string {
+  return `ai:rate:daily:${seg(scope)}${userId}:${currentDayTag()}`;
 }
-function ipHourlyKey(ip: string): string {
-  return `ai:rate:ip:${ip}:${currentHourTag()}`;
+function monthlyTokenKey(userId: string, scope?: string): string {
+  return `ai:rate:monthly_tokens:${seg(scope)}${userId}:${currentMonthTag()}`;
+}
+function ipHourlyKey(ip: string, scope?: string): string {
+  return `ai:rate:ip:${seg(scope)}${ip}:${currentHourTag()}`;
 }
 
 @Injectable()
 export class AiRateLimiterService {
   constructor(private readonly redis: RedisService) {}
 
-  async checkRateLimits(userId: string, ip: string): Promise<void> {
+  async checkRateLimits(userId: string, ip: string, scope?: string): Promise<void> {
     const values = await this.redis.mget(
-      hourlyKey(userId),
-      dailyKey(userId),
-      monthlyTokenKey(userId),
-      ipHourlyKey(ip),
+      hourlyKey(userId, scope),
+      dailyKey(userId, scope),
+      monthlyTokenKey(userId, scope),
+      ipHourlyKey(ip, scope),
     );
 
     const hourly = parseInt(values[0] ?? '0', 10);
@@ -71,18 +78,18 @@ export class AiRateLimiterService {
     }
   }
 
-  async incrementUsage(userId: string, tokensUsed: number): Promise<void> {
+  async incrementUsage(userId: string, tokensUsed: number, scope?: string): Promise<void> {
     const pipeline = this.redis.pipeline();
 
-    pipeline.incr(hourlyKey(userId));
-    pipeline.expire(hourlyKey(userId), 3600);
+    pipeline.incr(hourlyKey(userId, scope));
+    pipeline.expire(hourlyKey(userId, scope), 3600);
 
-    pipeline.incr(dailyKey(userId));
-    pipeline.expire(dailyKey(userId), 86400);
+    pipeline.incr(dailyKey(userId, scope));
+    pipeline.expire(dailyKey(userId, scope), 86400);
 
-    pipeline.incrby(monthlyTokenKey(userId), tokensUsed);
+    pipeline.incrby(monthlyTokenKey(userId, scope), tokensUsed);
     const monthlyTtl = Math.floor((nextMonthStart().getTime() - Date.now()) / 1000) + 86400;
-    pipeline.expire(monthlyTokenKey(userId), monthlyTtl);
+    pipeline.expire(monthlyTokenKey(userId, scope), monthlyTtl);
 
     await pipeline.exec();
   }
