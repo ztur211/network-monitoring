@@ -1,4 +1,5 @@
-import { IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsStringOrNumberRecord } from '../common/validators/is-string-or-number-record.validator';
 
 export class OnboardingTurnDto {
   // Required so the server can resolve the browser device row idempotently
@@ -20,6 +21,6 @@ export class OnboardingTurnDto {
   chipChoice?: string;
 
   @IsOptional()
-  @IsObject()
+  @IsStringOrNumberRecord({ maxStringLength: 1000 })
   fieldValues?: Record<string, string | number>;
 }
