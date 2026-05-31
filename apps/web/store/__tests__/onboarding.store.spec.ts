@@ -306,5 +306,23 @@ describe('onboarding.store', () => {
       expect(state.transcript).toHaveLength(1);
       expect(state.transcript[0].role).toBe('user');
     });
+
+    it('closes the wizard and marks complete on a 409 ONBOARD_002 instead of looping Retry', async () => {
+      // A finished user whose wizard re-opened (or a stale tab) gets ONBOARD_002.
+      // The store must close the wizard rather than surface a Retry that re-POSTs
+      // the same conflict forever.
+      mockPost.mockRejectedValueOnce({
+        response: { status: 409, data: { error: { code: 'ONBOARD_002' } } },
+      });
+      useOnboardingStore.setState({ wizardOpen: true });
+
+      await useOnboardingStore.getState().sendTurn({ chipChoice: 'start' });
+
+      const state = useOnboardingStore.getState();
+      expect(state.wizardOpen).toBe(false);
+      expect(state.complete).toBe(true);
+      expect(state.error).toBeNull();
+      expect(state.submitting).toBe(false);
+    });
   });
 });

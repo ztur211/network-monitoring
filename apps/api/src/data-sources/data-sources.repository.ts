@@ -31,11 +31,13 @@ export class DataSourcesRepository {
   async findLatestForUsers(userIds: string[]): Promise<DeviceMetric[]> {
     if (userIds.length === 0) return [];
 
-    // DISTINCT ON keeps the most recent row per userId in one pass (TimescaleDB-friendly)
+    // DISTINCT ON keeps the most recent row per userId in one pass (TimescaleDB-friendly).
+    // Column list must stay in sync with the DeviceMetric model — deviceId/tag (Phase 13)
+    // are selected so the returned rows are faithful DeviceMetric objects, not partials.
     const idList = Prisma.join(userIds.map((id) => Prisma.sql`${id}`));
     return this.prisma.$queryRaw<DeviceMetric[]>`
       SELECT DISTINCT ON ("userId")
-        id, "userId", "sourceType", "bandwidthDown", "bandwidthUp",
+        id, "userId", "deviceId", "sourceType", "tag", "bandwidthDown", "bandwidthUp",
         latency, "connectionQuality", time
       FROM "DeviceMetric"
       WHERE "userId" IN (${idList})
