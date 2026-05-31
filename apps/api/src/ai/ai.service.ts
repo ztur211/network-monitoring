@@ -32,6 +32,10 @@ const ONBOARDING_FALLBACKS: Record<OnboardingStepId, string> = {
 
 const MAX_INPUT_TOKENS = parseInt(process.env.AI_MAX_INPUT_TOKENS ?? '8000', 10);
 
+// Onboarding gets its own rate-limit bucket so a quota-exhausted chat session
+// can't hard-block a user partway through the first-run wizard (and vice versa).
+const ONBOARDING_RATE_SCOPE = 'onboarding';
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -42,57 +46,6 @@ export class AiService {
     private readonly rateLimiter: AiRateLimiterService,
     private readonly conversation: ConversationService,
   ) {}
-
-  async sendMessageHttp(
-    userId: string,
-    userTier: string,
-    ip: string,
-    dto: SendAiMessageDto,
-  ): Promise<AiMessageResponseDto> {
-    await this.rateLimiter.checkRateLimits(userId, ip);
-
-    const conversationId = dto.conversationId ?? this.conversation.createConversationId();
-    const [history, systemPrompt] = await Promise.all([
-      this.conversation.getHistory(conversationId),
-      this.contextBuilder.buildSystemPrompt(userId, userTier),
-    ]);
-
-    const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);
-
-    let response: AiMessageResponseDto;
-
-    try {
-      const adapterResponse = await this.adapter.complete({
-        systemPrompt,
-        history: trimmedHistory,
-        userMessage: dto.content,
-      });
-
-      const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
-      await Promise.all([
-        this.conversation.appendMessages(conversationId, dto.content, adapterResponse.content),
-        this.rateLimiter.incrementUsage(userId, totalTokens),
-      ]);
-
-      const usage = await this.rateLimiter.getUsageCounts(userId);
-      response = this.buildSuccessEnvelope(
-        conversationId,
-        adapterResponse.content,
-        totalTokens,
-        usage,
-      );
-    } catch (err) {
-      if (err instanceof NodeScopeException) throw err;
-
-      this.logger.warn({ err }, 'AI provider unavailable — returning fallback response');
-      const fallback = this.buildFallbackResponse(systemPrompt);
-
-      const usage = await this.rateLimiter.getUsageCounts(userId);
-      response = this.buildFallbackEnvelope(conversationId, fallback, usage);
-    }
-
-    return response;
-  }
 
   async sendMessageStream(
     userId: string,
@@ -105,7 +58,7 @@ export class AiService {
 
     const conversationId = dto.conversationId ?? this.conversation.createConversationId();
     const [history, systemPrompt] = await Promise.all([
-      this.conversation.getHistory(conversationId),
+      this.conversation.getHistory(userId, conversationId),
       this.contextBuilder.buildSystemPrompt(userId, userTier),
     ]);
 
@@ -119,7 +72,7 @@ export class AiService {
 
       const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
       await Promise.all([
-        this.conversation.appendMessages(conversationId, dto.content, adapterResponse.content),
+        this.conversation.appendMessages(userId, conversationId, dto.content, adapterResponse.content),
         this.rateLimiter.incrementUsage(userId, totalTokens),
       ]);
 
@@ -146,19 +99,16 @@ export class AiService {
     return this.rateLimiter.getUsageCounts(userId);
   }
 
-  async deleteConversation(conversationId: string): Promise<boolean> {
-    return this.conversation.deleteConversation(conversationId);
+  async deleteConversation(userId: string, conversationId: string): Promise<boolean> {
+    return this.conversation.deleteConversation(userId, conversationId);
   }
 
   /**
    * Generates a short, friendly onboarding chat message for the given step.
    *
-   * Shares the standard six-layer AI rate limiter with the main chat — the
-   * plan called for a separate `ai:onboarding:{userId}` bucket but that
-   * would require teaching AiRateLimiterService about bucket prefixes, and
-   * a one-time ~10-message wizard isn't enough volume to justify that
-   * refactor in MVP. Onboarding messages count against the same quota as
-   * regular AI use.
+   * Rate-limited under a dedicated `onboarding` bucket (separate from the main
+   * chat counters) so a user who has burned their chat quota can still complete
+   * the first-run wizard, and the wizard's ~10 messages don't eat into chat use.
    *
    * Returns `providerStatus: 'unavailable'` and a hardcoded per-step
    * fallback if the AI provider call fails — the wizard must keep
@@ -173,7 +123,7 @@ export class AiService {
     progress: OnboardingProgress,
     userMessage?: string,
   ): Promise<{ content: string; providerStatus: 'ok' | 'unavailable'; tokensUsed: number }> {
-    await this.rateLimiter.checkRateLimits(userId, ip);
+    await this.rateLimiter.checkRateLimits(userId, ip, ONBOARDING_RATE_SCOPE);
 
     const systemPrompt = this.buildOnboardingSystemPrompt(step, progress);
 
@@ -186,7 +136,7 @@ export class AiService {
 
       const content = adapterResponse.content.slice(0, ONBOARDING_MESSAGE_MAX_CHARS);
       const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
-      await this.rateLimiter.incrementUsage(userId, totalTokens);
+      await this.rateLimiter.incrementUsage(userId, totalTokens, ONBOARDING_RATE_SCOPE);
 
       return { content, providerStatus: 'ok', tokensUsed: totalTokens };
     } catch (err) {

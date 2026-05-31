@@ -1,43 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { NetworkContextRepository } from './network-context.repository';
 
 @Injectable()
 export class NetworkContextProvider {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly repository: NetworkContextRepository) {}
 
   async getContext(userId: string): Promise<string> {
-    const [devices, connections, fiberRuns, circuits] = await Promise.all([
-      this.prisma.device.findMany({
-        where: { userId },
-        select: {
-          name: true, category: true, ipAddress: true, floor: true, floorLabel: true, notes: true,
-        },
-        orderBy: { name: 'asc' },
-      }),
-      this.prisma.deviceConnection.findMany({
-        where: { userId },
-        select: {
-          connectionType: true, notes: true,
-          sourceDevice: { select: { name: true } },
-          targetDevice: { select: { name: true } },
-        },
-      }),
-      this.prisma.fiberRun.findMany({
-        where: { userId },
-        select: {
-          name: true, cableType: true, lengthMeters: true, notes: true,
-          startDevice: { select: { name: true } },
-          endDevice: { select: { name: true } },
-        },
-      }),
-      this.prisma.circuit.findMany({
-        where: { userId },
-        select: {
-          ispName: true, circuitId: true, serviceType: true, bandwidth: true, notes: true,
-          device: { select: { name: true } },
-        },
-      }),
-    ]);
+    const { devices, connections, fiberRuns, circuits } =
+      await this.repository.getNetworkEntities(userId);
 
     const lines: string[] = ['## Documented Network'];
 

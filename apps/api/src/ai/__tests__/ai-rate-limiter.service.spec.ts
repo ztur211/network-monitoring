@@ -67,6 +67,20 @@ describe('AiRateLimiterService', () => {
       await expect(service.checkRateLimits('user-1', '127.0.0.1'))
         .rejects.toMatchObject({ code: 'GEN_004' });
     });
+
+    it('reads a separate bucket when a scope is given (onboarding ≠ chat counters)', async () => {
+      mockRedis.mget.mockResolvedValue([null, null, null, null]);
+
+      await service.checkRateLimits('user-1', '127.0.0.1');
+      const chatKeys = mockRedis.mget.mock.calls[0] as unknown as string[];
+
+      await service.checkRateLimits('user-1', '127.0.0.1', 'onboarding');
+      const onboardingKeys = mockRedis.mget.mock.calls[1] as unknown as string[];
+
+      expect(onboardingKeys).not.toEqual(chatKeys);
+      expect(onboardingKeys.every((k) => k.includes('onboarding'))).toBe(true);
+      expect(chatKeys.some((k) => k.includes('onboarding'))).toBe(false);
+    });
   });
 
   describe('buildUsageWarning', () => {
@@ -100,6 +114,13 @@ describe('AiRateLimiterService', () => {
       expect(mockPipeline.incrby).toHaveBeenCalledTimes(1);
       expect(mockPipeline.expire).toHaveBeenCalledTimes(3);
       expect(mockPipeline.exec).toHaveBeenCalled();
+    });
+
+    it('writes scoped keys when a bucket is given', async () => {
+      await service.incrementUsage('user-1', 500, 'onboarding');
+      const incrKeys = mockPipeline.incr.mock.calls.map((c) => c[0] as string);
+      const incrbyKeys = mockPipeline.incrby.mock.calls.map((c) => c[0] as string);
+      expect([...incrKeys, ...incrbyKeys].every((k) => k.includes('onboarding'))).toBe(true);
     });
   });
 
