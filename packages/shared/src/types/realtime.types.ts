@@ -23,8 +23,6 @@ export const WS_EVENTS = {
   PONG: 'v1:pong',
 } as const;
 
-export type WsEventName = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
-
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';
 
 export interface MetricsDto {

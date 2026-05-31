@@ -22,11 +22,3 @@ export interface RawMetricPayload {
   deviceId?: string;
   tag?: string;
 }
-
-export interface DataSourceCollector {
-  readonly type: string;
-  isAvailable(userId: string): Promise<boolean>;
-  ingest(userId: string, raw: RawMetricPayload): Promise<void>;
-  getLatest(userId: string): Promise<MetricRecord | null>;
-  getStatus(userId: string): Promise<DataSourceStatus>;
-}
