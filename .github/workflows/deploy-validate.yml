@@ -1,0 +1,67 @@
+name: Deploy Stack Validation
+
+# Builds and boots the self-hosted demo stack (deploy/docker-compose.prod.yml)
+# on a runner, applies migrations, and runs the post-deploy smoke test — the
+# same flow a host operator runs, but in CI. Proves the Dockerfiles + compose
+# actually build, the API migrates and boots, Caddy serves the SPA + proxies
+# the API, and Socket.io handshakes — without needing a real host or domain.
+#
+# Path-filtered so the heavy docker build only runs when something that affects
+# the image actually changes (keeps normal CI fast / saves Actions minutes).
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - '.dockerignore'
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - 'scripts/smoke.mjs'
+      - '.github/workflows/deploy-validate.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-stack:
+    name: Build + smoke-test the compose stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Write a CI .env (test values only — same-origin on localhost:8080)
+        run: |
+          cat > deploy/.env <<'ENV'
+          PUBLIC_ORIGIN=http://localhost:8080
+          POSTGRES_USER=nodescope
+          POSTGRES_PASSWORD=ci-test-password
+          POSTGRES_DB=nodescope
+          BETTER_AUTH_SECRET=ci-test-secret-minimum-32-characters-long
+          ANTHROPIC_API_KEY=sk-ci-placeholder-not-used-by-smoke
+          AI_PROVIDER=claude
+          GEOCODING_USER_AGENT=NodeScope/1.0 (ci@example.com)
+          WEB_PORT=8080
+          SITE_ADDRESS=:80
+          ENV
+
+      - name: Validate compose config
+        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env config >/dev/null
+
+      - name: Build images + bring up the stack (waits for healthchecks)
+        run: |
+          docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+            up -d --build --wait --wait-timeout 360
+
+      - name: Smoke test the running stack
+        run: node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs --no-color --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env down -v
