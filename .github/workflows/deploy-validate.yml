@@ -10,13 +10,14 @@ name: Deploy Stack Validation
 # the image actually changes (keeps normal CI fast / saves Actions minutes).
 
 on:
+  # Only the deploy config itself triggers this heavy (~15 min) build — app-code
+  # buildability is already covered by the normal CI `build` job. Trigger it
+  # manually (workflow_dispatch) after significant app/dependency changes that
+  # could affect the production image or boot.
   pull_request:
     paths:
       - 'deploy/**'
       - '.dockerignore'
-      - 'apps/api/**'
-      - 'apps/web/**'
-      - 'packages/shared/**'
       - 'scripts/smoke.mjs'
       - '.github/workflows/deploy-validate.yml'
   workflow_dispatch:
