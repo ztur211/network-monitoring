@@ -158,13 +158,13 @@ location → add devices on 2 floors → connection + fiber run → circuit → 
 assistant → confirm live metrics tick.
 
 ### D6 — Production hardening (single-host adaptation) · [host] + [repo]
-- **DB backups** — nightly `pg_dump` to off-box storage (cron) + volume snapshots.
+- **DB backups** — `deploy/backup.sh [out-dir]` writes a timestamped gzipped `pg_dump`; cron it to off-box storage (`0 3 * * * …/deploy/backup.sh /var/backups/nodescope`). (+ volume snapshots.)
 - **Redis persistence** — AOF on (already in the compose), survives restart.
 - **Restart & health** — `restart: unless-stopped` + container `healthcheck`s so
   Docker auto-recovers crashes.
 - **Two API replicas** — run `api` with `--scale api=2` behind Caddy for in-host
   redundancy + rolling restarts (not true multi-AZ HA — see §6).
-- **Log rotation** — Docker `json-file` with `max-size`/`max-file`.
+- **Log rotation** — configured in the compose (`json-file`, `max-size: 10m`, `max-file: 3`) so container logs can't fill the host disk.
 - **`trust proxy`** — `main.ts` sets `trust proxy: 1`; behind Tunnel→Caddy the hop
   count differs, so confirm `req.ip` is the real client (affects per-IP AI rate
   limiting + `checkOnHome`). Adjust if needed.
