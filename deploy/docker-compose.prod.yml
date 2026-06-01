@@ -91,7 +91,12 @@ services:
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN to use the tunnel profile}
+      # Plain default (not `:?`) so `docker compose config/up` without the
+      # `tunnel` profile don't fail on a missing token — compose interpolates
+      # every service's env at parse time regardless of active profiles.
+      # cloudflared only runs under `--profile tunnel`, where an empty token
+      # makes it exit with a clear error.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - web
 
