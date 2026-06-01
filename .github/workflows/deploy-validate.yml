@@ -59,6 +59,14 @@ jobs:
       - name: Smoke test the running stack
         run: node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
 
+      - name: Verify the DB backup script
+        run: |
+          deploy/backup.sh /tmp/ns-backups
+          f="$(ls -1 /tmp/ns-backups/*.sql.gz | head -1)"
+          gunzip -c "$f" | grep -q "PostgreSQL database dump" \
+            && echo "backup OK ($f)" \
+            || { echo "backup did not contain a valid pg_dump"; exit 1; }
+
       - name: Dump container logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs --no-color --tail 200
