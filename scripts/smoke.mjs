@@ -194,6 +194,84 @@ async function checkSocketIoHandshake() {
   }
 }
 
+async function checkApiHealthDependencies() {
+  const name = 'API health — db + redis connected';
+  try {
+    const res = await fetchWithTimeout(`${API_URL}/api/health`);
+    if (res.status !== 200) {
+      fail(name, `HTTP ${res.status}`);
+      return;
+    }
+    const body = await res.json();
+    const svc = body.services ?? {};
+    // /api/health reports per-dependency status; 'degraded' means the API is up
+    // but a backing store isn't reachable — a broken deploy the shallow health
+    // check (which accepts 'degraded') would pass.
+    const down = ['database', 'redis'].filter((k) => svc[k] !== 'ok');
+    if (down.length > 0) {
+      fail(name, `not ok: ${down.map((k) => `${k}=${svc[k] ?? 'missing'}`).join(', ')}`);
+      return;
+    }
+    pass(name, `database=ok, redis=ok, version=${body.version ?? '?'}`);
+  } catch (err) {
+    fail(name, err.message);
+  }
+}
+
+async function checkApiAuthEnforced() {
+  const name = 'API protected endpoint rejects unauth (401 AUTH_002)';
+  try {
+    // A real NodeScope endpoint behind the global AuthGuard — confirms the
+    // /api/v1 routing, the guard, and the coded error envelope all work, not
+    // just that the public /health is up.
+    const res = await fetchWithTimeout(`${API_URL}/api/v1/devices`);
+    if (res.status !== 401) {
+      fail(name, `HTTP ${res.status}, expected 401`);
+      return;
+    }
+    const body = await res.json();
+    const code = body?.error?.code;
+    if (code !== 'AUTH_002') {
+      fail(name, `error.code=${code ?? 'missing'}, expected AUTH_002`);
+      return;
+    }
+    pass(name, `401 with coded envelope (${code})`);
+  } catch (err) {
+    fail(name, err.message);
+  }
+}
+
+async function checkWebBundle() {
+  const name = 'Web JS bundle loads';
+  try {
+    const rootRes = await fetchWithTimeout(`${WEB_URL}/`);
+    const html = await rootRes.text();
+    // Expo's static export references the entry bundle, e.g.
+    // <script src="/_expo/static/js/web/entry-<hash>.js" defer>. An index.html
+    // that points at a 404ing bundle passes the "is it HTML" checks but is a
+    // broken app, so fetch the referenced bundle and confirm it's really served.
+    const match = html.match(/<script[^>]+src="([^"]+_expo\/static\/js\/[^"]+\.js)"/);
+    if (!match) {
+      fail(name, 'no /_expo/static/js bundle <script> found in index.html');
+      return;
+    }
+    const bundleUrl = new URL(match[1], `${WEB_URL}/`).href;
+    const res = await fetchWithTimeout(bundleUrl);
+    if (res.status !== 200) {
+      fail(name, `bundle ${match[1]} -> HTTP ${res.status}`);
+      return;
+    }
+    const bytes = (await res.text()).length;
+    if (bytes < 1000) {
+      fail(name, `bundle suspiciously small (${bytes} bytes)`);
+      return;
+    }
+    pass(name, `${match[1]} -> 200, ${bytes} bytes`);
+  } catch (err) {
+    fail(name, err.message);
+  }
+}
+
 async function main() {
   console.log(`Smoke test against:`);
   console.log(`  API: ${API_URL}`);
@@ -208,10 +286,13 @@ async function main() {
     process.exit(1);
   }
 
+  await checkApiHealthDependencies();
   await checkApiUnauthenticatedSession();
+  await checkApiAuthEnforced();
   await checkCorsPreflight();
   await checkSocketIoHandshake();
   await checkWebRoot();
+  await checkWebBundle();
   await checkWebCatchall();
 
   summarize();
