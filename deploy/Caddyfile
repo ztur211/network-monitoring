@@ -1,0 +1,30 @@
+{
+	# TLS is terminated upstream by Cloudflare Tunnel in the recommended demo
+	# setup, so Caddy serves plain HTTP on :80. To let Caddy obtain its own
+	# Let's Encrypt certificate instead, set SITE_ADDRESS to your domain,
+	# publish 443, and delete this `auto_https off`.
+	auto_https off
+}
+
+# SITE_ADDRESS defaults to ":80" (listen on 80, any host). API_UPSTREAM defaults
+# to the compose service name "api:3000".
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# API + realtime → the NestJS service (same origin as the web app).
+	# reverse_proxy transparently handles the Socket.io WebSocket upgrade.
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:api:3000}
+	}
+	handle /socket.io/* {
+		reverse_proxy {$API_UPSTREAM:api:3000}
+	}
+
+	# Web SPA: serve the static export; unknown paths fall back to index.html so
+	# expo-router can handle client-side routing.
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}

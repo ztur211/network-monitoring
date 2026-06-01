@@ -117,11 +117,11 @@ web is only ever built as a static export):
   healthcheck), `redis` (with AOF persistence), `api` (waits for `db` healthy, runs
   `prisma migrate deploy` on start, then boots), `caddy`, and optionally
   `cloudflared`. `restart: unless-stopped` on all.
-- **`deploy/.env.production.example`** — every var the API/web need (see §5),
+- **`deploy/.env.example`** — every var the API/web need (see §5),
   with `openssl`-based generation notes. The real `.env` is **git-ignored**.
 
 ### D2 — Configure secrets · [host] + [repo]
-Copy `deploy/.env.production.example` → `deploy/.env`, then fill:
+Copy `deploy/.env.example` → `deploy/.env`, then fill:
 - `BETTER_AUTH_SECRET` — `openssl rand -base64 48`
 - `POSTGRES_PASSWORD` — `openssl rand -base64 24` (and matching `DATABASE_URL`)
 - `ANTHROPIC_API_KEY` — your key
