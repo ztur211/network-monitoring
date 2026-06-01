@@ -17,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'deploy/**'
+      - '!deploy/**.md'          # docs-only edits don't need the full build
       - '.dockerignore'
       - 'scripts/smoke.mjs'
       - '.github/workflows/deploy-validate.yml'
