@@ -5,7 +5,10 @@
 
 # Local-only docs and AI config
 CLAUDE.md
-docs/
+docs/*
+# …except product-knowledge: the AI loads it at runtime (docs/product-knowledge),
+# so it must ship in the repo + image, not stay local-only.
+!docs/product-knowledge/
 .claude/
 PROGRESS.md
 
