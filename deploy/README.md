@@ -55,11 +55,12 @@ Single host, **one public origin**, same-origin routing (simplest cookies/CORS/C
   load-balanced deployment; for a single-box demo, same-origin is simpler and
   every existing feature still works (`main.ts` just needs `FRONTEND_URL` set to
   the one origin, and CORS allowing the same origin is a harmless no-op).
-- **Cloudflare Tunnel** is the recommended exposure: free, gives a stable HTTPS
-  hostname, requires **no inbound ports** (good for a home machine), and hides
-  your IP. Alternatives: Caddy doing its own Let's Encrypt on a box with ports
-  80/443 open + a domain you control; or `*.trycloudflare.com` ephemeral URLs for
-  a throwaway demo.
+- **Tailscale Funnel** is the recommended exposure: free on all plans, gives a
+  stable HTTPS `*.ts.net` hostname with a valid cert, needs **no domain** and
+  **no inbound ports**, and has no interstitial warning page. Alternatives:
+  Cloudflare Tunnel + a domain (clean custom hostname, ~$10/yr); Caddy's own
+  Let's Encrypt (a domain + ports 80/443); or a `*.trycloudflare.com` quick
+  tunnel (ephemeral — throwaway only).
 
 ---
 
@@ -69,14 +70,16 @@ This is the "discuss later" item. Everything domain-dependent
 (`FRONTEND_URL`, `BETTER_AUTH_URL`, `EXPO_PUBLIC_API_URL`, the web CSP, and the
 hardcoded URLs in `scripts/smoke.mjs`) keys off it.
 
-| Option | Hostname | TLS | Effort | Recommended for |
+| Option | Hostname | Free? | Effort | Notes |
 |---|---|---|---|---|
-| **A. Cloudflare Tunnel + free CF domain** | `demo.<yourdomain>` (CF-managed) | free, automatic | low | **a stable demo** |
-| B. Cloudflare Tunnel quick tunnel | random `*.trycloudflare.com` | free, automatic | lowest | a throwaway demo |
-| C. Caddy + Let's Encrypt | a domain you own, ports 80/443 open | free, automatic | medium | a box with a public IP |
+| **A. Tailscale Funnel (recommended)** | `https://<box>.<tailnet>.ts.net` | ✅ free, no domain | low–med | stable, valid HTTPS, no interstitial, no inbound ports; `ts.net`-branded host + fair-use bandwidth cap |
+| B. Cloudflare Tunnel + a domain | `demo.<yourdomain>` | tunnel free, domain ~$10/yr | low | clean custom hostname; needs a domain on Cloudflare |
+| C. Cloudflare quick tunnel | random `*.trycloudflare.com` | ✅ free | lowest | **ephemeral** — URL changes each restart; throwaway only |
+| D. Caddy + Let's Encrypt | a domain you own, ports 80/443 | domain ~$10/yr | medium | needs a public IP + open ports |
 
-Recommendation: **A** (same-origin, one hostname). Pick the hostname and we wire
-the configs to it (tracked as a blocked issue).
+**Decision: A — Tailscale Funnel.** Set `PUBLIC_ORIGIN` to your `ts.net` URL and
+`TRUST_PROXY=2` (Funnel + Caddy hops); everything else derives from
+`PUBLIC_ORIGIN`. Steps in D4.
 
 ---
 
@@ -84,7 +87,7 @@ the configs to it (tracked as a blocked issue).
 
 - A Linux machine with **Docker Engine + Docker Compose v2** and **≥ 2 GB RAM**
   (TimescaleDB + the Node API together want headroom).
-- Outbound internet (Cloudflare Tunnel needs **no inbound** ports).
+- Outbound internet (Tailscale Funnel / Cloudflare Tunnel need **no inbound** ports).
 - An **Anthropic API key** (you have one) — and **set a spend cap** in the
   Anthropic console before exposing the demo, since the AI endpoint will be
   publicly reachable.
@@ -142,11 +145,24 @@ constraint). Verify extensions: `SELECT postgis_version();` and
 
 Optionally seed demo data: `SEED_PASSWORD=… docker compose … exec api npx prisma db seed`.
 
-### D4 — Expose · [host] + [decide]
-Per §2, point Cloudflare Tunnel (or Caddy TLS) at the host so the chosen hostname
-serves the Caddy container. Once the hostname is fixed, **[repo]** parameterizes
-`FRONTEND_URL` / `BETTER_AUTH_URL` / `EXPO_PUBLIC_API_URL`, the web CSP, and
-`scripts/smoke.mjs` to it.
+### D4 — Expose · [host]
+**Tailscale Funnel (recommended).** On the host:
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+# One-time: in the Tailscale admin console, enable Funnel + HTTPS for the tailnet.
+sudo tailscale funnel --bg 8080     # publish Caddy's host port (WEB_PORT) publicly
+tailscale funnel status             # prints your stable https://<box>.<tailnet>.ts.net
+```
+Then in `deploy/.env` set `PUBLIC_ORIGIN=https://<box>.<tailnet>.ts.net`,
+`TRUST_PROXY=2` (Funnel → Caddy → API), keep `SITE_ADDRESS=:80` (Funnel
+terminates TLS), and re-run `up -d --build` so the web bundle bakes the origin.
+
+Alternatives — **Cloudflare Tunnel**: add `--profile tunnel` + `CLOUDFLARE_TUNNEL_TOKEN`
+and route your CF hostname to `http://web:80`; **Caddy TLS**: set `SITE_ADDRESS`
+to your domain, publish 443, and drop `auto_https off` from the Caddyfile.
+`PUBLIC_ORIGIN` drives `FRONTEND_URL` / `BETTER_AUTH_URL` / `EXPO_PUBLIC_API_URL`,
+and `scripts/smoke.mjs` takes the origin as an argument — no code changes needed.
 
 ### D5 — Verify · [host]
 ```bash
