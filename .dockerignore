@@ -1,0 +1,26 @@
+# Build-context hygiene for deploy/Dockerfile.* (build context = repo root).
+# Excludes anything the image rebuilds or must never contain, while keeping the
+# workspace sources the Dockerfiles COPY (manifests, app sources, prisma schema,
+# patches, and the runtime product-knowledge the AI loads).
+
+# Dependencies & build outputs — reinstalled / rebuilt inside the image
+**/node_modules
+**/dist
+apps/web/.expo
+apps/web/web-build
+coverage
+
+# VCS / CI / logs
+.git
+.github
+*.log
+
+# Secrets & local env — never bake into an image
+.env
+.env.*
+deploy/.env
+
+# Local-only spec docs — but KEEP the runtime product-knowledge the AI reads
+docs
+!docs/product-knowledge
+!docs/product-knowledge/**

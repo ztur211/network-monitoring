@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+#
+# NodeScope web (Expo static export) served by Caddy, which also reverse-proxies
+# /api/* and /socket.io/* to the api service (same-origin model — see
+# deploy/README.md). Build context is the repo ROOT.
+#
+# Note: the Expo/Metro export is memory-hungry; building this image wants ~4 GB
+# RAM. On a smaller box, pre-build `apps/web/dist` on a dev machine and bind-mount
+# it into a plain caddy:2-alpine instead.
+
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Baked into the browser bundle at build time: the origin the web app calls for
+# REST + websockets. For the same-origin demo, set this to the public origin
+# (compose passes ${PUBLIC_ORIGIN}); changing it requires rebuilding this image.
+ARG EXPO_PUBLIC_API_URL=http://localhost:3000
+ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
+
+# Same workspace install as the API image — the root postinstall runs here too,
+# so the prisma schema + shared sources + patches must be present.
+COPY package.json package-lock.json .npmrc ./
+COPY patches ./patches
+COPY packages/shared ./packages/shared
+COPY apps/api/package.json ./apps/api/
+COPY apps/api/prisma ./apps/api/prisma
+COPY apps/web/package.json ./apps/web/
+RUN npm ci --legacy-peer-deps
+
+COPY apps/web ./apps/web
+RUN npm run build --workspace=apps/web   # expo export --platform web -> apps/web/dist
+
+# ---------------------------------------------------------------------------
+FROM caddy:2-alpine AS runtime
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/web/dist /srv/web
+EXPOSE 80
