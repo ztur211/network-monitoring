@@ -1,10 +1,12 @@
 name: Deploy
 
-# Triggered only on merge to main/master after CI passes. Runs Prisma migrations
-# against production, triggers a DigitalOcean App Platform deployment, then
-# smoke-tests the deployed app. The workflow fails if smoke fails — App
-# Platform's own healthcheck only verifies /api/health, not the other paths
-# (auth session, CORS, WebSocket handshake, web SPA shell + catchall).
+# MANUAL-ONLY (workflow_dispatch). This targets DigitalOcean App Platform, which
+# is NOT provisioned — the demo is self-hosted (see deploy/README.md). Auto-deploy
+# on push to main/master was removed because it failed on every merge (no DO app,
+# no secrets). Run it from the Actions tab once the DO app + the secrets below
+# exist. It runs Prisma migrations against production, triggers an App Platform
+# deployment, then smoke-tests the deployed app (covering paths App Platform's own
+# healthcheck doesn't: auth session, CORS, WebSocket handshake, SPA shell + catchall).
 #
 # Required GitHub Actions secrets:
 #   - PROD_DATABASE_URL          PgBouncer-fronted production DATABASE_URL
@@ -22,9 +24,15 @@ name: Deploy
 # .do/app.yaml. If you rename a domain, update both files in the same PR.
 
 on:
-  push:
-    branches: [main, master]
+  # Auto-deploy on push intentionally removed — there is no provisioned deploy
+  # target (self-hosted demo). Dispatch manually once DigitalOcean is set up.
   workflow_dispatch:
+
+# wait-on-check-action lists the commit's check-runs, which needs `checks: read`;
+# without it GITHUB_TOKEN's restricted default permissions return 403.
+permissions:
+  contents: read
+  checks: read
 
 concurrency:
   group: deploy-production
