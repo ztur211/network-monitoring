@@ -78,6 +78,8 @@ npm run test:e2e --workspace=apps/api
 
 ## Production Deployment — DigitalOcean App Platform
 
+> **Want a free demo instead?** See **[`deploy/README.md`](./deploy/README.md)** for the self-hosted path — Docker Compose on your own Linux box, no paid cloud. The section below is the paid, managed production reference.
+
 The platform topology is codified in [`.do/app.yaml`](./.do/app.yaml) — that file is the source of truth for which services run, how they're built, what env vars they read, and how the two domains (`api.nodescope.io`, `app.nodescope.io`) route via host-based ingress.
 
 ### One-time cloud setup

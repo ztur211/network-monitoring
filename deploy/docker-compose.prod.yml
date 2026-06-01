@@ -8,10 +8,18 @@
 
 name: nodescope
 
+# Bound container logs so a long-running demo can't fill the host disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: timescale/timescaledb-ha:pg16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-nodescope}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
@@ -28,6 +36,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -42,6 +51,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       db:
         condition: service_healthy
@@ -74,6 +84,7 @@ services:
         # Baked into the browser bundle — rebuild (`--build`) if PUBLIC_ORIGIN changes.
         EXPO_PUBLIC_API_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - api
     environment:
@@ -89,6 +100,7 @@ services:
     image: cloudflare/cloudflared:latest
     profiles: ["tunnel"]
     restart: unless-stopped
+    logging: *default-logging
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
       # Plain default (not `:?`) so `docker compose config/up` without the
