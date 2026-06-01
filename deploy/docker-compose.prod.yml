@@ -69,6 +69,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in deploy/.env}
       AI_PROVIDER: ${AI_PROVIDER:-claude}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
+      # Proxy hops to trust for the real client IP (per-IP AI rate limiting +
+      # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare
+      # Tunnel → Caddy → API set 2.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
