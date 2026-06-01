@@ -5,6 +5,7 @@ import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { resolveTrustProxy } from './common/config/trust-proxy.config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -13,11 +14,12 @@ async function bootstrap() {
 
   app.useLogger(app.get(Logger));
 
-  // Trust the first proxy hop (DigitalOcean App Platform LB). Without this,
-  // req.ip resolves to the LB's address and Network.checkOnHome can never
-  // produce a true result. The "1" matches the single LB in front of the
-  // service in production; locally there is no proxy so the value is inert.
-  app.set('trust proxy', 1);
+  // Trust the proxy chain so req.ip is the real client (per-IP AI rate limiting
+  // + Network.checkOnHome). Defaults to 1 hop — a single LB/Caddy in front (the
+  // DigitalOcean App Platform LB, or one Caddy hop); locally there is no proxy so
+  // it's inert. Set TRUST_PROXY (hop count, 'true'/'false', or an IP/subnet/preset)
+  // for a longer chain such as Cloudflare Tunnel → Caddy → API.
+  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
 
   // CSP whitelist per SAD §12.4: self + OpenFreeMap tiles + Nominatim geocoder.
   // Anthropic API is server-to-server only (never called from the browser), so
