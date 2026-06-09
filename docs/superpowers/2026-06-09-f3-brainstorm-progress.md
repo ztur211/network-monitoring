@@ -1,22 +1,17 @@
-# F3 — Brainstorm Progress (IN PROGRESS — not a finished spec)
+# F3 — Brainstorm Progress (COMPLETE — superseded by the finished spec)
 
-**Status:** Paused mid-clarifying-questions on 2026-06-09. This is a working note, not a spec. The finished spec will land at `specs/2026-06-09-f3-team-site-verb-permissions-design.md`.
+**Status:** Brainstorming finished 2026-06-09. The design is now the spec at
+[`specs/2026-06-09-f3-team-site-verb-permissions-design.md`](specs/2026-06-09-f3-team-site-verb-permissions-design.md).
+This working note is kept only for history; the spec is authoritative.
 
-## What F3 is
-The permissions layer: **NetBox-style team × site × verb** grants that replace F2's interim coarse posture (MEMBER read-only / OWNER+ADMIN mutate). Enforced at F1a's repository-scoping seam using F2's anchor — `governingSiteId(device) = device.propertyId` plus `PropertiesService.subtreePropertyIds` / `isAtOrUnder`. Grounded in NetBox object-permissions (group × object-type × actions × constraints), with the "constraint" specialized to a **site subtree**.
+## How the open questions resolved
 
-## Decided so far
-- **Read + write scoping (true visibility):** a user sees and acts on only the sites their teams grant. `view` is a verb; every list/get **and** realtime feed filters to the user's granted site subtrees. (Chosen over "writes-only / everyone sees everything.")
+The earlier "team × site × **verb**" framing simplified during design — the verb axis **collapsed into the role**. Final model:
 
-## Open — resume here
-1. **OrgRole ↔ grant interplay — what ADMIN means** (the next decision; user wanted to discuss before picking). OWNER = org-wide everything and MEMBER = data only via team grants are near-certain. The fork for ADMIN:
-   - (a) **Site-scoped admin** — authority (data + grant/structure management) bounded to assigned site subtree(s).
-   - (b) **Org-wide admin, data-scoped** — manages config org-wide; own data view/edit via grants (soft restriction: admins can self-grant).
-   - (c) **Admin org-wide full** (≈ co-owner; contradicts "admins can be restricted to certain sites").
-   Guiding note from the user: *"Owner and admins can have different levels of permissions, which may also be restricted to certain sites."*
-2. Team membership model (a user in multiple teams → union of grants?).
-3. Verb set granularity (view / edit / delete; split out create?).
-4. Object-type scope of a grant (per entity type vs uniform per site).
-5. Grant combination semantics (union / most-permissive).
-6. Multi-site network authorization (a network spans sites — view/edit policy when its sites aren't all granted).
-7. Realtime per-site filtering mechanism (per-site rooms vs filtered emit from the org room).
+- **Two axes:** **role = verb ceiling** (`MEMBER` view / `ADMIN` configure / `OWNER` everything + billing + delete + user/role management); **assignment = which site subtrees** (the "where"). Effective access = role ceiling applied within assigned subtrees; outside them, invisible.
+- **ADMIN** is **site-scoped** — configures only the sites assigned to it (a "regional admin"); an org-wide admin is just one assigned the root. The OWNER is unscoped and the org-level authority.
+- **Assignment via teams** (reusable) **+ direct per-member grants** (one-off, fine-grained).
+- **Delegation:** OWNER manages anyone/any role/any site; ADMIN invites & configures **members only** and may grant them **any subset of the admin's own** sites — never beyond (no escalation).
+- **Verb is binary** (view vs configure), **grants are uniform per site** (no per-object-type), **shared networks** show each caller only the in-scope parts.
+
+Resolved/superseded items 1–7 from the prior note are all folded into the spec (§1–§8); per-object-type and per-action granularity became explicit **non-goals** (spec §3).
