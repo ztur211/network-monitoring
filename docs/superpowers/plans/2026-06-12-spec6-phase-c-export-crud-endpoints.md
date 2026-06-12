@@ -67,7 +67,7 @@ export class BcfExportService {
   constructor(private readonly prisma: PrismaService, private readonly permissions: PermissionsService, private readonly storage: StorageService) {}
 
   async exportBcf(orgId: string, member: Member, buildingPropertyId: string): Promise<Buffer> {
-    if (member.role !== 'OWNER' && !(await this.permissions.inScope(member.id, buildingPropertyId))) throw new NodeScopeException('BCF_404', 'Building not found', 404);
+    if (member.role !== 'OWNER' && !(await this.permissions.inScope(member.id, buildingPropertyId))) throw new NodeScopeException('PROP_001', 'Building not found', 404);
     const topics = await this.prisma.bcfTopic.findMany({ where: { organizationId: orgId, propertyId: buildingPropertyId }, include: { comments: true, viewpoints: true } });
     const out: ParsedTopic[] = [];
     for (const t of topics) {
@@ -126,7 +126,7 @@ import type { Member } from '../common/types';
 export class BcfService {
   constructor(private readonly prisma: PrismaService, private readonly permissions: PermissionsService, private readonly properties: PropertiesService, private readonly storage: StorageService) {}
 
-  private async assertView(member: Member, buildingId: string) { if (member.role !== 'OWNER' && !(await this.permissions.inScope(member.id, buildingId))) throw new NodeScopeException('BCF_404', 'Building not found', 404); }
+  private async assertView(member: Member, buildingId: string) { if (member.role !== 'OWNER' && !(await this.permissions.inScope(member.id, buildingId))) throw new NodeScopeException('PROP_001', 'Building not found', 404); }
   private toDto = (t: any): BcfTopicDto => ({ id: t.id, guid: t.guid, title: t.title, topicType: t.topicType, topicStatus: t.topicStatus, priority: t.priority, assignedTo: t.assignedTo,
     creationAuthor: t.creationAuthor, creationDate: t.creationDate.toISOString(), version: t.version, deviceIds: (t.devices ?? []).map((d: any) => d.deviceId),
     comments: (t.comments ?? []).map((c: any) => ({ id: c.id, guid: c.guid, comment: c.comment, author: c.author, date: c.date.toISOString(), viewpointGuid: c.viewpointGuid })),
@@ -157,17 +157,17 @@ export class BcfService {
 
   async addComment(orgId: string, member: Member, topicId: string, d: AddBcfCommentDto): Promise<void> {
     const topic = await this.prisma.bcfTopic.findFirst({ where: { id: topicId, organizationId: orgId } });
-    if (!topic) throw new NodeScopeException('BCF_404', 'Topic not found', 404);
+    if (!topic) throw new NodeScopeException('BCF_004', 'Topic not found', 404);
     await this.permissions.assertCanConfigure(member, { type: 'Property', id: topic.propertyId });
     await this.prisma.bcfComment.create({ data: { organizationId: orgId, topicId, guid: randomUUID(), comment: d.comment, author: member.id, date: new Date(), viewpointGuid: d.viewpointGuid ?? null } });
   }
 
   async patchTopic(orgId: string, member: Member, topicId: string, d: PatchBcfTopicDto): Promise<BcfTopicDto> {
     const topic = await this.prisma.bcfTopic.findFirst({ where: { id: topicId, organizationId: orgId } });
-    if (!topic) throw new NodeScopeException('BCF_404', 'Topic not found', 404);
+    if (!topic) throw new NodeScopeException('BCF_004', 'Topic not found', 404);
     await this.permissions.assertCanConfigure(member, { type: 'Property', id: topic.propertyId });
     const r = await this.prisma.bcfTopic.updateMany({ where: { id: topicId, version: d.baseVersion }, data: { topicStatus: d.topicStatus, assignedTo: d.assignedTo, priority: d.priority, modifiedAuthor: member.id, modifiedDate: new Date(), version: { increment: 1 } } });
-    if (r.count === 0) throw new NodeScopeException('ORG_CONFLICT', 'Version conflict', 409);
+    if (r.count === 0) throw new NodeScopeException('BCF_005', 'Version conflict', 409);
     return this.toDto(await this.prisma.bcfTopic.findUnique({ where: { id: topicId }, include: this.include }));
   }
 }
@@ -225,7 +225,7 @@ export class BcfController {
 ## Task 5: Phase gate
 
 - [ ] **Step 1: Suites.** `cd apps/api && npm run test:integration -- bcf && npm run test:e2e -- bcf` → green; `npx tsc --noEmit` → PASS.
-- [ ] **Step 2: Docs (Rule 10).** API Design Document: the `/v1/.../bcf/*` endpoints (auth + scope). SAD/CLAUDE.md: BCF round-trip server.
+- [ ] **Step 2: Docs (Rule 10).** API Design Document: the `/v1/.../bcf/*` endpoints (auth + scope) + register `BCF_004 TOPIC_NOT_FOUND` (404) and `BCF_005 VERSION_CONFLICT` (409); building-not-found reuses F2's `PROP_001`. SAD/CLAUDE.md: BCF round-trip server.
 - [ ] **Step 3: Commit** `docs: record Spec 6 BCF export + CRUD + endpoints (Phase C)`.
 
 ---
@@ -237,4 +237,4 @@ export class BcfController {
 - **Placeholder scan:** none — complete code/commands.
 - **Type consistency:** `BcfTopicDto`/`CreateBcfTopicDto`/`AddBcfCommentDto`/`PatchBcfTopicDto` (shared) ↔ service ↔ controller; `writeBcfZip`/`ParsedTopic` (Phase A); `BcfImportService.importBcf` (Phase B); `deriveDeviceLinks` + `toIfcGuid`; `StorageService.getObjectStream`/`putObjectStream` (Spec 1); F3 `inScope`/`assertCanConfigure`.
 - **Test-config compliance:** export/CRUD integration (test DB + MinIO or a mocked `StorageService`); controller e2e (OWNER + in-/out-of-scope MEMBER auth, multipart upload, `@Res()` raw download).
-- **Integration points to verify during execution:** `FileInterceptor`/multipart setup in the API; the optimistic-version conflict code (`ORG_CONFLICT` here — match F1a's actual code); `@Res()` bypasses the JSON envelope for both export routes; F3 `inScope`/`assertCanConfigure` signatures.
+- **Integration points to verify during execution:** `FileInterceptor`/multipart setup in the API; the optimistic-version conflict code (`BCF_005` here — match F1a's actual code); `@Res()` bypasses the JSON envelope for both export routes; F3 `inScope`/`assertCanConfigure` signatures.
