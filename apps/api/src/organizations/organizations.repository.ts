@@ -54,4 +54,23 @@ export class OrganizationsRepository {
       orderBy: { createdAt: 'asc' },
     });
   }
+
+  findMemberByUserAndOrg(userId: string, organizationId: string): Promise<OrganizationMember | null> {
+    return this.prisma.organizationMember.findFirst({ where: { userId, organizationId } });
+  }
+
+  updateMemberRole(userId: string, organizationId: string, role: OrgRole): Promise<Prisma.BatchPayload> {
+    return this.prisma.organizationMember.updateMany({
+      where: { userId, organizationId },
+      data: { role },
+    });
+  }
+
+  deleteMember(userId: string, organizationId: string): Promise<Prisma.BatchPayload> {
+    return this.prisma.organizationMember.deleteMany({ where: { userId, organizationId } });
+  }
+
+  countOwners(organizationId: string): Promise<number> {
+    return this.prisma.organizationMember.count({ where: { organizationId, role: 'OWNER' } });
+  }
 }
