@@ -4,6 +4,7 @@ import { DevicesService } from '../devices.service';
 import { DevicesRepository } from '../devices.repository';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { AuditService } from '../../audit/audit.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
 
@@ -60,6 +61,12 @@ const mockConflict: jest.Mocked<ConflictResolutionService> = {
   emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
+const mockAudit = {
+  recordCreate: jest.fn().mockResolvedValue(undefined),
+  recordUpdate: jest.fn().mockResolvedValue(undefined),
+  recordDelete: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('DevicesService', () => {
   let service: DevicesService;
 
@@ -70,6 +77,7 @@ describe('DevicesService', () => {
         { provide: DevicesRepository, useValue: mockRepo },
         { provide: OrganizationsRepository, useValue: mockOrgsRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -105,6 +113,11 @@ describe('DevicesService', () => {
       expect(result.id).toBe('dev-1');
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: 'org-1', userId: 'user-1' }),
+      );
+      expect(mockAudit.recordCreate).toHaveBeenCalledWith(
+        'org-1',
+        'Device',
+        expect.objectContaining({ id: 'dev-1' }),
       );
     });
 

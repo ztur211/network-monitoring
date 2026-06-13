@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Device, DeviceCategory, DeviceMobility } from '@prisma/client';
 import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
@@ -14,6 +15,7 @@ export class DevicesService {
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
     private readonly organizationsRepository: OrganizationsRepository,
+    private readonly audit: AuditService,
   ) {}
 
   async listDevices(organizationId: string): Promise<PaginatedResponse<DeviceDto>> {
@@ -49,6 +51,7 @@ export class DevicesService {
       userId: creatorUserId,
       ...dto,
     });
+    await this.audit.recordCreate(organizationId, 'Device', device);
     return this.toDto(device);
   }
 
@@ -106,6 +109,7 @@ export class DevicesService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'Device', deviceId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
       { deviceId, device: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
@@ -120,6 +124,7 @@ export class DevicesService {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.devicesRepository.deleteByIdAndOrgId(deviceId, organizationId);
+    await this.audit.recordDelete(organizationId, 'Device', device);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_DELETED,
       { deviceId },
@@ -184,6 +189,7 @@ export class DevicesService {
       browserDeviceId,
       networkId,
     });
+    await this.audit.recordCreate(organizationId, 'Device', device);
     const dto = this.toDto(device);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
