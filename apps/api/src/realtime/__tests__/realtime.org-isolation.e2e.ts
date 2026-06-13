@@ -14,6 +14,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeModule } from '../realtime.module';
 import { AuditModule } from '../../audit/audit.module';
+import { ConfigModule } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { RealtimeGateway } from '../realtime.gateway';
@@ -45,7 +46,7 @@ describe('RealtimeGateway — org isolation (e2e)', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [RealtimeModule, AuditModule],
+      imports: [RealtimeModule, AuditModule, ConfigModule.forRoot({ isGlobal: true })],
     })
       .overrideProvider(RedisService)
       .useValue(mockRedis)
