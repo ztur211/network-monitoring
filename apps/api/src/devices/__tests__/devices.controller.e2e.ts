@@ -203,4 +203,30 @@ describe('DevicesController (e2e)', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('Audit ALS end-to-end', () => {
+    it('writes a ChangeLog CREATE row with the session actor (ALS end-to-end)', async () => {
+      const prisma = app.get(PrismaService);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/devices')
+        .set('Cookie', sessionCookie)
+        .send({ name: `AuditE2E ${Date.now()}`, category: 'ROUTER' })
+        .expect(201);
+
+      const newId = res.body.data.id;
+
+      const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+      const logs = await prisma.changeLog.findMany({
+        where: { entityType: 'Device', entityId: newId, action: 'CREATE' },
+      });
+
+      expect(logs).toHaveLength(1);
+      // AuthGuard must have populated userId in the ALS store
+      expect(logs[0].userId).toBe(u.id);
+      // AuditContextMiddleware must have populated a real requestId (not the fallback 'unknown')
+      expect(logs[0].requestId).not.toBe('unknown');
+      expect(logs[0].requestId.length).toBeGreaterThan(0);
+    });
+  });
 });
