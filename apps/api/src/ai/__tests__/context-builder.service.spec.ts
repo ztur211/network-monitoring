@@ -32,7 +32,7 @@ describe('ContextBuilderService', () => {
       mockAccount.getContext.mockResolvedValue('Account: PERSONAL_FREE tier');
       mockProduct.getContext.mockResolvedValue('Product: map and device features');
 
-      const prompt = await service.buildSystemPrompt('user-1', 'PERSONAL_FREE');
+      const prompt = await service.buildSystemPrompt('org-1', 'user-1', 'PERSONAL_FREE');
 
       expect(prompt).toContain('Network: 3 devices including Router');
       expect(prompt).toContain('Realtime: latency 20ms');
@@ -46,22 +46,22 @@ describe('ContextBuilderService', () => {
       mockAccount.getContext.mockResolvedValue('');
       mockProduct.getContext.mockResolvedValue('');
 
-      const prompt = await service.buildSystemPrompt('user-1', 'PERSONAL_FREE');
+      const prompt = await service.buildSystemPrompt('org-1', 'user-1', 'PERSONAL_FREE');
 
       expect(prompt).toContain('planned');
       expect(prompt.toLowerCase()).toContain('acknowledge');
     });
 
-    it('passes userId and userTier to context providers', async () => {
+    it('passes organizationId, userId, and userTier to context providers', async () => {
       mockNetwork.getContext.mockResolvedValue('');
       mockRealtime.getContext.mockResolvedValue('');
       mockAccount.getContext.mockResolvedValue('');
       mockProduct.getContext.mockResolvedValue('');
 
-      await service.buildSystemPrompt('user-42', 'PERSONAL_PAID');
+      await service.buildSystemPrompt('org-42', 'user-42', 'PERSONAL_PAID');
 
-      expect(mockNetwork.getContext).toHaveBeenCalledWith('user-42');
-      expect(mockRealtime.getContext).toHaveBeenCalledWith('user-42');
+      expect(mockNetwork.getContext).toHaveBeenCalledWith('org-42');
+      expect(mockRealtime.getContext).toHaveBeenCalledWith('org-42', 'user-42');
       expect(mockAccount.getContext).toHaveBeenCalledWith('user-42', 'PERSONAL_PAID');
     });
   });

@@ -68,8 +68,8 @@ export class ConflictResolutionService {
     }
   }
 
-  emitEntityEvent(event: string, payload: Record<string, unknown>, userId: string): void {
-    this.realtimeService.pushToUser(userId, event, {
+  emitEntityEvent(event: string, payload: Record<string, unknown>, organizationId: string): void {
+    this.realtimeService.pushToOrg(organizationId, event, {
       ...payload,
       timestamp: new Date().toISOString(),
     });

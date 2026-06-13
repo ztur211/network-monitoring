@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('MapController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let orgId: string;
   const testEmail = `e2e-map-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -31,10 +32,18 @@ describe('MapController (e2e)', () => {
 
     const setCookie = signUp.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+
+    const prisma = app.get(PrismaService);
+    const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const org = await prisma.organization.create({ data: { name: `E2E Map ${Date.now()}` } });
+    orgId = org.id;
+    await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });

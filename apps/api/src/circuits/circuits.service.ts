@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Circuit } from '@prisma/client';
 import { CircuitDto, CursorPaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -15,13 +16,14 @@ export class CircuitsService {
     private readonly circuitsRepository: CircuitsRepository,
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
+    private readonly audit: AuditService,
   ) {}
 
-  async listCircuits(userId: string, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
+  async listCircuits(organizationId: string, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
     const limit = query.limit ?? DEFAULT_LIMIT;
     const [items, total] = await Promise.all([
-      this.circuitsRepository.findWithCursor(userId, limit + 1, query.cursor),
-      this.circuitsRepository.countByUserId(userId),
+      this.circuitsRepository.findWithCursor(organizationId, limit + 1, query.cursor),
+      this.circuitsRepository.countByOrgId(organizationId),
     ]);
 
     const hasMore = items.length > limit;
@@ -39,28 +41,41 @@ export class CircuitsService {
     return { items: page.map((c) => this.toDto(c)), nextCursor, total };
   }
 
-  async createCircuit(userId: string, dto: CreateCircuitDto): Promise<CircuitDto> {
+  async createCircuit(
+    organizationId: string,
+    creatorUserId: string,
+    dto: CreateCircuitDto,
+  ): Promise<CircuitDto> {
     if (dto.deviceId) {
-      const device = await this.devicesRepository.findByIdAndUserId(dto.deviceId, userId);
+      const device = await this.devicesRepository.findByIdAndOrgId(dto.deviceId, organizationId);
       if (!device) {
         throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
       }
     }
 
-    const circuit = await this.circuitsRepository.create({ userId, ...dto });
+    const circuit = await this.circuitsRepository.create({
+      organizationId,
+      userId: creatorUserId,
+      ...dto,
+    });
+    await this.audit.recordCreate(organizationId, 'Circuit', circuit);
     return this.toDto(circuit);
   }
 
-  async getCircuit(userId: string, circuitId: string): Promise<CircuitDto> {
-    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+  async getCircuit(organizationId: string, circuitId: string): Promise<CircuitDto> {
+    const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     return this.toDto(circuit);
   }
 
-  async updateCircuit(userId: string, circuitId: string, patch: PatchCircuitDto): Promise<CircuitDto> {
-    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+  async updateCircuit(
+    organizationId: string,
+    circuitId: string,
+    patch: PatchCircuitDto,
+  ): Promise<CircuitDto> {
+    const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -73,9 +88,9 @@ export class CircuitsService {
     );
 
     if (updatePayload.deviceId !== undefined && updatePayload.deviceId !== null) {
-      const device = await this.devicesRepository.findByIdAndUserId(
+      const device = await this.devicesRepository.findByIdAndOrgId(
         updatePayload.deviceId as string,
-        userId,
+        organizationId,
       );
       if (!device) {
         throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
@@ -84,7 +99,7 @@ export class CircuitsService {
 
     const updated = await this.circuitsRepository.updateWithVersion(
       circuitId,
-      userId,
+      organizationId,
       updatePayload,
       patch.baseVersion,
     );
@@ -93,21 +108,27 @@ export class CircuitsService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'Circuit', circuitId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CIRCUIT_UPDATED,
-      { circuitId, circuit: dto, changes: patch.changes, updatedBy: userId },
-      userId,
+      { circuitId, circuit: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
+      organizationId,
     );
     return dto;
   }
 
-  async deleteCircuit(userId: string, circuitId: string): Promise<void> {
-    const circuit = await this.circuitsRepository.findByIdAndUserId(circuitId, userId);
+  async deleteCircuit(organizationId: string, circuitId: string): Promise<void> {
+    const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    await this.circuitsRepository.deleteByIdAndUserId(circuitId, userId);
-    this.conflictService.emitEntityEvent(WS_EVENTS.CIRCUIT_DELETED, { circuitId }, userId);
+    await this.circuitsRepository.deleteByIdAndOrgId(circuitId, organizationId);
+    await this.audit.recordDelete(organizationId, 'Circuit', circuit);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.CIRCUIT_DELETED,
+      { circuitId },
+      organizationId,
+    );
   }
 
   private toDto(circuit: Circuit): CircuitDto {

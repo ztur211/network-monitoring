@@ -1,9 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Device, DeviceCategory, DeviceMobility } from '@prisma/client';
 import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
-import { TiersService } from '../tiers/tiers.service';
+import { OrganizationsRepository } from '../organizations/organizations.repository';
+import { assertNameMatchesPolicy } from '../organizations/naming-policy';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS, PatchDeviceDto } from './devices.dto';
 import { DevicesRepository } from './devices.repository';
 
@@ -11,64 +13,94 @@ import { DevicesRepository } from './devices.repository';
 export class DevicesService {
   constructor(
     private readonly devicesRepository: DevicesRepository,
-    private readonly tiersService: TiersService,
     private readonly conflictService: ConflictResolutionService,
+    private readonly organizationsRepository: OrganizationsRepository,
+    private readonly audit: AuditService,
   ) {}
 
-  async listDevices(userId: string): Promise<PaginatedResponse<DeviceDto>> {
+  async listDevices(organizationId: string): Promise<PaginatedResponse<DeviceDto>> {
     const [items, total] = await Promise.all([
-      this.devicesRepository.findAllByUserId(userId),
-      this.devicesRepository.countByUserId(userId),
+      this.devicesRepository.findAllByOrgId(organizationId),
+      this.devicesRepository.countByOrgId(organizationId),
     ]);
     return { items: items.map((d) => this.toDto(d)), total };
   }
 
-  async createDevice(userId: string, userTier: string, dto: CreateDeviceDto): Promise<DeviceDto> {
-    const limit = this.tiersService.getDeviceLimit(userTier);
-    const count = await this.devicesRepository.countByUserId(userId);
-    if (count >= limit) {
-      throw new NodeScopeException('DEVICE_002', 'DEVICE_LIMIT_REACHED', HttpStatus.FORBIDDEN);
+  async createDevice(
+    organizationId: string,
+    creatorUserId: string,
+    dto: CreateDeviceDto,
+  ): Promise<DeviceDto> {
+    const org = await this.organizationsRepository.findOrganizationById(organizationId);
+    if (!org) {
+      throw new NodeScopeException('ORG_001', 'ORGANIZATION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
-    const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(userId, dto.name);
+    const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(
+      organizationId,
+      dto.name,
+    );
     if (nameTaken) {
-      throw new NodeScopeException('DEVICE_003', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
+      throw new NodeScopeException('ORG_005', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
     }
 
-    const device = await this.devicesRepository.create({ userId, ...dto });
+    assertNameMatchesPolicy(dto.name, org);
+
+    const device = await this.devicesRepository.create({
+      organizationId,
+      userId: creatorUserId,
+      ...dto,
+    });
+    await this.audit.recordCreate(organizationId, 'Device', device);
     return this.toDto(device);
   }
 
-  async getDevice(userId: string, deviceId: string): Promise<DeviceDto> {
-    const device = await this.devicesRepository.findByIdAndUserId(deviceId, userId);
+  async getDevice(organizationId: string, deviceId: string): Promise<DeviceDto> {
+    const device = await this.devicesRepository.findByIdAndOrgId(deviceId, organizationId);
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     return this.toDto(device);
   }
 
-  async updateDevice(userId: string, deviceId: string, patch: PatchDeviceDto): Promise<DeviceDto> {
-    const device = await this.devicesRepository.findByIdAndUserId(deviceId, userId);
+  async updateDevice(
+    organizationId: string,
+    deviceId: string,
+    patch: PatchDeviceDto,
+  ): Promise<DeviceDto> {
+    const device = await this.devicesRepository.findByIdAndOrgId(deviceId, organizationId);
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
-    const updatePayload = this.conflictService.buildUpdatePayload(patch, DEVICE_WRITABLE_FIELDS, device.version, CreateDeviceDto);
+    const updatePayload = this.conflictService.buildUpdatePayload(
+      patch,
+      DEVICE_WRITABLE_FIELDS,
+      device.version,
+      CreateDeviceDto,
+    );
 
     if (updatePayload.name !== undefined) {
+      const org = await this.organizationsRepository.findOrganizationById(organizationId);
+      if (!org) {
+        throw new NodeScopeException('ORG_001', 'ORGANIZATION_NOT_FOUND', HttpStatus.NOT_FOUND);
+      }
+
       const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(
-        userId,
+        organizationId,
         updatePayload.name as string,
         deviceId,
       );
       if (nameTaken) {
-        throw new NodeScopeException('DEVICE_003', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
+        throw new NodeScopeException('ORG_005', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
       }
+
+      assertNameMatchesPolicy(updatePayload.name as string, org);
     }
 
     const updated = await this.devicesRepository.updateWithVersion(
       deviceId,
-      userId,
+      organizationId,
       updatePayload,
       patch.baseVersion,
     );
@@ -77,29 +109,35 @@ export class DevicesService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'Device', deviceId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
-      { deviceId, device: dto, changes: patch.changes, updatedBy: userId },
-      userId,
+      { deviceId, device: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
+      organizationId,
     );
     return dto;
   }
 
-  async deleteDevice(userId: string, deviceId: string): Promise<void> {
-    const device = await this.devicesRepository.findByIdAndUserId(deviceId, userId);
+  async deleteDevice(organizationId: string, deviceId: string): Promise<void> {
+    const device = await this.devicesRepository.findByIdAndOrgId(deviceId, organizationId);
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    await this.devicesRepository.deleteByIdAndUserId(deviceId, userId);
-    this.conflictService.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId }, userId);
+    await this.devicesRepository.deleteByIdAndOrgId(deviceId, organizationId);
+    await this.audit.recordDelete(organizationId, 'Device', device);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.DEVICE_DELETED,
+      { deviceId },
+      organizationId,
+    );
   }
 
   async findDeviceIdByBrowserDeviceId(
-    userId: string,
+    organizationId: string,
     browserDeviceId: string,
   ): Promise<string | null> {
-    const device = await this.devicesRepository.findByUserIdAndBrowserDeviceId(
-      userId,
+    const device = await this.devicesRepository.findByOrgIdAndBrowserDeviceId(
+      organizationId,
       browserDeviceId,
     );
     return device?.id ?? null;
@@ -108,44 +146,55 @@ export class DevicesService {
   /**
    * Idempotent create-or-fetch for a BROWSER_CLIENT device tied to a
    * specific browser via its localStorage-bound `browserDeviceId`. If a row
-   * already exists for this (userId, browserDeviceId) the existing row is
-   * returned unchanged — a browser refresh during onboarding must not
+   * already exists for this (organizationId, browserDeviceId) the existing row
+   * is returned unchanged — a browser refresh during onboarding must not
    * create duplicates or fail on the unique constraint.
    *
-   * Bypasses the tier device-limit deliberately: a user's own browser
-   * shouldn't consume one of their PERSONAL_FREE device slots.
+   * Does not apply the tier device-limit — a browser device should not consume
+   * a device slot. Naming policy (length + regex) still applies.
+   *
+   * NOTE: callers must already have resolved an organizationId for the user.
+   * For fresh users who have not yet joined an org (e.g. the onboarding wizard
+   * prior to org creation), the calling service is responsible for creating the
+   * org first and supplying its id here.
    */
   async createBrowserDevice(
-    userId: string,
+    organizationId: string,
+    creatorUserId: string,
     browserDeviceId: string,
     name: string,
     mobility: DeviceMobility,
     networkId?: string,
   ): Promise<DeviceDto> {
-    const existing = await this.devicesRepository.findByUserIdAndBrowserDeviceId(
-      userId,
+    const existing = await this.devicesRepository.findByOrgIdAndBrowserDeviceId(
+      organizationId,
       browserDeviceId,
     );
     if (existing) return this.toDto(existing);
 
-    const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(userId, name);
+    const nameTaken = await this.devicesRepository.existsByNameCaseInsensitive(
+      organizationId,
+      name,
+    );
     if (nameTaken) {
-      throw new NodeScopeException('DEVICE_003', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
+      throw new NodeScopeException('ORG_005', 'DEVICE_NAME_TAKEN', HttpStatus.CONFLICT);
     }
 
     const device = await this.devicesRepository.create({
-      userId,
+      organizationId,
+      userId: creatorUserId,
       name,
       category: DeviceCategory.BROWSER_CLIENT,
       mobility,
       browserDeviceId,
       networkId,
     });
+    await this.audit.recordCreate(organizationId, 'Device', device);
     const dto = this.toDto(device);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
-      { deviceId: device.id, device: dto, updatedBy: userId },
-      userId,
+      { deviceId: device.id, device: dto, updatedBy: creatorUserId },
+      organizationId,
     );
     return dto;
   }

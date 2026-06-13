@@ -13,6 +13,7 @@ const mockUser = {
   name: 'Test User',
   image: null,
   tier: AccountTier.PERSONAL_FREE,
+  isSuperAdmin: false,
   homeLatitude: null,
   homeLongitude: null,
   mapPreferences: {},

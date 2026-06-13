@@ -15,6 +15,7 @@ export interface SessionUser {
   name: string | null;
   image: string | null;
   tier: string;
+  isSuperAdmin: boolean;
   homeLatitude: number | null;
   homeLongitude: number | null;
   createdAt: Date;

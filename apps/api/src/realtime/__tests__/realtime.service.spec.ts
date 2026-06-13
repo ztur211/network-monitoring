@@ -7,7 +7,9 @@ import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { DevicesService } from '../../devices/devices.service';
 import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
+import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import { auth } from '../../auth/better-auth.config';
 
 const mockRoom = { emit: jest.fn() };
 const mockServer = {
@@ -39,12 +41,15 @@ type MockDevices = { findDeviceIdByBrowserDeviceId: jest.Mock };
 
 type MockNetworks = { checkOnHome: jest.Mock };
 
+type MockOrgsRepo = { findMemberByUserId: jest.Mock };
+
 describe('RealtimeGateway — service interface', () => {
   let gateway: RealtimeGateway;
   let mockDataSources: MockDataSources;
   let mockAiService: MockAi;
   let mockDevices: MockDevices;
   let mockNetworks: MockNetworks;
+  let mockOrgsRepo: MockOrgsRepo;
 
   beforeEach(async () => {
     mockDataSources = {
@@ -66,6 +71,10 @@ describe('RealtimeGateway — service interface', () => {
       checkOnHome: jest.fn().mockResolvedValue({ networkId: null, onHome: false }),
     };
 
+    mockOrgsRepo = {
+      findMemberByUserId: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
@@ -74,6 +83,7 @@ describe('RealtimeGateway — service interface', () => {
         { provide: DevicesService, useValue: mockDevices },
         { provide: NetworksService, useValue: mockNetworks },
         { provide: AiService, useValue: mockAiService },
+        { provide: OrganizationsRepository, useValue: mockOrgsRepo },
       ],
     }).compile();
 
@@ -212,6 +222,53 @@ describe('RealtimeGateway — service interface', () => {
     });
   });
 
+  describe('handleConnection', () => {
+    const makeClientSocket = () => {
+      const joinedRooms: string[] = [];
+      return {
+        data: {} as Record<string, unknown>,
+        handshake: { headers: {}, address: '127.0.0.1' },
+        join: jest.fn().mockImplementation((room: string) => {
+          joinedRooms.push(room);
+          return Promise.resolve();
+        }),
+        disconnect: jest.fn(),
+        _joinedRooms: joinedRooms,
+      } as unknown as Parameters<RealtimeGateway['handleConnection']>[0] & { _joinedRooms: string[] };
+    };
+
+    it('joins org:{orgId} room when user has an org membership', async () => {
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue({
+        user: { id: 'u-1', tier: 'PERSONAL_FREE' },
+        session: { id: 's-1', token: 'tok' },
+      } as never);
+      mockOrgsRepo.findMemberByUserId.mockResolvedValue({ organizationId: 'org-abc' });
+
+      const client = makeClientSocket();
+      await gateway.handleConnection(client);
+
+      const joined = client._joinedRooms;
+      expect(joined).toContain('org:org-abc');
+      expect(joined).toContain('user:u-1');
+      expect(joined).toContain('tier:PERSONAL_FREE');
+    });
+
+    it('does NOT join any org room when user has no org membership', async () => {
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue({
+        user: { id: 'u-2', tier: 'PERSONAL_FREE' },
+        session: { id: 's-2', token: 'tok2' },
+      } as never);
+      mockOrgsRepo.findMemberByUserId.mockResolvedValue(null);
+
+      const client = makeClientSocket();
+      await gateway.handleConnection(client);
+
+      const joined = client._joinedRooms;
+      expect(joined.some((r) => r.startsWith('org:'))).toBe(false);
+      expect(joined).toContain('user:u-2');
+    });
+  });
+
   describe('handlePing', () => {
     it('returns PONG event with null data', () => {
       const response = gateway.handlePing();
@@ -220,11 +277,11 @@ describe('RealtimeGateway — service interface', () => {
   });
 
   describe('handleMetricsSubmit', () => {
-    const buildSocket = (user?: { id: string }) =>
-      ({ data: { user } }) as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[0];
+    const buildSocket = (user?: { id: string }, orgId?: string | null) =>
+      ({ data: { user, orgId: orgId ?? null } }) as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[0];
 
-    it('ingests using userId from socket.data, never from payload', async () => {
-      const socket = buildSocket({ id: 'authenticated-user' });
+    it('ingests using orgId and userId from socket.data, never from payload', async () => {
+      const socket = buildSocket({ id: 'authenticated-user' }, 'org-abc');
       // Attacker-controlled payload tries to spoof userId — must be ignored
       const payload = {
         bandwidthDown: 100,
@@ -236,21 +293,32 @@ describe('RealtimeGateway — service interface', () => {
       await gateway.handleMetricsSubmit(socket, payload);
 
       expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'org-abc',
         'authenticated-user',
         expect.objectContaining({ bandwidthDown: 100, bandwidthUp: 50, latency: 30 }),
       );
-      expect(mockDataSources.ingest).not.toHaveBeenCalledWith('victim-user', expect.anything());
+      expect(mockDataSources.ingest).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'victim-user',
+        expect.anything(),
+      );
     });
 
     it('returns silently when socket has no authenticated user', async () => {
-      const socket = buildSocket(undefined);
+      const socket = buildSocket(undefined, 'org-abc');
+      await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
+      expect(mockDataSources.ingest).not.toHaveBeenCalled();
+    });
+
+    it('returns silently when socket has no orgId (user not yet in an org)', async () => {
+      const socket = buildSocket({ id: 'user-1' }, null);
       await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
       expect(mockDataSources.ingest).not.toHaveBeenCalled();
     });
 
     it('resolves browserDeviceId to deviceId via DevicesService before ingesting', async () => {
       mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce('device-uuid-7');
-      const socket = buildSocket({ id: 'user-1' });
+      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
 
       await gateway.handleMetricsSubmit(socket, {
         browserDeviceId: 'browser-uuid-1',
@@ -262,6 +330,7 @@ describe('RealtimeGateway — service interface', () => {
         'browser-uuid-1',
       );
       expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'org-abc',
         'user-1',
         expect.objectContaining({ deviceId: 'device-uuid-7', bandwidthDown: 100 }),
       );
@@ -269,20 +338,20 @@ describe('RealtimeGateway — service interface', () => {
 
     it('ingests with deviceId undefined when browserDeviceId does not match a device', async () => {
       mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce(null);
-      const socket = buildSocket({ id: 'user-1' });
+      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
 
       await gateway.handleMetricsSubmit(socket, {
         browserDeviceId: 'unknown-browser',
         bandwidthDown: 100,
       } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
 
-      const callPayload = mockDataSources.ingest.mock.calls[0][1] as Record<string, unknown>;
+      const callPayload = mockDataSources.ingest.mock.calls[0][2] as Record<string, unknown>;
       expect(callPayload.deviceId).toBeUndefined();
       expect(callPayload.bandwidthDown).toBe(100);
     });
 
     it('does not call DevicesService when browserDeviceId is absent', async () => {
-      const socket = buildSocket({ id: 'user-1' });
+      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
 
       await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
 
@@ -291,7 +360,7 @@ describe('RealtimeGateway — service interface', () => {
     });
 
     it('passes tag from payload through to ingest', async () => {
-      const socket = buildSocket({ id: 'user-1' });
+      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
 
       await gateway.handleMetricsSubmit(socket, {
         tag: 'speedtest',
@@ -299,6 +368,7 @@ describe('RealtimeGateway — service interface', () => {
       } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
 
       expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'org-abc',
         'user-1',
         expect.objectContaining({ tag: 'speedtest' }),
       );
@@ -309,14 +379,15 @@ describe('RealtimeGateway — service interface', () => {
     const buildSocket = (
       user?: { id: string; tier: string },
       address = '10.0.0.5',
+      orgId: string | null = 'org-ai-test',
     ) =>
       ({
-        data: { user },
+        data: { user, orgId },
         handshake: { address },
       }) as unknown as Parameters<RealtimeGateway['handleAiMessage']>[0];
 
     it('emits AI_TOKEN per token and AI_COMPLETE on success', async () => {
-      mockAiService.sendMessageStream.mockImplementation(async (_uid, _tier, _ip, _dto, onToken) => {
+      mockAiService.sendMessageStream.mockImplementation(async (_org, _uid, _tier, _ip, _dto, onToken) => {
         onToken('hello', 'conv-1');
         onToken(' world', 'conv-1');
         return {
@@ -333,6 +404,7 @@ describe('RealtimeGateway — service interface', () => {
       await gateway.handleAiMessage(socket, { content: 'hi' });
 
       expect(mockAiService.sendMessageStream).toHaveBeenCalledWith(
+        'org-ai-test',
         'u-1',
         'PERSONAL_FREE',
         '10.0.0.5',
@@ -406,12 +478,13 @@ describe('RealtimeGateway — service interface', () => {
       });
 
       const socket = {
-        data: { user: { id: 'u-1', tier: 'PERSONAL_FREE' } },
+        data: { user: { id: 'u-1', tier: 'PERSONAL_FREE' }, orgId: 'org-ai-test' },
         handshake: {}, // intentionally no address
       } as unknown as Parameters<RealtimeGateway['handleAiMessage']>[0];
       await gateway.handleAiMessage(socket, { content: 'hi' });
 
       expect(mockAiService.sendMessageStream).toHaveBeenCalledWith(
+        'org-ai-test',
         'u-1',
         'PERSONAL_FREE',
         '0.0.0.0',

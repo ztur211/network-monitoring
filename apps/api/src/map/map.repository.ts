@@ -16,7 +16,7 @@ type BboxCoords = {
 // any new Device column must be added here, or it returns as `undefined` on the
 // map payload (the cast to Device[] makes the omission silent).
 const DEVICE_COLUMNS = `
-  d.id, d."userId", d."networkId", d.name, d.category, d.mobility,
+  d.id, d."organizationId", d."userId", d."networkId", d.name, d.category, d.mobility,
   d."browserDeviceId", d.latitude, d.longitude, d.floor, d."floorLabel",
   d."ipAddress", d."macAddress", d.notes, d.version, d."createdAt", d."updatedAt"
 `;
@@ -25,14 +25,14 @@ const DEVICE_COLUMNS = `
 export class MapRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findDevicesInBbox(userId: string, bbox: BboxCoords, floor?: number): Promise<Device[]> {
+  findDevicesInBbox(organizationId: string, bbox: BboxCoords, floor?: number): Promise<Device[]> {
     const { west, south, east, north } = bbox;
 
     if (floor !== undefined) {
       return this.prisma.$queryRawUnsafe<Device[]>(
         `SELECT ${DEVICE_COLUMNS}
          FROM "Device" d
-         WHERE d."userId" = $1
+         WHERE d."organizationId" = $1
            AND d.location IS NOT NULL
            AND d.floor = $2
            AND ST_Within(
@@ -40,7 +40,7 @@ export class MapRepository {
              ST_MakeEnvelope($3, $4, $5, $6, 4326)
            )
          ORDER BY d."createdAt" DESC`,
-        userId,
+        organizationId,
         floor,
         west,
         south,
@@ -52,14 +52,14 @@ export class MapRepository {
     return this.prisma.$queryRawUnsafe<Device[]>(
       `SELECT ${DEVICE_COLUMNS}
        FROM "Device" d
-       WHERE d."userId" = $1
+       WHERE d."organizationId" = $1
          AND d.location IS NOT NULL
          AND ST_Within(
            d.location,
            ST_MakeEnvelope($2, $3, $4, $5, 4326)
          )
        ORDER BY d."createdAt" DESC`,
-      userId,
+      organizationId,
       west,
       south,
       east,
@@ -67,7 +67,7 @@ export class MapRepository {
     );
   }
 
-  findFiberRunsInBbox(userId: string, bbox: BboxCoords): Promise<FiberRun[]> {
+  findFiberRunsInBbox(organizationId: string, bbox: BboxCoords): Promise<FiberRun[]> {
     const { west, south, east, north } = bbox;
 
     return this.prisma.$queryRaw<FiberRun[]>`
@@ -75,7 +75,7 @@ export class MapRepository {
       FROM "FiberRun" fr
       JOIN "Device" d1 ON fr."startDeviceId" = d1.id
       JOIN "Device" d2 ON fr."endDeviceId" = d2.id
-      WHERE fr."userId" = ${userId}
+      WHERE fr."organizationId" = ${organizationId}
         AND (
           (d1.location IS NOT NULL AND ST_Within(d1.location, ST_MakeEnvelope(${west}, ${south}, ${east}, ${north}, 4326)))
           OR
@@ -85,14 +85,14 @@ export class MapRepository {
     `;
   }
 
-  findCircuitsInBbox(userId: string, bbox: BboxCoords): Promise<Circuit[]> {
+  findCircuitsInBbox(organizationId: string, bbox: BboxCoords): Promise<Circuit[]> {
     const { west, south, east, north } = bbox;
 
     return this.prisma.$queryRaw<Circuit[]>`
       SELECT c.*
       FROM "Circuit" c
       JOIN "Device" d ON c."deviceId" = d.id
-      WHERE c."userId" = ${userId}
+      WHERE c."organizationId" = ${organizationId}
         AND d.location IS NOT NULL
         AND ST_Within(
           d.location,

@@ -24,6 +24,7 @@ export const authClient = createAuthClient({
         tier: { type: 'string', input: false },
         homeLatitude: { type: 'number', required: false, input: false },
         homeLongitude: { type: 'number', required: false, input: false },
+        isSuperAdmin: { type: 'boolean', input: false },
       },
     }),
   ],

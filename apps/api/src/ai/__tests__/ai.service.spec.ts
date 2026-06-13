@@ -102,6 +102,7 @@ describe('AiService', () => {
       const tokens: string[] = [];
       const conversationIds: string[] = [];
       const result = await service.sendMessageStream(
+        'org-test',
         'user-1',
         'PERSONAL_FREE',
         '127.0.0.1',
@@ -126,7 +127,7 @@ describe('AiService', () => {
 
       const onToken = jest.fn();
       await expect(
-        service.sendMessageStream('user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' }, onToken),
+        service.sendMessageStream('org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' }, onToken),
       ).rejects.toThrow(NodeScopeException);
 
       expect(mockAdapter.stream).not.toHaveBeenCalled();
@@ -145,7 +146,7 @@ describe('AiService', () => {
 
       const tokens: string[] = [];
       const result = await service.sendMessageStream(
-        'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' },
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' },
         (token) => tokens.push(token),
       );
 
@@ -182,7 +183,7 @@ describe('AiService', () => {
       mockRateLimiter.getUsageCounts.mockResolvedValue(usageSnapshot);
 
       const result = await service.sendMessageStream(
-        'user-1', 'PERSONAL_FREE', '127.0.0.1',
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1',
         { content: 'next' }, () => {},
       );
 
@@ -202,7 +203,7 @@ describe('AiService', () => {
 
       const tokens: string[] = [];
       const result = await service.sendMessageStream(
-        'user-1', 'PERSONAL_FREE', '127.0.0.1',
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1',
         { content: 'hi' }, (t) => tokens.push(t),
       );
 
@@ -221,7 +222,7 @@ describe('AiService', () => {
 
       const tokens: string[] = [];
       const result = await service.sendMessageStream(
-        'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' },
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' },
         (t) => tokens.push(t),
       );
 
@@ -243,7 +244,7 @@ describe('AiService', () => {
 
       const seen: string[] = [];
       const result = await service.sendMessageStream(
-        'user-1', 'PERSONAL_FREE', '127.0.0.1',
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1',
         { content: 'follow', conversationId: 'existing' },
         (_t, id) => seen.push(id),
       );

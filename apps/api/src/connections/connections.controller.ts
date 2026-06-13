@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
+import { OrgId } from '../organizations/decorators/org-id.decorator';
 import { CreateConnectionDto, PatchConnectionDto } from './connections.dto';
 import { ConnectionsService } from './connections.service';
 
@@ -22,36 +23,40 @@ export class ConnectionsController {
 
   @Get()
   async listConnections(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Query('deviceId') deviceId?: string,
   ) {
-    const data = await this.connectionsService.listConnections(user.id, deviceId);
+    const data = await this.connectionsService.listConnections(orgId, deviceId);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createConnection(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateConnectionDto) {
-    const data = await this.connectionsService.createConnection(user.id, dto);
+  async createConnection(
+    @OrgId() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateConnectionDto,
+  ) {
+    const data = await this.connectionsService.createConnection(orgId, user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Patch(':id')
   async updateConnection(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() patch: PatchConnectionDto,
   ) {
-    const data = await this.connectionsService.updateConnection(user.id, id, patch);
+    const data = await this.connectionsService.updateConnection(orgId, id, patch);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Delete(':id')
   async deleteConnection(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.connectionsService.deleteConnection(user.id, id);
+    await this.connectionsService.deleteConnection(orgId, id);
     return { success: true, data: null, timestamp: new Date().toISOString() };
   }
 }

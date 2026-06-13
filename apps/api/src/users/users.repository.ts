@@ -22,6 +22,10 @@ export class UsersRepository {
     });
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { email } });
+  }
+
   async existsByEmail(email: string, excludeUserId: string): Promise<boolean> {
     const user = await this.prisma.user.findFirst({
       where: { email, NOT: { id: excludeUserId } },

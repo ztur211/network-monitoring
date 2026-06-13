@@ -71,6 +71,12 @@ enum OrgRole {
   MEMBER
 }
 
+enum ChangeAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
 // ─── Better Auth Models ───────────────────────────────────────────────────────
 
 model User {
@@ -81,6 +87,7 @@ model User {
   image         String?
 
   tier          AccountTier @default(PERSONAL_FREE)
+  isSuperAdmin  Boolean     @default(false)
   homeLatitude  Float?
   homeLongitude Float?
   mapPreferences Json    @default("{}")
@@ -101,7 +108,7 @@ model User {
   changeLogs ChangeLog[]
   networks   Network[]
 
-  // orgMember OrganizationMember?  // Post-MVP: uncomment when OrganizationMember model is activated
+  orgMember    OrganizationMember?
 }
 
 model Account {
@@ -158,7 +165,8 @@ model Verification {
 
 model Device {
   id              String         @id @default(uuid())
-  userId          String
+  organizationId  String
+  userId          String?
   networkId       String?
   name            String
   category        DeviceCategory
@@ -166,6 +174,7 @@ model Device {
   browserDeviceId String?
   latitude        Float?
   longitude       Float?
+  location        Unsupported("geometry(Point, 4326)")?
   floor           Int?
   floorLabel      String?
   ipAddress       String?
@@ -176,8 +185,9 @@ model Device {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  network Network? @relation(fields: [networkId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  network      Network?     @relation(fields: [networkId], references: [id], onDelete: SetNull)
 
   connectionsFrom DeviceConnection[] @relation("sourceDevice")
   connectionsTo   DeviceConnection[] @relation("targetDevice")
@@ -185,47 +195,49 @@ model Device {
   fiberRunsTo     FiberRun[]         @relation("endDevice")
   circuits        Circuit[]
 
-  @@unique([userId, name])
-  @@unique([userId, browserDeviceId])
-  @@index([userId])
-  @@index([userId, category])
-  @@index([userId, floor])
-  @@index([userId, networkId])
+  @@unique([organizationId, browserDeviceId])
+  @@index([organizationId])
+  @@index([organizationId, category])
+  @@index([organizationId, floor])
+  @@index([organizationId, networkId])
 }
 
 model Network {
-  id            String  @id @default(uuid())
-  userId        String
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
   // RESERVED — null in MVP. FK target for the future Property model in the
   // Multi-Property tier (post-MVP Priority 2). The Property → Network → Device
   // hierarchy is the structural anchor of that tier: a Property has many
   // Networks; a Network belongs to at most one Property. Services do not read
   // or write this column in MVP. Device.propertyId and DeviceMetric.propertyId
   // are NOT reserved — they reach Property via Device → Network → Property.
-  propertyId    String?
-  name          String
-  homeAddress   String?
-  homeLatitude  Float?
-  homeLongitude Float?
-  homePublicIp  String?
-  isp           String?
-  downMbps      Float?
-  upMbps        Float?
-  version       Int     @default(1)
+  propertyId     String?
+  name           String
+  homeAddress    String?
+  homeLatitude   Float?
+  homeLongitude  Float?
+  homePublicIp   String?
+  isp            String?
+  downMbps       Float?
+  upMbps         Float?
+  version        Int     @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  devices Device[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  devices      Device[]
 
-  @@index([userId])
-  @@index([userId, propertyId])
+  @@index([organizationId])
+  @@index([organizationId, propertyId])
 }
 
 model DeviceConnection {
   id             String         @id @default(uuid())
-  userId         String
+  organizationId String
+  userId         String?
   sourceDeviceId String
   targetDeviceId String
   connectionType ConnectionType
@@ -235,63 +247,69 @@ model DeviceConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceDevice Device @relation("sourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Cascade)
-  targetDevice Device @relation("targetDevice", fields: [targetDeviceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sourceDevice Device       @relation("sourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Cascade)
+  targetDevice Device       @relation("targetDevice", fields: [targetDeviceId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, sourceDeviceId, targetDeviceId, connectionType])
-  @@index([userId, sourceDeviceId])
-  @@index([userId, targetDeviceId])
+  @@unique([organizationId, sourceDeviceId, targetDeviceId, connectionType])
+  @@index([organizationId, sourceDeviceId])
+  @@index([organizationId, targetDeviceId])
 }
 
 model FiberRun {
-  id            String  @id @default(uuid())
-  userId        String
-  name          String
-  startDeviceId String
-  endDeviceId   String
-  cableType     String?
-  lengthMeters  Float?
-  notes         String?
-  version       Int     @default(1)
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
+  name           String
+  startDeviceId  String
+  endDeviceId    String
+  cableType      String?
+  lengthMeters   Float?
+  notes          String?
+  version        Int     @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startDevice Device @relation("startDevice", fields: [startDeviceId], references: [id], onDelete: Cascade)
-  endDevice   Device @relation("endDevice", fields: [endDeviceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  startDevice  Device       @relation("startDevice", fields: [startDeviceId], references: [id], onDelete: Cascade)
+  endDevice    Device       @relation("endDevice", fields: [endDeviceId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([userId, startDeviceId])
-  @@index([userId, endDeviceId])
+  @@index([organizationId])
+  @@index([organizationId, startDeviceId])
+  @@index([organizationId, endDeviceId])
 }
 
 model Circuit {
-  id          String  @id @default(uuid())
-  userId      String
-  ispName     String
-  circuitId   String?
-  serviceType String
-  bandwidth   Float?
-  deviceId    String?
-  notes       String?
-  version     Int     @default(1)
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
+  ispName        String
+  circuitId      String?
+  serviceType    String
+  bandwidth      Float?
+  deviceId       String?
+  notes          String?
+  version        Int     @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  device       Device?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-  @@index([userId])
-  @@index([userId, deviceId])
+  @@index([organizationId])
+  @@index([organizationId, deviceId])
 }
 
 // ─── Metrics & Audit Models ───────────────────────────────────────────────────
 
 model DeviceMetric {
-  id                String  @default(uuid())
+  id                String   @default(uuid())
+  organizationId    String
   userId            String
   deviceId          String?
   sourceType        String
@@ -306,60 +324,90 @@ model DeviceMetric {
   // No version column — metrics are append-only
   // No User/Device relation — avoids Prisma overhead on hypertable. deviceId
   // is a plain nullable column; foreign-key cascade is handled in app layer.
+  // organizationId is a plain column (no FK relation) — same reason as above.
   // tag is 'ambient' (default) or 'speedtest' (on-demand). Null treated as 'ambient'.
   // Composite PK: TimescaleDB requires the partitioning column (time) to be
   // part of every unique constraint on a hypertable.
 
   @@id([id, time])
-  @@index([userId, time(sort: Desc)])
-  @@index([userId, sourceType, time(sort: Desc)])
-  @@index([userId, deviceId, time(sort: Desc)])
+  @@index([organizationId, time(sort: Desc)])
+  @@index([organizationId, sourceType, time(sort: Desc)])
+  @@index([organizationId, deviceId, time(sort: Desc)])
 }
 
 model ChangeLog {
-  id         String  @id @default(uuid())
-  userId     String
-  entityType String
-  entityId   String
-  field      String
-  oldValue   String?
-  newValue   String?
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String?
+  requestId      String
+  action         ChangeAction
+  entityType     String
+  entityId       String
+  field          String?
+  oldValue       String?
+  newValue       String?
+  snapshot       Json?
+  ipAddress      String?
+  userAgent      String?
+  comment        String?
+  createdAt      DateTime     @default(now())
 
-  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([requestId])
+}
 
-  @@index([userId, entityType, entityId])
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([entityId])
+// ─── Organization Tenancy Models (F1a Phase A) ───────────────────────────────
+
+model Organization {
+  id            String   @id @default(uuid())
+  name          String
+  namingPattern String?
+  namingMaxLen  Int?     @default(63)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members     OrganizationMember[]
+  domains     OrganizationDomain[]
+  changeLogs  ChangeLog[]
+  devices     Device[]
+  networks    Network[]
+  connections DeviceConnection[]
+  fiberRuns   FiberRun[]
+  circuits    Circuit[]
+}
+
+model OrganizationDomain {
+  id             String   @id @default(uuid())
+  organizationId String
+  domain         String   @unique
+  verified       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  organizationId String
+  role           OrgRole  @default(MEMBER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
-
-// POST-MVP Priority 4 — uncomment when Enterprise ships
-// model Organization {
-//   id        String   @id @default(uuid())
-//   name      String
-//   orgCode   String   @unique
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-//
-//   members OrganizationMember[]
-// }
-
-// model OrganizationMember {
-//   id             String   @id @default(uuid())
-//   userId         String   @unique
-//   organizationId String
-//   role           OrgRole  @default(MEMBER)
-//   createdAt      DateTime @default(now())
-//   updatedAt      DateTime @updatedAt
-//
-//   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-//   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-//
-//   @@index([organizationId])
-// }
 
 // POST-MVP Personal Paid — uncomment when floor plan feature ships
 // model FloorPlan {

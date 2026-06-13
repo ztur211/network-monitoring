@@ -3,7 +3,8 @@ import { ConnectionType, DeviceConnection, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateConnectionData = {
-  userId: string;
+  organizationId: string;
+  userId: string | null;
   sourceDeviceId: string;
   targetDeviceId: string;
   connectionType: ConnectionType;
@@ -14,10 +15,10 @@ type CreateConnectionData = {
 export class ConnectionsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAllByUserId(userId: string, deviceId?: string): Promise<DeviceConnection[]> {
+  findAllByOrgId(organizationId: string, deviceId?: string): Promise<DeviceConnection[]> {
     return this.prisma.deviceConnection.findMany({
       where: {
-        userId,
+        organizationId,
         ...(deviceId && {
           OR: [{ sourceDeviceId: deviceId }, { targetDeviceId: deviceId }],
         }),
@@ -26,12 +27,12 @@ export class ConnectionsRepository {
     });
   }
 
-  countByUserId(userId: string): Promise<number> {
-    return this.prisma.deviceConnection.count({ where: { userId } });
+  countByOrgId(organizationId: string): Promise<number> {
+    return this.prisma.deviceConnection.count({ where: { organizationId } });
   }
 
-  findByIdAndUserId(connectionId: string, userId: string): Promise<DeviceConnection | null> {
-    return this.prisma.deviceConnection.findFirst({ where: { id: connectionId, userId } });
+  findByIdAndOrgId(connectionId: string, organizationId: string): Promise<DeviceConnection | null> {
+    return this.prisma.deviceConnection.findFirst({ where: { id: connectionId, organizationId } });
   }
 
   create(data: CreateConnectionData): Promise<DeviceConnection> {
@@ -40,30 +41,30 @@ export class ConnectionsRepository {
 
   async updateWithVersion(
     connectionId: string,
-    userId: string,
+    organizationId: string,
     data: Prisma.DeviceConnectionUpdateInput,
     expectedVersion: number,
   ): Promise<DeviceConnection | null> {
     const result = await this.prisma.deviceConnection.updateMany({
-      where: { id: connectionId, userId, version: expectedVersion },
+      where: { id: connectionId, organizationId, version: expectedVersion },
       data: { ...data, version: { increment: 1 } },
     });
     if (result.count === 0) return null;
     return this.prisma.deviceConnection.findUnique({ where: { id: connectionId } });
   }
 
-  async deleteByIdAndUserId(connectionId: string, userId: string): Promise<void> {
-    await this.prisma.deviceConnection.deleteMany({ where: { id: connectionId, userId } });
+  async deleteByIdAndOrgId(connectionId: string, organizationId: string): Promise<void> {
+    await this.prisma.deviceConnection.deleteMany({ where: { id: connectionId, organizationId } });
   }
 
   async existsDuplicate(
-    userId: string,
+    organizationId: string,
     sourceDeviceId: string,
     targetDeviceId: string,
     connectionType: ConnectionType,
   ): Promise<boolean> {
     const conn = await this.prisma.deviceConnection.findFirst({
-      where: { userId, sourceDeviceId, targetDeviceId, connectionType },
+      where: { organizationId, sourceDeviceId, targetDeviceId, connectionType },
       select: { id: true },
     });
     return conn !== null;
