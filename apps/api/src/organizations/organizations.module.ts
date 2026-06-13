@@ -25,6 +25,6 @@ import { SuperAdminGuard } from './guards/super-admin.guard';
   imports: [PrismaModule, UsersModule, forwardRef(() => ConflictResolutionModule)],
   controllers: [OrganizationsController, AdminOrganizationsController, InvitationsController, InvitationAcceptController, JoinRequestsController, JoinRequestSubmitController, MembersController],
   providers: [OrganizationsRepository, OrganizationsService, InvitationsRepository, InvitationsService, JoinRequestsRepository, JoinRequestsService, OrgContextGuard, OrgRoleGuard, SuperAdminGuard],
-  exports: [OrganizationsRepository],
+  exports: [OrganizationsRepository, OrgRoleGuard],
 })
 export class OrganizationsModule {}

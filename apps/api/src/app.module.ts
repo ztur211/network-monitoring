@@ -30,6 +30,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { OrgContextGuard } from './organizations/guards/org-context.guard';
 import { AuditModule } from './audit/audit.module';
+import { PropertiesModule } from './properties/properties.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -77,6 +78,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     OnboardingModule,
     OrganizationsModule,
     AuditModule,
+    PropertiesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

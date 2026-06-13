@@ -1,4 +1,4 @@
-import { assertValidNesting, ALLOWED_CHILDREN } from '../property-nesting';
+import { assertValidNesting } from '../property-nesting';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 describe('assertValidNesting', () => {
