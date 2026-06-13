@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UsersModule } from '../users/users.module';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
@@ -11,7 +11,9 @@ import { OrgRoleGuard } from './guards/org-role.guard';
 import { SuperAdminGuard } from './guards/super-admin.guard';
 
 @Module({
-  imports: [PrismaModule, UsersModule, ConflictResolutionModule],
+  // forwardRef breaks the OrganizationsModule → ConflictResolutionModule →
+  // RealtimeModule → OrganizationsModule circular dependency.
+  imports: [PrismaModule, UsersModule, forwardRef(() => ConflictResolutionModule)],
   controllers: [OrganizationsController, AdminOrganizationsController],
   providers: [OrganizationsRepository, OrganizationsService, OrgContextGuard, OrgRoleGuard, SuperAdminGuard],
   exports: [OrganizationsRepository],

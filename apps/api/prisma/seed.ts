@@ -7,24 +7,64 @@ async function main() {
   const password = process.env.SEED_PASSWORD;
   if (!password) throw new Error('SEED_PASSWORD env var is required');
 
-  const existingUser = await prisma.user.findUnique({ where: { email: 'dev@nodescope.io' } });
-  if (existingUser) {
-    console.log('Seed user already exists — skipping user creation, seeding devices...');
-    await seedDevices(existingUser.id);
-    return;
+  // ── Organization & Domains ────────────────────────────────────────────────
+  let org = await prisma.organization.findFirst({ where: { name: 'Acme Networks' } });
+  if (!org) {
+    org = await prisma.organization.create({ data: { name: 'Acme Networks' } });
+    await prisma.organizationDomain.create({
+      data: { organizationId: org.id, domain: 'acme.test', verified: true },
+    });
+    console.log('Created organization: Acme Networks');
+  } else {
+    console.log('Organization already exists — skipping org creation');
   }
 
-  const signUpResult = await auth.api.signUpEmail({
-    body: { email: 'dev@nodescope.io', password, name: 'Dev User' },
+  // ── Super-admin ───────────────────────────────────────────────────────────
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'admin@nodescope.test' },
+    update: { isSuperAdmin: true },
+    create: {
+      email: 'admin@nodescope.test',
+      emailVerified: true,
+      name: 'Platform Admin',
+      isSuperAdmin: true,
+    },
   });
+  console.log('Super-admin ready:', superAdmin.email);
 
-  const userId = signUpResult.user.id;
-  await seedDevices(userId);
-  console.log('Seed complete: dev@nodescope.io created with sample network');
+  // ── Owner (org-scoped dev user) ───────────────────────────────────────────
+  // Try the Better Auth sign-up first (so a password hash is stored); fall back
+  // to a prisma upsert when the account already exists.
+  let ownerId: string;
+  const existingOwner = await prisma.user.findUnique({ where: { email: 'owner@acme.test' } });
+  if (existingOwner) {
+    ownerId = existingOwner.id;
+    console.log('Owner already exists — skipping sign-up');
+  } else {
+    const signUpResult = await auth.api.signUpEmail({
+      body: { email: 'owner@acme.test', password, name: 'Acme Owner' },
+    });
+    ownerId = signUpResult.user.id;
+    console.log('Created owner user: owner@acme.test');
+  }
+
+  // ── Org membership ────────────────────────────────────────────────────────
+  const existingMember = await prisma.organizationMember.findUnique({
+    where: { userId: ownerId },
+  });
+  if (!existingMember) {
+    await prisma.organizationMember.create({
+      data: { userId: ownerId, organizationId: org.id, role: 'OWNER' },
+    });
+    console.log('Linked owner to Acme Networks as OWNER');
+  }
+
+  // ── Sample network data ───────────────────────────────────────────────────
+  await seedDevices(org.id, ownerId);
 }
 
-async function seedDevices(userId: string) {
-  const existing = await prisma.device.count({ where: { userId } });
+async function seedDevices(organizationId: string, creatorUserId: string) {
+  const existing = await prisma.device.count({ where: { organizationId } });
   if (existing > 0) {
     console.log('Devices already seeded — skipping');
     return;
@@ -33,7 +73,8 @@ async function seedDevices(userId: string) {
   const [router, switch1, ap, server, firewall] = await Promise.all([
     prisma.device.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         name: 'Core Router',
         category: DeviceCategory.ROUTER,
         latitude: 40.7128,
@@ -44,7 +85,8 @@ async function seedDevices(userId: string) {
     }),
     prisma.device.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         name: 'Core Switch',
         category: DeviceCategory.SWITCH,
         latitude: 40.7129,
@@ -56,7 +98,8 @@ async function seedDevices(userId: string) {
     }),
     prisma.device.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         name: 'Office AP',
         category: DeviceCategory.ACCESS_POINT,
         latitude: 40.713,
@@ -68,7 +111,8 @@ async function seedDevices(userId: string) {
     }),
     prisma.device.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         name: 'File Server',
         category: DeviceCategory.SERVER_RACK,
         latitude: 40.7131,
@@ -80,7 +124,8 @@ async function seedDevices(userId: string) {
     }),
     prisma.device.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         name: 'Firewall',
         category: DeviceCategory.FIREWALL,
         latitude: 40.7127,
@@ -93,7 +138,8 @@ async function seedDevices(userId: string) {
   await Promise.all([
     prisma.deviceConnection.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         sourceDeviceId: router.id,
         targetDeviceId: switch1.id,
         connectionType: ConnectionType.ETHERNET,
@@ -102,7 +148,8 @@ async function seedDevices(userId: string) {
     }),
     prisma.deviceConnection.create({
       data: {
-        userId,
+        organizationId,
+        userId: creatorUserId,
         sourceDeviceId: switch1.id,
         targetDeviceId: server.id,
         connectionType: ConnectionType.ETHERNET,
@@ -112,7 +159,8 @@ async function seedDevices(userId: string) {
 
   await prisma.fiberRun.create({
     data: {
-      userId,
+      organizationId,
+      userId: creatorUserId,
       name: 'MDF to IDF Run',
       startDeviceId: router.id,
       endDeviceId: server.id,
@@ -124,7 +172,8 @@ async function seedDevices(userId: string) {
 
   await prisma.circuit.create({
     data: {
-      userId,
+      organizationId,
+      userId: creatorUserId,
       ispName: 'Comcast Business',
       circuitId: 'CX-123456789',
       serviceType: 'Fiber',
@@ -134,7 +183,11 @@ async function seedDevices(userId: string) {
     },
   });
 
-  console.log('Seeded: 5 devices, 2 connections, 1 fiber run, 1 circuit');
+  // Suppress unused-variable TypeScript warnings for intentionally created vars
+  void ap;
+  void firewall;
+
+  console.log('Seeded: 5 devices, 2 connections, 1 fiber run, 1 circuit for org:', organizationId);
 }
 
 main()
