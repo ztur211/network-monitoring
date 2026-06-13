@@ -69,6 +69,7 @@ describe('Graceful degradation — AI provider unavailable', () => {
     mockAdapter.stream.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'));
 
     const result = await service.sendMessageStream(
+      'org-test',
       'user-1',
       'PERSONAL_FREE',
       '127.0.0.1',
@@ -87,6 +88,7 @@ describe('Graceful degradation — AI provider unavailable', () => {
     mockAdapter.stream.mockRejectedValue(httpErr);
 
     const result = await service.sendMessageStream(
+      'org-test',
       'user-1',
       'PERSONAL_FREE',
       '127.0.0.1',
@@ -104,7 +106,7 @@ describe('Graceful degradation — AI provider unavailable', () => {
     );
 
     await expect(
-      service.sendMessageStream('user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'Hello' }, () => {}),
+      service.sendMessageStream('org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'Hello' }, () => {}),
     ).rejects.toThrow(NodeScopeException);
   });
 
@@ -113,11 +115,12 @@ describe('Graceful degradation — AI provider unavailable', () => {
 
     const tokens: string[] = [];
     const result = await service.sendMessageStream(
+      'org-test',
       'user-1',
       'PERSONAL_FREE',
       '127.0.0.1',
       { content: 'Troubleshoot my connection' },
-      (token) => tokens.push(token),
+      (token: string) => tokens.push(token),
     );
 
     expect(result.providerStatus).toBe('unavailable');
@@ -133,6 +136,7 @@ describe('Graceful degradation — AI provider unavailable', () => {
     mockAdapter.stream.mockRejectedValue(new Error('timeout'));
 
     const result = await service.sendMessageStream(
+      'org-test',
       'user-1',
       'PERSONAL_FREE',
       '127.0.0.1',

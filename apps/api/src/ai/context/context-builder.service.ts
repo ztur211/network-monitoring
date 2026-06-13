@@ -35,10 +35,14 @@ export class ContextBuilderService {
     private readonly productProvider: ProductContextProvider,
   ) {}
 
-  async buildSystemPrompt(userId: string, userTier: string): Promise<string> {
+  async buildSystemPrompt(
+    organizationId: string,
+    userId: string,
+    userTier: string,
+  ): Promise<string> {
     const [network, realtime, account, product] = await Promise.all([
       this.networkProvider.getContext(userId),
-      this.realtimeProvider.getContext(userId),
+      this.realtimeProvider.getContext(organizationId, userId),
       this.accountProvider.getContext(userId, userTier),
       this.productProvider.getContext(),
     ]);

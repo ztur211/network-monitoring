@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Patch, Post, Put } from '@nestjs/common';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { OrgId } from '../organizations/decorators/org-id.decorator';
 import { UpdateMeDto, SetLocationDto, UpdatePreferencesDto } from './users.dto';
 import { UsersService } from './users.service';
 
@@ -28,8 +29,8 @@ export class UsersController {
   }
 
   @Get('me/data-sources')
-  async getDataSources(@CurrentUser() user: AuthenticatedUser) {
-    const data = await this.usersService.getDataSources(user.id);
+  async getDataSources(@CurrentUser() user: AuthenticatedUser, @OrgId() orgId: string) {
+    const data = await this.usersService.getDataSources(orgId, user.id);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 

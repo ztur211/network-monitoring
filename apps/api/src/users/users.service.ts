@@ -72,8 +72,8 @@ export class UsersService {
     };
   }
 
-  async getDataSources(userId: string): Promise<{ sources: DataSourceStatus[] }> {
-    const sources = await this.dataSourcesService.getDataSourceStatus(userId);
+  async getDataSources(organizationId: string, userId: string): Promise<{ sources: DataSourceStatus[] }> {
+    const sources = await this.dataSourcesService.getDataSourceStatus(organizationId, userId);
     return { sources };
   }
 
