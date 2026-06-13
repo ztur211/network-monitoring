@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import { RealtimeModule } from '../realtime.module';
 import { RedisService } from '../../redis/redis.service';
+import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { WS_EVENTS } from '@nodescope/shared';
 import { auth } from '../../auth/better-auth.config';
 
@@ -44,6 +45,8 @@ describe('RealtimeGateway (e2e)', () => {
     })
       .overrideProvider(RedisService)
       .useValue(mockRedis)
+      .overrideProvider(OrganizationsRepository)
+      .useValue({ findMemberByUserId: jest.fn().mockResolvedValue(null) })
       .compile();
 
     app = module.createNestApplication();

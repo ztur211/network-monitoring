@@ -14,6 +14,7 @@ describe('ConnectionsController (e2e)', () => {
   let deviceAId: string;
   let deviceBId: string;
   let connectionId: string;
+  let orgId: string;
   const testEmail = `e2e-conn-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -35,6 +36,12 @@ describe('ConnectionsController (e2e)', () => {
     const setCookie = signUp.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
 
+    const prisma = app.get(PrismaService);
+    const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const org = await prisma.organization.create({ data: { name: `E2E Connections ${Date.now()}` } });
+    orgId = org.id;
+    await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+
     const [devA, devB] = await Promise.all([
       request(app.getHttpServer())
         .post('/api/v1/devices')
@@ -51,6 +58,8 @@ describe('ConnectionsController (e2e)', () => {
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
