@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { DeviceConnection } from '@prisma/client';
 import { DeviceConnectionDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -14,6 +15,7 @@ export class ConnectionsService {
     private readonly connectionsRepository: ConnectionsRepository,
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
+    private readonly audit: AuditService,
   ) {}
 
   async listConnections(organizationId: string, deviceId?: string): Promise<PaginatedResponse<DeviceConnectionDto>> {
@@ -62,6 +64,7 @@ export class ConnectionsService {
       userId: creatorUserId,
       ...dto,
     });
+    await this.audit.recordCreate(organizationId, 'DeviceConnection', connection);
     return this.toDto(connection);
   }
 
@@ -101,6 +104,7 @@ export class ConnectionsService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'DeviceConnection', connectionId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CONNECTION_UPDATED,
       { connectionId, connection: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
@@ -115,6 +119,7 @@ export class ConnectionsService {
       throw new NodeScopeException('CONN_001', 'CONNECTION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.connectionsRepository.deleteByIdAndOrgId(connectionId, organizationId);
+    await this.audit.recordDelete(organizationId, 'DeviceConnection', connection);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CONNECTION_DELETED,
       { connectionId },
