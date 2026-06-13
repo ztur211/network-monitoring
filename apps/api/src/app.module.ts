@@ -28,6 +28,7 @@ import { AiModule } from './ai/ai.module';
 import { NetworksModule } from './networks/networks.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { OrgContextGuard } from './organizations/guards/org-context.guard';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: OrgContextGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: TierGuard },
     { provide: APP_GUARD, useClass: RoleGuard },
