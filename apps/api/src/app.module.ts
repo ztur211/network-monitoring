@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
@@ -29,6 +29,8 @@ import { NetworksModule } from './networks/networks.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { OrgContextGuard } from './organizations/guards/org-context.guard';
+import { AuditModule } from './audit/audit.module';
+import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
   imports: [
@@ -74,6 +76,7 @@ import { OrgContextGuard } from './organizations/guards/org-context.guard';
     NetworksModule,
     OnboardingModule,
     OrganizationsModule,
+    AuditModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
@@ -84,4 +87,8 @@ import { OrgContextGuard } from './organizations/guards/org-context.guard';
     { provide: APP_GUARD, useClass: RoleGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(AuditContextMiddleware).forRoutes('*');
+  }
+}
