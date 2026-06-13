@@ -18,6 +18,7 @@ describe('MapRepository (integration)', () => {
   let repository: MapRepository;
   let prisma: PrismaService;
   let testUserId: string;
+  let testOrgId: string;
   let testNetworkId: string;
 
   // Same envelope the e2e test uses; the seeded point (-74.006, 40.7128) is inside it.
@@ -41,15 +42,27 @@ describe('MapRepository (integration)', () => {
       data: { email: `maprepo-${Date.now()}@example.com`, emailVerified: false },
     });
     testUserId = user.id;
+
+    const org = await prisma.organization.create({
+      data: { name: `MapRepo Org ${Date.now()}` },
+    });
+    testOrgId = org.id;
+
+    await prisma.organizationMember.create({
+      data: { userId: testUserId, organizationId: testOrgId, role: 'MEMBER' },
+    });
+
     const network = await prisma.network.create({
-      data: { userId: testUserId, name: 'Home' },
+      data: { organizationId: testOrgId, userId: testUserId, name: 'Home' },
     });
     testNetworkId = network.id;
   });
 
   afterEach(async () => {
-    await prisma.device.deleteMany({ where: { userId: testUserId } });
-    await prisma.network.deleteMany({ where: { userId: testUserId } });
+    await prisma.device.deleteMany({ where: { organizationId: testOrgId } });
+    await prisma.network.deleteMany({ where: { organizationId: testOrgId } });
+    await prisma.organizationMember.deleteMany({ where: { userId: testUserId } });
+    await prisma.organization.deleteMany({ where: { id: testOrgId } });
     await prisma.user.deleteMany({ where: { id: testUserId } });
   });
 
@@ -59,6 +72,7 @@ describe('MapRepository (integration)', () => {
       // geometry column so the device passes the `location IS NOT NULL` filter.
       await prisma.device.create({
         data: {
+          organizationId: testOrgId,
           userId: testUserId,
           networkId: testNetworkId,
           name: 'Browser Session',
@@ -82,6 +96,7 @@ describe('MapRepository (integration)', () => {
     it('filters by floor while still returning Phase-13 columns', async () => {
       await prisma.device.create({
         data: {
+          organizationId: testOrgId,
           userId: testUserId,
           networkId: testNetworkId,
           name: 'Floor 2 AP',
