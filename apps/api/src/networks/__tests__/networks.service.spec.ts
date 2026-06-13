@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NetworksService } from '../networks.service';
 import { NetworksRepository } from '../networks.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { AuditService } from '../../audit/audit.service';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
@@ -47,6 +48,12 @@ const mockRealtime = {
   recomputeOnHomeForUser: jest.fn(),
 };
 
+const mockAudit = {
+  recordCreate: jest.fn().mockResolvedValue(undefined),
+  recordUpdate: jest.fn().mockResolvedValue(undefined),
+  recordDelete: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('NetworksService', () => {
   let service: NetworksService;
 
@@ -57,6 +64,7 @@ describe('NetworksService', () => {
         { provide: NetworksRepository, useValue: mockRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: REALTIME_SERVICE, useValue: mockRealtime },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -94,6 +102,11 @@ describe('NetworksService', () => {
       expect(result).toHaveProperty('homePublicIp');
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: 'org-1', userId: 'user-1' }),
+      );
+      expect(mockAudit.recordCreate).toHaveBeenCalledWith(
+        'org-1',
+        'Network',
+        expect.objectContaining({ id: 'net-1' }),
       );
     });
 
