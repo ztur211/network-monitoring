@@ -59,6 +59,7 @@ export class OnboardingService {
   ) {}
 
   async handleTurn(
+    organizationId: string,
     userId: string,
     ip: string,
     dto: OnboardingTurnDto,
@@ -86,7 +87,7 @@ export class OnboardingService {
     const result = handleStep(state.stepId, state.progress, input);
 
     for (const effect of result.sideEffects) {
-      await this.enactSideEffect(userId, ip, dto.browserDeviceId, effect);
+      await this.enactSideEffect(organizationId, userId, ip, dto.browserDeviceId, effect);
     }
 
     const ai = await this.aiService.generateOnboardingMessage(
@@ -158,6 +159,7 @@ export class OnboardingService {
   }
 
   private async enactSideEffect(
+    organizationId: string,
     userId: string,
     ip: string,
     browserDeviceId: string,
@@ -165,34 +167,40 @@ export class OnboardingService {
   ): Promise<void> {
     switch (effect.type) {
       case 'SaveNetwork':
-        await this.persistNetworkFields(userId, effect.payload as unknown as Record<string, unknown>);
+        await this.persistNetworkFields(organizationId, userId, effect.payload as unknown as Record<string, unknown>);
         break;
       case 'SaveBrowserDevice': {
-        const network = await this.findUserNetwork(userId);
+        const network = await this.findOrgNetwork(organizationId);
+        const mobility = effect.payload.mobility as DeviceMobility | undefined;
+        if (!mobility) {
+          this.logger.warn({ effect }, 'SaveBrowserDevice missing mobility — skipping');
+          break;
+        }
         await this.devicesService.createBrowserDevice(
+          organizationId,
           userId,
           browserDeviceId,
           effect.payload.name,
-          effect.payload.mobility as DeviceMobility,
+          mobility,
           network?.id,
         );
         break;
       }
       case 'SaveRouterDevice':
-        await this.createInfrastructureDevice(userId, DeviceCategory.ROUTER, effect.payload);
+        await this.createInfrastructureDevice(organizationId, userId, DeviceCategory.ROUTER, effect.payload);
         break;
       case 'SaveModemDevice':
-        await this.createInfrastructureDevice(userId, DeviceCategory.MODEM, effect.payload);
+        await this.createInfrastructureDevice(organizationId, userId, DeviceCategory.MODEM, effect.payload);
         break;
       case 'SaveHomeIp':
-        await this.persistNetworkFields(userId, { homePublicIp: ip });
+        await this.persistNetworkFields(organizationId, userId, { homePublicIp: ip });
         void this.realtimeService.recomputeOnHomeForUser(userId);
         break;
       case 'GeocodeAddress': {
         try {
           const result = await this.geocoder.geocode(effect.payload.address);
           if (result) {
-            await this.persistNetworkFields(userId, {
+            await this.persistNetworkFields(organizationId, userId, {
               homeLatitude: result.latitude,
               homeLongitude: result.longitude,
             });
@@ -207,19 +215,20 @@ export class OnboardingService {
 
   /**
    * Idempotent network upsert specifically for the onboarding flow. The
-   * 1-per-user UX cap is enforced by NetworksService — once a network row
+   * 1-per-org UX cap is enforced by NetworksService — once a network row
    * exists, this method updates it directly via the repository to avoid the
    * optimistic-concurrency dance (the wizard is the sole writer during this
    * session, so a version conflict here would only mean a duplicate
    * onboarding tab, which we want to fail loudly elsewhere).
    */
   private async persistNetworkFields(
+    organizationId: string,
     userId: string,
     fields: Record<string, unknown>,
   ): Promise<void> {
-    const existing = await this.findUserNetwork(userId);
+    const existing = await this.findOrgNetwork(organizationId);
     if (!existing) {
-      const created = await this.networksService.createNetwork(userId, {
+      const created = await this.networksService.createNetwork(organizationId, userId, {
         name: typeof fields.name === 'string' ? fields.name : 'Home',
         ...stripNameKey(fields),
       });
@@ -227,7 +236,7 @@ export class OnboardingService {
     }
     const updated = await this.networksRepository.updateWithVersion(
       existing.id,
-      userId,
+      organizationId,
       stripNameKey(fields),
       existing.version,
     );
@@ -238,19 +247,21 @@ export class OnboardingService {
     }
   }
 
-  private async findUserNetwork(userId: string): Promise<Network | null> {
-    const networks = await this.networksRepository.findAllByUserId(userId);
+  private async findOrgNetwork(organizationId: string): Promise<Network | null> {
+    const networks = await this.networksRepository.findAllByOrgId(organizationId);
     return networks[0] ?? null;
   }
 
   private async createInfrastructureDevice(
+    organizationId: string,
     userId: string,
     category: DeviceCategory,
     payload: { name: string; macAddress: string | undefined },
   ): Promise<void> {
-    const network = await this.findUserNetwork(userId);
+    const network = await this.findOrgNetwork(organizationId);
     try {
       await this.devicesRepository.create({
+        organizationId,
         userId,
         name: payload.name,
         category,

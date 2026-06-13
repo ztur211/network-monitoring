@@ -22,8 +22,8 @@ const mockNetworksService = {
 };
 
 const mockNetworksRepo = {
-  countByUserId: jest.fn(),
-  findAllByUserId: jest.fn(),
+  countByOrgId: jest.fn(),
+  findAllByOrgId: jest.fn(),
   updateWithVersion: jest.fn(),
 };
 
@@ -60,6 +60,9 @@ const mockRealtime = {
   recomputeOnHomeForUser: jest.fn(),
 };
 
+const ORG_ID = 'org-1';
+const USER_ID = 'user-1';
+
 describe('OnboardingService', () => {
   let service: OnboardingService;
 
@@ -83,8 +86,8 @@ describe('OnboardingService', () => {
     service = module.get(OnboardingService);
     jest.clearAllMocks();
 
-    mockNetworksRepo.countByUserId.mockResolvedValue(0);
-    mockNetworksRepo.findAllByUserId.mockResolvedValue([]);
+    mockNetworksRepo.countByOrgId.mockResolvedValue(0);
+    mockNetworksRepo.findAllByOrgId.mockResolvedValue([]);
     mockUsersRepo.isOnboardingComplete.mockResolvedValue(false);
     mockUsersRepo.markOnboardingComplete.mockResolvedValue(undefined);
     mockRedis.get.mockResolvedValue(null);
@@ -105,7 +108,7 @@ describe('OnboardingService', () => {
       mockUsersRepo.isOnboardingComplete.mockResolvedValue(true);
 
       await expect(
-        service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' }),
+        service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' }),
       ).rejects.toMatchObject({ code: 'ONBOARD_002' });
     });
 
@@ -113,14 +116,14 @@ describe('OnboardingService', () => {
       // The lockout regression: the 24h state TTL expired after SaveNetwork
       // created the Network row. With no completion marker we must resume the
       // wizard rather than throw — otherwise the user is locked out forever.
-      mockNetworksRepo.countByUserId.mockResolvedValue(1);
-      mockNetworksRepo.findAllByUserId.mockResolvedValue([
-        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      mockNetworksRepo.countByOrgId.mockResolvedValue(1);
+      mockNetworksRepo.findAllByOrgId.mockResolvedValue([
+        { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
       ]);
       mockRedis.get.mockResolvedValue(null); // no in-flight state
       mockUsersRepo.isOnboardingComplete.mockResolvedValue(false); // never completed
 
-      const result = await service.handleTurn('user-1', '127.0.0.1', {
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
       });
 
@@ -132,7 +135,7 @@ describe('OnboardingService', () => {
       // creating a Network row. Every subsequent turn (browserDeviceName,
       // mobility, ...) was 409-ing because the guard read "user has a
       // network → onboarding done". The wizard must finish its own flow.
-      mockNetworksRepo.countByUserId.mockResolvedValue(1);
+      mockNetworksRepo.countByOrgId.mockResolvedValue(1);
       mockRedis.get.mockResolvedValue(
         JSON.stringify({
           stepId: 'browserDeviceName',
@@ -140,7 +143,7 @@ describe('OnboardingService', () => {
         }),
       );
 
-      const result = await service.handleTurn('user-1', '127.0.0.1', {
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         fieldValues: { name: 'My Laptop' },
       });
@@ -150,7 +153,7 @@ describe('OnboardingService', () => {
     });
 
     it('on first turn (no Redis state), starts at welcome → advances to networkName', async () => {
-      const result = await service.handleTurn('user-1', '127.0.0.1', {
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
       });
       expect(result.stepId).toBe('networkName');
@@ -159,10 +162,10 @@ describe('OnboardingService', () => {
     });
 
     it('persists state to Redis with 24h TTL', async () => {
-      await service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' });
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' });
 
       expect(mockRedis.set).toHaveBeenCalledWith(
-        'onboarding:state:user-1',
+        `onboarding:state:${USER_ID}`,
         expect.stringContaining('networkName'),
         'EX',
         24 * 60 * 60,
@@ -174,7 +177,7 @@ describe('OnboardingService', () => {
         JSON.stringify({ stepId: 'networkName', progress: {} }),
       );
 
-      const result = await service.handleTurn('user-1', '127.0.0.1', {
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         fieldValues: { name: 'Home' },
       });
@@ -189,13 +192,14 @@ describe('OnboardingService', () => {
       mockGeocoder.geocode.mockResolvedValue(null);
       mockNetworksService.createNetwork.mockResolvedValue({ id: 'net-1' });
 
-      await service.handleTurn('user-1', '127.0.0.1', {
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         fieldValues: { address: '1 Main St' },
       });
 
       expect(mockNetworksService.createNetwork).toHaveBeenCalledWith(
-        'user-1',
+        ORG_ID,
+        USER_ID,
         expect.objectContaining({ name: 'Home', homeAddress: '1 Main St' }),
       );
     });
@@ -207,18 +211,19 @@ describe('OnboardingService', () => {
           progress: { networkName: 'Home', browserDeviceName: 'Laptop' },
         }),
       );
-      mockNetworksRepo.findAllByUserId.mockResolvedValue([
-        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      mockNetworksRepo.findAllByOrgId.mockResolvedValue([
+        { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
       ]);
       mockDevicesService.createBrowserDevice.mockResolvedValue({ id: 'dev-1' });
 
-      await service.handleTurn('user-1', '127.0.0.1', {
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-uuid-123',
         chipChoice: 'HOME_ONLY',
       });
 
       expect(mockDevicesService.createBrowserDevice).toHaveBeenCalledWith(
-        'user-1',
+        ORG_ID,
+        USER_ID,
         'bd-uuid-123',
         'Laptop',
         'HOME_ONLY',
@@ -233,19 +238,19 @@ describe('OnboardingService', () => {
           progress: { networkName: 'Home' },
         }),
       );
-      mockNetworksRepo.findAllByUserId.mockResolvedValue([
-        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      mockNetworksRepo.findAllByOrgId.mockResolvedValue([
+        { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
       ]);
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
-      await service.handleTurn('user-1', '203.0.113.5', {
+      await service.handleTurn(ORG_ID, USER_ID, '203.0.113.5', {
         browserDeviceId: 'bd-1',
         chipChoice: 'yes',
       });
 
       expect(mockNetworksRepo.updateWithVersion).toHaveBeenCalledWith(
         'net-1',
-        'user-1',
+        ORG_ID,
         expect.objectContaining({ homePublicIp: '203.0.113.5' }),
         1,
       );
@@ -258,17 +263,17 @@ describe('OnboardingService', () => {
           progress: { networkName: 'Home' },
         }),
       );
-      mockNetworksRepo.findAllByUserId.mockResolvedValue([
-        { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+      mockNetworksRepo.findAllByOrgId.mockResolvedValue([
+        { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
       ]);
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
-      await service.handleTurn('user-1', '203.0.113.5', {
+      await service.handleTurn(ORG_ID, USER_ID, '203.0.113.5', {
         browserDeviceId: 'bd-1',
         chipChoice: 'yes',
       });
 
-      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith('user-1');
+      expect(mockRealtime.recomputeOnHomeForUser).toHaveBeenCalledWith(USER_ID);
     });
 
     it('GeocodeAddress side effect calls geocoder + updates network with lat/lng', async () => {
@@ -281,14 +286,14 @@ describe('OnboardingService', () => {
         displayName: 'NYC',
       });
       mockNetworksService.createNetwork.mockResolvedValue({ id: 'net-1' });
-      mockNetworksRepo.findAllByUserId
+      mockNetworksRepo.findAllByOrgId
         .mockResolvedValueOnce([]) // first call (SaveNetwork enactment)
         .mockResolvedValue([
-          { id: 'net-1', userId: 'user-1', name: 'Home', version: 1 } as any,
+          { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
         ]); // second call (GeocodeAddress enactment after SaveNetwork created it)
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
-      await service.handleTurn('user-1', '127.0.0.1', {
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         fieldValues: { address: '1 Main St' },
       });
@@ -296,18 +301,18 @@ describe('OnboardingService', () => {
       expect(mockGeocoder.geocode).toHaveBeenCalledWith('1 Main St');
       expect(mockNetworksRepo.updateWithVersion).toHaveBeenCalledWith(
         'net-1',
-        'user-1',
+        ORG_ID,
         expect.objectContaining({ homeLatitude: 40.7128, homeLongitude: -74.006 }),
         1,
       );
     });
 
     it('emits v1:onboarding:turn after each turn', async () => {
-      await service.handleTurn('user-1', '127.0.0.1', { browserDeviceId: 'bd-1' });
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' });
       expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
         'v1:onboarding:turn',
         expect.objectContaining({ stepId: 'networkName', complete: false }),
-        'user-1',
+        USER_ID,
       );
     });
 
@@ -319,13 +324,13 @@ describe('OnboardingService', () => {
         }),
       );
 
-      const result = await service.handleTurn('user-1', '127.0.0.1', {
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         chipChoice: 'skip',
       });
 
       expect(result.complete).toBe(true);
-      expect(mockRedis.del).toHaveBeenCalledWith('onboarding:state:user-1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`onboarding:state:${USER_ID}`);
     });
 
     it('writes the durable completion marker (DB) when complete=true', async () => {
@@ -333,37 +338,37 @@ describe('OnboardingService', () => {
         JSON.stringify({ stepId: 'speeds', progress: { networkName: 'Home' } }),
       );
 
-      await service.handleTurn('user-1', '127.0.0.1', {
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         browserDeviceId: 'bd-1',
         chipChoice: 'skip',
       });
 
-      expect(mockUsersRepo.markOnboardingComplete).toHaveBeenCalledWith('user-1');
+      expect(mockUsersRepo.markOnboardingComplete).toHaveBeenCalledWith(USER_ID);
     });
   });
 
   describe('skip', () => {
     it('writes dismissed flag with 30-day TTL and removes state', async () => {
-      await service.skip('user-1');
+      await service.skip(USER_ID);
       expect(mockRedis.set).toHaveBeenCalledWith(
-        'onboarding:dismissed:user-1',
+        `onboarding:dismissed:${USER_ID}`,
         '1',
         'EX',
         30 * 24 * 60 * 60,
       );
-      expect(mockRedis.del).toHaveBeenCalledWith('onboarding:state:user-1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`onboarding:state:${USER_ID}`);
     });
   });
 
   describe('isDismissedForSession', () => {
     it('returns true when the flag exists', async () => {
       mockRedis.get.mockResolvedValue('1');
-      expect(await service.isDismissedForSession('user-1')).toBe(true);
+      expect(await service.isDismissedForSession(USER_ID)).toBe(true);
     });
 
     it('returns false when the flag is missing', async () => {
       mockRedis.get.mockResolvedValue(null);
-      expect(await service.isDismissedForSession('user-1')).toBe(false);
+      expect(await service.isDismissedForSession(USER_ID)).toBe(false);
     });
   });
 });
