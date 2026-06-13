@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpStatus } from '@nestjs/common';
 import { DevicesService } from '../devices.service';
 import { DevicesRepository } from '../devices.repository';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';

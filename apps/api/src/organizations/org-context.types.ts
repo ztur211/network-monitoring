@@ -5,14 +5,6 @@ export interface OrgMemberContext {
   role: OrgRole;
 }
 
-// Augments the Express Request type to carry the resolved org-member context
-// after OrgContextGuard runs. Uses the same global-namespace merge pattern as
-// apps/api/src/types/express.d.ts (which adds user/session) so TypeScript
-// merges both augmentations without conflict.
-declare global {
-  namespace Express {
-    interface Request {
-      orgMember?: OrgMemberContext | null;
-    }
-  }
-}
+// The Express `Request.orgMember` augmentation (set by OrgContextGuard) lives in
+// apps/api/src/types/express.d.ts alongside the user/session augmentation — a
+// .d.ts file, where the ambient `namespace Express` merge is allowed by lint.
