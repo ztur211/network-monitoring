@@ -77,6 +77,13 @@ enum JoinRequestStatus {
   DENIED
 }
 
+enum PropertyType {
+  SITE
+  BUILDING
+  FLOOR
+  AREA
+}
+
 enum ChangeAction {
   CREATE
   UPDATE
@@ -388,6 +395,7 @@ model Organization {
   circuits     Circuit[]
   invitations  Invitation[]
   joinRequests JoinRequest[]
+  properties   Property[]
 }
 
 model OrganizationDomain {
@@ -447,6 +455,28 @@ model JoinRequest {
 
   @@index([organizationId, status])
   @@index([userId])
+}
+
+// ─── Site Tree Models (F2) ────────────────────────────────────────────────────
+
+model Property {
+  id             String       @id @default(uuid())
+  organizationId String
+  parentId       String?
+  type           PropertyType
+  name           String
+  code           String?
+  version        Int          @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Property?    @relation("PropertyTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Property[]   @relation("PropertyTree")
+
+  @@index([organizationId])
+  @@index([organizationId, parentId])
+  @@index([organizationId, type])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
