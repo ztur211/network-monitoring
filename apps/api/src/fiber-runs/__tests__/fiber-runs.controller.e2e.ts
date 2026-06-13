@@ -15,6 +15,8 @@ describe('FiberRunsController (e2e)', () => {
   let deviceBId: string;
   let fiberRunId: string;
   let orgId: string;
+  let networkId: string;
+  let siteId: string;
   const testEmail = `e2e-fiber-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -42,15 +44,21 @@ describe('FiberRunsController (e2e)', () => {
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
 
+    const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
+    networkId = network.id;
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `HQ ${Date.now()}` } });
+    siteId = site.id;
+    await prisma.networkProperty.create({ data: { organizationId: orgId, networkId: network.id, propertyId: site.id } });
+
     const [devA, devB] = await Promise.all([
       request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: 'Fiber Start', category: 'ROUTER' }),
+        .send({ name: 'Fiber Start', category: 'ROUTER', networkId, propertyId: siteId }),
       request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: 'Fiber End', category: 'SWITCH' }),
+        .send({ name: 'Fiber End', category: 'SWITCH', networkId, propertyId: siteId }),
     ]);
     deviceAId = devA.body.data.id;
     deviceBId = devB.body.data.id;
@@ -58,6 +66,11 @@ describe('FiberRunsController (e2e)', () => {
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.fiberRun.deleteMany({ where: { organizationId: orgId } });
+    await prisma.device.deleteMany({ where: { organizationId: orgId } });
+    await prisma.networkProperty.deleteMany({ where: { organizationId: orgId } });
+    await prisma.network.deleteMany({ where: { organizationId: orgId } });
+    await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
