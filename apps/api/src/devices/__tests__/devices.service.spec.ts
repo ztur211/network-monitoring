@@ -4,6 +4,7 @@ import { DevicesRepository } from '../devices.repository';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
+import { ContainmentService } from '../../properties/containment.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
 
@@ -11,11 +12,12 @@ const makeDevice = (overrides = {}) => ({
   id: 'dev-1',
   organizationId: 'org-1',
   userId: 'user-1',
-  networkId: null,
+  networkId: 'net-1',
+  propertyId: 'prop-1',
+  roleCode: null,
   name: 'Router',
   category: DeviceCategory.ROUTER,
   mobility: DeviceMobility.UNKNOWN,
-  browserDeviceId: null,
   latitude: null,
   longitude: null,
   floor: null,
@@ -44,7 +46,6 @@ const mockRepo: jest.Mocked<DevicesRepository> = {
   findAllByOrgId: jest.fn(),
   countByOrgId: jest.fn(),
   findByIdAndOrgId: jest.fn(),
-  findByOrgIdAndBrowserDeviceId: jest.fn(),
   create: jest.fn(),
   updateWithVersion: jest.fn(),
   deleteByIdAndOrgId: jest.fn(),
@@ -66,6 +67,12 @@ const mockAudit = {
   recordDelete: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockContainment: jest.Mocked<ContainmentService> = {
+  assertDevicePlacement: jest.fn().mockResolvedValue(undefined),
+  assertReparentKeepsContainment: jest.fn().mockResolvedValue(undefined),
+  assertCharterRemovable: jest.fn().mockResolvedValue(undefined),
+} as unknown as jest.Mocked<ContainmentService>;
+
 describe('DevicesService', () => {
   let service: DevicesService;
 
@@ -77,11 +84,13 @@ describe('DevicesService', () => {
         { provide: OrganizationsRepository, useValue: mockOrgsRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: AuditService, useValue: mockAudit },
+        { provide: ContainmentService, useValue: mockContainment },
       ],
     }).compile();
 
     service = module.get<DevicesService>(DevicesService);
     jest.clearAllMocks();
+    mockContainment.assertDevicePlacement.mockResolvedValue(undefined);
   });
 
   describe('listDevices', () => {
@@ -99,7 +108,7 @@ describe('DevicesService', () => {
   });
 
   describe('createDevice', () => {
-    it('creates and returns DeviceDto when org exists and name is available', async () => {
+    it('creates and returns DeviceDto when org exists, name available, and placement valid', async () => {
       mockOrgsRepo.findOrganizationById.mockResolvedValue(makeOrg());
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
       mockRepo.create.mockResolvedValue(makeDevice());
@@ -107,12 +116,15 @@ describe('DevicesService', () => {
       const result = await service.createDevice('org-1', 'user-1', {
         name: 'Router',
         category: DeviceCategory.ROUTER,
+        networkId: 'net-1',
+        propertyId: 'prop-1',
       });
 
       expect(result.id).toBe('dev-1');
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: 'org-1', userId: 'user-1' }),
       );
+      expect(mockContainment.assertDevicePlacement).toHaveBeenCalledWith('org-1', 'net-1', 'prop-1');
       expect(mockAudit.recordCreate).toHaveBeenCalledWith(
         'org-1',
         'Device',
@@ -124,11 +136,11 @@ describe('DevicesService', () => {
       mockOrgsRepo.findOrganizationById.mockResolvedValue(null);
 
       await expect(
-        service.createDevice('missing-org', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER }),
+        service.createDevice('missing-org', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toThrow(NodeScopeException);
 
       await expect(
-        service.createDevice('missing-org', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER }),
+        service.createDevice('missing-org', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toMatchObject({ code: 'ORG_001' });
     });
 
@@ -137,11 +149,11 @@ describe('DevicesService', () => {
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(true);
 
       await expect(
-        service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER }),
+        service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toThrow(NodeScopeException);
 
       await expect(
-        service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER }),
+        service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toMatchObject({ code: 'ORG_005' });
     });
 
@@ -152,11 +164,11 @@ describe('DevicesService', () => {
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
 
       await expect(
-        service.createDevice('org-1', 'user-1', { name: 'BadName', category: DeviceCategory.ROUTER }),
+        service.createDevice('org-1', 'user-1', { name: 'BadName', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toThrow(NodeScopeException);
 
       await expect(
-        service.createDevice('org-1', 'user-1', { name: 'BadName', category: DeviceCategory.ROUTER }),
+        service.createDevice('org-1', 'user-1', { name: 'BadName', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toMatchObject({ code: 'ORG_006' });
     });
 
@@ -170,6 +182,8 @@ describe('DevicesService', () => {
       const result = await service.createDevice('org-1', 'user-1', {
         name: 'router-01',
         category: DeviceCategory.ROUTER,
+        networkId: 'net-1',
+        propertyId: 'prop-1',
       });
 
       expect(result.name).toBe('router-01');
@@ -180,8 +194,20 @@ describe('DevicesService', () => {
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
 
       await expect(
-        service.createDevice('org-1', 'user-1', { name: 'TooLongName', category: DeviceCategory.ROUTER }),
+        service.createDevice('org-1', 'user-1', { name: 'TooLongName', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' }),
       ).rejects.toMatchObject({ code: 'ORG_006' });
+    });
+
+    it('throws PROP_007 when device placement is outside all chartered sites', async () => {
+      mockOrgsRepo.findOrganizationById.mockResolvedValue(makeOrg());
+      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
+      mockContainment.assertDevicePlacement.mockRejectedValueOnce(
+        Object.assign(new Error('PROP_007'), { code: 'PROP_007' }),
+      );
+
+      await expect(
+        service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'other-prop' }),
+      ).rejects.toMatchObject({ code: 'PROP_007' });
     });
 
     it('does not call TiersService (tier limit removed)', async () => {
@@ -189,7 +215,7 @@ describe('DevicesService', () => {
       mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
       mockRepo.create.mockResolvedValue(makeDevice());
 
-      await service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER });
+      await service.createDevice('org-1', 'user-1', { name: 'Router', category: DeviceCategory.ROUTER, networkId: 'net-1', propertyId: 'prop-1' });
 
       // TiersService is not injected — no mock to check. Absence of DEVICE_002 error
       // and no countByOrgId call for limit checks confirms tiers are bypassed.
@@ -295,6 +321,21 @@ describe('DevicesService', () => {
         }),
       ).rejects.toMatchObject({ code: 'DEVICE_001' });
     });
+
+    it('calls assertDevicePlacement when propertyId changes in patch', async () => {
+      const device = makeDevice();
+      const updated = makeDevice({ propertyId: 'new-prop', version: 2 });
+      mockRepo.findByIdAndOrgId.mockResolvedValue(device);
+      mockConflict.buildUpdatePayload.mockReturnValue({ propertyId: 'new-prop' });
+      mockRepo.updateWithVersion.mockResolvedValue(updated);
+
+      await service.updateDevice('org-1', 'dev-1', {
+        baseVersion: 1,
+        changes: [{ field: 'propertyId', oldValue: 'prop-1', newValue: 'new-prop' }],
+      });
+
+      expect(mockContainment.assertDevicePlacement).toHaveBeenCalledWith('org-1', 'net-1', 'new-prop');
+    });
   });
 
   describe('deleteDevice', () => {
@@ -318,113 +359,6 @@ describe('DevicesService', () => {
       await expect(service.deleteDevice('org-1', 'missing')).rejects.toMatchObject({
         code: 'DEVICE_001',
       });
-    });
-  });
-
-  describe('createBrowserDevice', () => {
-    it('returns existing device when (orgId, browserDeviceId) row already present', async () => {
-      const existing = makeDevice({
-        id: 'browser-1',
-        category: DeviceCategory.BROWSER_CLIENT,
-        browserDeviceId: 'bd-uuid-123',
-        mobility: DeviceMobility.HOME_ONLY,
-      });
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(existing);
-
-      const result = await service.createBrowserDevice(
-        'org-1', 'user-1', 'bd-uuid-123', 'New name attempted', DeviceMobility.ROAMS,
-      );
-
-      expect(result.id).toBe('browser-1');
-      expect(mockRepo.create).not.toHaveBeenCalled();
-      expect(mockRepo.existsByNameCaseInsensitive).not.toHaveBeenCalled();
-    });
-
-    it('creates a new BROWSER_CLIENT device when none exists for the browser', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(null);
-      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
-      mockRepo.create.mockResolvedValue(makeDevice({
-        id: 'browser-1',
-        category: DeviceCategory.BROWSER_CLIENT,
-        browserDeviceId: 'bd-uuid-123',
-        mobility: DeviceMobility.HOME_ONLY,
-        name: 'My Laptop',
-      }));
-
-      const result = await service.createBrowserDevice(
-        'org-1', 'user-1', 'bd-uuid-123', 'My Laptop', DeviceMobility.HOME_ONLY,
-      );
-
-      expect(result.id).toBe('browser-1');
-      expect(mockRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          organizationId: 'org-1',
-          userId: 'user-1',
-          category: DeviceCategory.BROWSER_CLIENT,
-          browserDeviceId: 'bd-uuid-123',
-          mobility: DeviceMobility.HOME_ONLY,
-          name: 'My Laptop',
-        }),
-      );
-    });
-
-    it('throws ORG_005 DEVICE_NAME_TAKEN when name collides on first creation', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(null);
-      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(true);
-
-      await expect(
-        service.createBrowserDevice('org-1', 'user-1', 'bd-1', 'Existing Name', DeviceMobility.UNKNOWN),
-      ).rejects.toMatchObject({ code: 'ORG_005' });
-      expect(mockRepo.create).not.toHaveBeenCalled();
-    });
-
-    it('passes networkId through when provided', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(null);
-      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
-      mockRepo.create.mockResolvedValue(makeDevice({ category: DeviceCategory.BROWSER_CLIENT, networkId: 'net-1' }));
-
-      await service.createBrowserDevice(
-        'org-1', 'user-1', 'bd-1', 'Laptop', DeviceMobility.HOME_ONLY, 'net-1',
-      );
-
-      expect(mockRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ networkId: 'net-1' }),
-      );
-    });
-
-    it('emits DEVICE_UPDATED WS event on successful create', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(null);
-      mockRepo.existsByNameCaseInsensitive.mockResolvedValue(false);
-      mockRepo.create.mockResolvedValue(makeDevice({ category: DeviceCategory.BROWSER_CLIENT }));
-
-      await service.createBrowserDevice('org-1', 'user-1', 'bd-1', 'X', DeviceMobility.UNKNOWN);
-
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
-        'v1:device:updated',
-        expect.objectContaining({ updatedBy: 'user-1' }),
-        'org-1',
-      );
-    });
-  });
-
-  describe('findDeviceIdByBrowserDeviceId', () => {
-    it('returns device.id when (orgId, browserDeviceId) row exists', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(
-        makeDevice({ id: 'browser-7', browserDeviceId: 'bd-uuid' }),
-      );
-
-      const result = await service.findDeviceIdByBrowserDeviceId('org-1', 'bd-uuid');
-
-      expect(result).toBe('browser-7');
-      expect(mockRepo.findByOrgIdAndBrowserDeviceId).toHaveBeenCalledWith('org-1', 'bd-uuid');
-    });
-
-    it('returns null when no matching device exists', async () => {
-      mockRepo.findByOrgIdAndBrowserDeviceId.mockResolvedValue(null);
-
-      const result = await service.findDeviceIdByBrowserDeviceId('org-1', 'unknown-bd');
-
-      expect(result).toBeNull();
     });
   });
 });
