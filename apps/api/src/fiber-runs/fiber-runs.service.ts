@@ -16,7 +16,7 @@ export class FiberRunsService {
     private readonly conflictService: ConflictResolutionService,
   ) {}
 
-  async listFiberRuns(userId: string, deviceId?: string): Promise<PaginatedResponse<FiberRunDto>> {
+  async listFiberRuns(organizationId: string, deviceId?: string): Promise<PaginatedResponse<FiberRunDto>> {
     // `deviceId` is a raw query param; a malformed value (e.g. the array Express
     // parses from `?deviceId[]=a&deviceId[]=b`) would otherwise reach Prisma as an
     // invalid scalar filter and 500. A bad filter is client input → 400.
@@ -24,40 +24,52 @@ export class FiberRunsService {
       throw new NodeScopeException('GEN_001', 'INVALID_DEVICE_ID', HttpStatus.BAD_REQUEST);
     }
     const [items, total] = await Promise.all([
-      this.fiberRunsRepository.findAllByUserId(userId, deviceId),
-      this.fiberRunsRepository.countByUserId(userId),
+      this.fiberRunsRepository.findAllByOrgId(organizationId, deviceId),
+      this.fiberRunsRepository.countByOrgId(organizationId),
     ]);
     return { items: items.map((r) => this.toDto(r)), total };
   }
 
-  async createFiberRun(userId: string, dto: CreateFiberRunDto): Promise<FiberRunDto> {
+  async createFiberRun(
+    organizationId: string,
+    creatorUserId: string,
+    dto: CreateFiberRunDto,
+  ): Promise<FiberRunDto> {
     if (dto.startDeviceId === dto.endDeviceId) {
       throw new NodeScopeException('FIBER_002', 'FIBER_RUN_SAME_DEVICE', HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     const [startDevice, endDevice] = await Promise.all([
-      this.devicesRepository.findByIdAndUserId(dto.startDeviceId, userId),
-      this.devicesRepository.findByIdAndUserId(dto.endDeviceId, userId),
+      this.devicesRepository.findByIdAndOrgId(dto.startDeviceId, organizationId),
+      this.devicesRepository.findByIdAndOrgId(dto.endDeviceId, organizationId),
     ]);
 
     if (!startDevice || !endDevice) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
-    const run = await this.fiberRunsRepository.create({ userId, ...dto });
+    const run = await this.fiberRunsRepository.create({
+      organizationId,
+      userId: creatorUserId,
+      ...dto,
+    });
     return this.toDto(run);
   }
 
-  async getFiberRun(userId: string, fiberRunId: string): Promise<FiberRunDto> {
-    const run = await this.fiberRunsRepository.findByIdAndUserId(fiberRunId, userId);
+  async getFiberRun(organizationId: string, fiberRunId: string): Promise<FiberRunDto> {
+    const run = await this.fiberRunsRepository.findByIdAndOrgId(fiberRunId, organizationId);
     if (!run) {
       throw new NodeScopeException('FIBER_001', 'FIBER_RUN_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     return this.toDto(run);
   }
 
-  async updateFiberRun(userId: string, fiberRunId: string, patch: PatchFiberRunDto): Promise<FiberRunDto> {
-    const run = await this.fiberRunsRepository.findByIdAndUserId(fiberRunId, userId);
+  async updateFiberRun(
+    organizationId: string,
+    fiberRunId: string,
+    patch: PatchFiberRunDto,
+  ): Promise<FiberRunDto> {
+    const run = await this.fiberRunsRepository.findByIdAndOrgId(fiberRunId, organizationId);
     if (!run) {
       throw new NodeScopeException('FIBER_001', 'FIBER_RUN_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -71,7 +83,7 @@ export class FiberRunsService {
 
     const updated = await this.fiberRunsRepository.updateWithVersion(
       fiberRunId,
-      userId,
+      organizationId,
       updatePayload,
       patch.baseVersion,
     );
@@ -82,19 +94,23 @@ export class FiberRunsService {
     const dto = this.toDto(updated);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.FIBER_RUN_UPDATED,
-      { fiberRunId, fiberRun: dto, changes: patch.changes, updatedBy: userId },
-      userId,
+      { fiberRunId, fiberRun: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
+      updated.userId ?? '',
     );
     return dto;
   }
 
-  async deleteFiberRun(userId: string, fiberRunId: string): Promise<void> {
-    const run = await this.fiberRunsRepository.findByIdAndUserId(fiberRunId, userId);
+  async deleteFiberRun(organizationId: string, fiberRunId: string): Promise<void> {
+    const run = await this.fiberRunsRepository.findByIdAndOrgId(fiberRunId, organizationId);
     if (!run) {
       throw new NodeScopeException('FIBER_001', 'FIBER_RUN_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    await this.fiberRunsRepository.deleteByIdAndUserId(fiberRunId, userId);
-    this.conflictService.emitEntityEvent(WS_EVENTS.FIBER_RUN_DELETED, { fiberRunId }, userId);
+    await this.fiberRunsRepository.deleteByIdAndOrgId(fiberRunId, organizationId);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.FIBER_RUN_DELETED,
+      { fiberRunId },
+      run.userId ?? '',
+    );
   }
 
   private toDto(run: FiberRun): FiberRunDto {
