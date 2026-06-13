@@ -5,6 +5,7 @@ import {
   NetworkSummary,
   WS_EVENTS,
 } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
@@ -23,6 +24,7 @@ export class NetworksService {
     private readonly networksRepository: NetworksRepository,
     private readonly conflictService: ConflictResolutionService,
     @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
+    private readonly audit: AuditService,
   ) {}
 
   async listNetworks(organizationId: string): Promise<NetworkSummary[]> {
@@ -49,6 +51,7 @@ export class NetworksService {
       userId: creatorUserId,
       ...dto,
     });
+    await this.audit.recordCreate(organizationId, 'Network', network);
     const detail = this.toDetail(network);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
@@ -94,6 +97,7 @@ export class NetworksService {
     }
 
     const detail = this.toDetail(updated);
+    await this.audit.recordUpdate(organizationId, 'Network', networkId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
       { networkId, network: detail, changes: patch.changes, updatedBy: updated.userId ?? '' },
@@ -134,6 +138,7 @@ export class NetworksService {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.networksRepository.deleteByIdAndOrgId(networkId, organizationId);
+    await this.audit.recordDelete(organizationId, 'Network', network);
   }
 
   /**
