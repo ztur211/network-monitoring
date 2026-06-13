@@ -36,7 +36,7 @@ describe('CircuitsRepository cursor decode guard', () => {
   const expectBadRequest = async (cursor: string): Promise<void> => {
     expect.assertions(3);
     try {
-      await repo.findWithCursor('user-1', 20, cursor);
+      await repo.findWithCursor('org-1', 20, cursor);
     } catch (err) {
       expect(err).toBeInstanceOf(NodeScopeException);
       expect(statusOf(err)).toBe(HttpStatus.BAD_REQUEST);
@@ -59,7 +59,7 @@ describe('CircuitsRepository cursor decode guard', () => {
       'utf-8',
     ).toString('base64');
 
-    await expect(repo.findWithCursor('user-1', 20, cursor)).resolves.toEqual([]);
+    await expect(repo.findWithCursor('org-1', 20, cursor)).resolves.toEqual([]);
     expect(findMany).toHaveBeenCalledTimes(1);
   });
 });
