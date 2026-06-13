@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Circuit } from '@prisma/client';
 import { CircuitDto, CursorPaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -15,6 +16,7 @@ export class CircuitsService {
     private readonly circuitsRepository: CircuitsRepository,
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
+    private readonly audit: AuditService,
   ) {}
 
   async listCircuits(organizationId: string, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
@@ -56,6 +58,7 @@ export class CircuitsService {
       userId: creatorUserId,
       ...dto,
     });
+    await this.audit.recordCreate(organizationId, 'Circuit', circuit);
     return this.toDto(circuit);
   }
 
@@ -105,6 +108,7 @@ export class CircuitsService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'Circuit', circuitId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CIRCUIT_UPDATED,
       { circuitId, circuit: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
@@ -119,6 +123,7 @@ export class CircuitsService {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.circuitsRepository.deleteByIdAndOrgId(circuitId, organizationId);
+    await this.audit.recordDelete(organizationId, 'Circuit', circuit);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CIRCUIT_DELETED,
       { circuitId },
