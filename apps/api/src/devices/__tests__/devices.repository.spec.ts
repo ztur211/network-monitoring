@@ -1,7 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DevicesRepository } from '../devices.repository';
+import { OrganizationsRepository } from '../../organizations/organizations.repository';
+import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { AuditService } from '../../audit/audit.service';
+import { ChangeLogRepository } from '../../audit/change-log.repository';
+import { auditAls } from '../../audit/audit.als';
+import { DevicesService } from '../devices.service';
 import { DeviceCategory } from '@prisma/client';
+import { CreateDeviceDto } from '../devices.dto';
 
 /**
  * Integration tests — run against the real test database.
@@ -179,5 +186,65 @@ describe('DevicesRepository (integration)', () => {
       const found = await repository.findByIdAndOrgId(device.id, testOrgId);
       expect(found).not.toBeNull();
     });
+  });
+});
+
+describe('DevicesService audit integration', () => {
+  let service: DevicesService;
+  let prisma: PrismaService;
+
+  const mockConflict = {
+    buildUpdatePayload: jest.fn(),
+    emitEntityEvent: jest.fn(),
+  };
+
+  beforeAll(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PrismaService,
+        DevicesRepository,
+        OrganizationsRepository,
+        ChangeLogRepository,
+        AuditService,
+        DevicesService,
+        { provide: ConflictResolutionService, useValue: mockConflict },
+      ],
+    }).compile();
+
+    service = module.get<DevicesService>(DevicesService);
+    prisma = module.get<PrismaService>(PrismaService);
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it('writes a CREATE ChangeLog row scoped to the org when a device is created', async () => {
+    const org = await prisma.organization.create({ data: { name: `Au${Date.now()}` } });
+    const user = await prisma.user.create({
+      data: { email: `a-${Date.now()}@x.com`, emailVerified: true, name: 'A' },
+    });
+
+    await auditAls.run(
+      { requestId: 'r1', userId: user.id, ipAddress: null, userAgent: null },
+      async () =>
+        service.createDevice(org.id, user.id, {
+          name: 'AuditCam',
+          category: DeviceCategory.IOT_DEVICE,
+        } as CreateDeviceDto),
+    );
+
+    const logs = await prisma.changeLog.findMany({
+      where: { organizationId: org.id, entityType: 'Device', action: 'CREATE' },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].requestId).toBe('r1');
+    expect(logs[0].userId).toBe(user.id);
+
+    await prisma.changeLog.deleteMany({ where: { organizationId: org.id } });
+    await prisma.device.deleteMany({ where: { organizationId: org.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+    await prisma.organization.delete({ where: { id: org.id } });
   });
 });
