@@ -30,6 +30,10 @@ export const WS_EVENTS = {
   ORG_INVITATION_ACCEPTED: 'v1:org:invitation:accepted',
   ORG_JOIN_REQUEST_CREATED: 'v1:org:joinRequest:created',
   ORG_JOIN_REQUEST_DECIDED: 'v1:org:joinRequest:decided',
+  PROPERTY_CREATED: 'v1:property:created',
+  PROPERTY_UPDATED: 'v1:property:updated',
+  PROPERTY_DELETED: 'v1:property:deleted',
+  PROPERTY_MOVED:   'v1:property:moved',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';

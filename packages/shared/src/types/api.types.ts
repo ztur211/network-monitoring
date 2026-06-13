@@ -2,8 +2,8 @@
 // Type-only import means the @prisma/client runtime is NOT bundled into the
 // web app — Metro tree-shakes the empty import. CLAUDE.md Rule #6 forbids
 // hand-written types that duplicate Prisma-generated ones, hence this shape.
-import type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus } from '@prisma/client';
-export type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus };
+import type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus, PropertyType } from '@prisma/client';
+export type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus, PropertyType };
 
 export interface UserDto {
   id: string;
@@ -157,6 +157,18 @@ export interface JoinRequestDto {
   status: JoinRequestStatus;
   createdAt: string;
   decidedAt: string | null;
+}
+
+export interface PropertyDto {
+  id: string;
+  organizationId: string;
+  parentId: string | null;
+  type: PropertyType;
+  name: string;
+  code: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type FloorDisplayMode = 'single' | 'all' | 'connection';
