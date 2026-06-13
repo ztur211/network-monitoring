@@ -18,6 +18,7 @@ import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { DevicesService } from '../devices/devices.service';
 import { NetworksService } from '../networks/networks.service';
+import { OrganizationsRepository } from '../organizations/organizations.repository';
 import { AiService } from '../ai/ai.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
@@ -70,6 +71,7 @@ export class RealtimeGateway
     private readonly redis: RedisService,
     private readonly dataSourcesService: DataSourcesService,
     private readonly aiService: AiService,
+    private readonly organizationsRepository: OrganizationsRepository,
     @Inject(forwardRef(() => DevicesService))
     private readonly devicesService: DevicesService,
     @Inject(forwardRef(() => NetworksService))
@@ -106,8 +108,19 @@ export class RealtimeGateway
     const userId = (session.user as { id: string }).id;
     const tier = (session.user as { tier: string }).tier;
 
+    // Resolve the user's organization membership and store the orgId on the socket.
+    // Fresh users with no OrganizationMember row will have orgId = null.
+    // Metrics ingest guards against null orgId (see handleMetricsSubmit) to avoid
+    // violating the NOT NULL constraint on DeviceMetric.organizationId.
+    // The no-org gap is resolved in the F1a convergence task (B5).
+    const member = await this.organizationsRepository.findMemberByUserId(userId);
+    client.data.orgId = member?.organizationId ?? null;
+
     await client.join(`user:${userId}`);
     await client.join(`tier:${tier}`);
+    if (client.data.orgId) {
+      await client.join(`org:${client.data.orgId as string}`);
+    }
 
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
 
@@ -116,7 +129,7 @@ export class RealtimeGateway
     client.data.onHome = onHomeResult.onHome;
     this.pushToUser(userId, WS_EVENTS.NETWORK_ON_HOME_CHANGED, onHomeResult);
 
-    this.logger.log({ userId, socketId: client.id }, 'Client connected');
+    this.logger.log({ userId, orgId: client.data.orgId, socketId: client.id }, 'Client connected');
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
@@ -140,6 +153,16 @@ export class RealtimeGateway
     const userId = (client.data.user as { id: string } | undefined)?.id;
     if (!userId) return;
 
+    // Guard: fresh users with no org membership cannot write metrics (the
+    // DeviceMetric.organizationId column is NOT NULL). This gap is resolved
+    // in the F1a convergence task (B5) where new users are auto-enrolled in
+    // a personal org at registration time.
+    const orgId = client.data.orgId as string | null | undefined;
+    if (!orgId) {
+      this.logger.warn({ userId }, 'Metrics ingest skipped — socket has no orgId (user not yet in an org)');
+      return;
+    }
+
     const { browserDeviceId, ...rest } = payload ?? {};
     const ingestPayload: Record<string, unknown> = { ...rest };
     if (typeof browserDeviceId === 'string' && browserDeviceId.length > 0) {
@@ -150,7 +173,7 @@ export class RealtimeGateway
       if (deviceId !== null) ingestPayload.deviceId = deviceId;
     }
 
-    await this.dataSourcesService.ingest(userId, ingestPayload);
+    await this.dataSourcesService.ingest(orgId, userId, ingestPayload);
   }
 
   pushToUser(userId: string, event: string, payload: unknown): void {
@@ -209,25 +232,34 @@ export class RealtimeGateway
   }
 
   private async pushLatestMetricsToConnectedUsers(): Promise<void> {
-    // Collect all currently connected userIds from Redis
+    // Collect all currently connected sockets that have a resolved orgId.
+    // Sockets with no orgId (fresh users not yet in an org) are skipped —
+    // their metrics were never ingested, so there is nothing to push.
     const sockets = await this.server.fetchSockets();
-    const userIds = [
-      ...new Set(
-        sockets
-          .map((s) => (s.data.user as { id: string } | undefined)?.id)
-          .filter((id): id is string => id !== undefined),
-      ),
-    ];
 
-    if (userIds.length === 0) return;
+    // Group userIds by orgId so we can issue one DB query per org.
+    const orgToUsers = new Map<string, string[]>();
+    for (const s of sockets) {
+      const userId = (s.data.user as { id: string } | undefined)?.id;
+      const orgId = s.data.orgId as string | null | undefined;
+      if (!userId || !orgId) continue;
+      const bucket = orgToUsers.get(orgId) ?? [];
+      bucket.push(userId);
+      orgToUsers.set(orgId, bucket);
+    }
 
-    const metricsMap = await this.dataSourcesService.getLatestMetrics(userIds);
+    for (const [orgId, userIds] of orgToUsers) {
+      const metricsMap = await this.dataSourcesService.getLatestMetrics(
+        orgId,
+        [...new Set(userIds)],
+      );
 
-    for (const [userId, metrics] of metricsMap) {
-      this.pushToUser(userId, WS_EVENTS.METRICS_UPDATE, {
-        metrics,
-        sourceTypes: ['browser'],
-      } satisfies { metrics: MetricsDto; sourceTypes: string[] });
+      for (const [userId, metrics] of metricsMap) {
+        this.pushToUser(userId, WS_EVENTS.METRICS_UPDATE, {
+          metrics,
+          sourceTypes: ['browser'],
+        } satisfies { metrics: MetricsDto; sourceTypes: string[] });
+      }
     }
   }
 
@@ -248,8 +280,11 @@ export class RealtimeGateway
       this.pushToUser(user.id, WS_EVENTS.AI_TOKEN, { token, conversationId });
     };
 
+    const orgId = client.data.orgId as string | null | undefined;
+
     try {
       const result = await this.aiService.sendMessageStream(
+        orgId ?? '',
         user.id,
         user.tier,
         ip,

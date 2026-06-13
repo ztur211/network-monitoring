@@ -3,6 +3,7 @@ import { DeviceMetric, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateMetricData {
+  organizationId: string;
   userId: string;
   sourceType: string;
   bandwidthDown?: number | null;
@@ -21,26 +22,35 @@ export class DataSourcesRepository {
     await this.prisma.deviceMetric.create({ data });
   }
 
-  async findLatestForUser(userId: string): Promise<DeviceMetric | null> {
+  async findLatestForOrg(organizationId: string): Promise<DeviceMetric | null> {
     return this.prisma.deviceMetric.findFirst({
-      where: { userId },
+      where: { organizationId },
       orderBy: { time: 'desc' },
     });
   }
 
-  async findLatestForUsers(userIds: string[]): Promise<DeviceMetric[]> {
+  async findLatestForUser(organizationId: string, userId: string): Promise<DeviceMetric | null> {
+    return this.prisma.deviceMetric.findFirst({
+      where: { organizationId, userId },
+      orderBy: { time: 'desc' },
+    });
+  }
+
+  async findLatestForUsers(organizationId: string, userIds: string[]): Promise<DeviceMetric[]> {
     if (userIds.length === 0) return [];
 
     // DISTINCT ON keeps the most recent row per userId in one pass (TimescaleDB-friendly).
     // Column list must stay in sync with the DeviceMetric model — deviceId/tag (Phase 13)
     // are selected so the returned rows are faithful DeviceMetric objects, not partials.
+    // Scoped to organizationId so cross-org data never leaks.
     const idList = Prisma.join(userIds.map((id) => Prisma.sql`${id}`));
     return this.prisma.$queryRaw<DeviceMetric[]>`
       SELECT DISTINCT ON ("userId")
-        id, "userId", "deviceId", "sourceType", "tag", "bandwidthDown", "bandwidthUp",
+        id, "organizationId", "userId", "deviceId", "sourceType", "tag", "bandwidthDown", "bandwidthUp",
         latency, "connectionQuality", time
       FROM "DeviceMetric"
-      WHERE "userId" IN (${idList})
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" IN (${idList})
       ORDER BY "userId", time DESC
     `;
   }

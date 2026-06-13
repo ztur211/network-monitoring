@@ -25,8 +25,8 @@ const AGENT_UNAVAILABLE_MESSAGE =
 export class ClientsService {
   constructor(private readonly dataSourcesService: DataSourcesService) {}
 
-  async getClients(userId: string, userAgent: string): Promise<ClientsResponseDto> {
-    const latestMetric = await this.dataSourcesService.getLatestMetric(userId);
+  async getClients(organizationId: string, userId: string, userAgent: string): Promise<ClientsResponseDto> {
+    const latestMetric = await this.dataSourcesService.getLatestMetric(organizationId, userId);
 
     const metrics: MetricsDto | null = latestMetric
       ? {
