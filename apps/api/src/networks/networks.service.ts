@@ -15,7 +15,7 @@ import {
 } from './networks.dto';
 import { NetworksRepository } from './networks.repository';
 
-const MAX_NETWORKS_PER_USER = 1;
+const MAX_NETWORKS_PER_ORG = 1;
 
 @Injectable()
 export class NetworksService {
@@ -25,14 +25,18 @@ export class NetworksService {
     @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
   ) {}
 
-  async listNetworks(userId: string): Promise<NetworkSummary[]> {
-    const networks = await this.networksRepository.findAllByUserId(userId);
+  async listNetworks(organizationId: string): Promise<NetworkSummary[]> {
+    const networks = await this.networksRepository.findAllByOrgId(organizationId);
     return networks.map((n) => this.toSummary(n));
   }
 
-  async createNetwork(userId: string, dto: CreateNetworkDto): Promise<NetworkDetail> {
-    const existingCount = await this.networksRepository.countByUserId(userId);
-    if (existingCount >= MAX_NETWORKS_PER_USER) {
+  async createNetwork(
+    organizationId: string,
+    creatorUserId: string,
+    dto: CreateNetworkDto,
+  ): Promise<NetworkDetail> {
+    const existingCount = await this.networksRepository.countByOrgId(organizationId);
+    if (existingCount >= MAX_NETWORKS_PER_ORG) {
       throw new NodeScopeException(
         'NETWORK_001',
         'NETWORK_LIMIT_EXCEEDED',
@@ -40,18 +44,22 @@ export class NetworksService {
       );
     }
 
-    const network = await this.networksRepository.create({ userId, ...dto });
+    const network = await this.networksRepository.create({
+      organizationId,
+      userId: creatorUserId,
+      ...dto,
+    });
     const detail = this.toDetail(network);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
       { networkId: network.id, network: detail },
-      userId,
+      network.userId ?? '',
     );
     return detail;
   }
 
-  async getNetwork(userId: string, networkId: string): Promise<NetworkDetail> {
-    const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
+  async getNetwork(organizationId: string, networkId: string): Promise<NetworkDetail> {
+    const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -59,11 +67,11 @@ export class NetworksService {
   }
 
   async updateNetwork(
-    userId: string,
+    organizationId: string,
     networkId: string,
     patch: PatchNetworkDto,
   ): Promise<NetworkDetail> {
-    const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
+    const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -77,7 +85,7 @@ export class NetworksService {
 
     const updated = await this.networksRepository.updateWithVersion(
       networkId,
-      userId,
+      organizationId,
       updatePayload,
       patch.baseVersion,
     );
@@ -88,27 +96,27 @@ export class NetworksService {
     const detail = this.toDetail(updated);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
-      { networkId, network: detail, changes: patch.changes, updatedBy: userId },
-      userId,
+      { networkId, network: detail, changes: patch.changes, updatedBy: updated.userId ?? '' },
+      updated.userId ?? '',
     );
 
     if (patch.changes.some((c) => c.field === 'homePublicIp')) {
-      void this.realtimeService.recomputeOnHomeForUser(userId);
+      void this.realtimeService.recomputeOnHomeForUser(updated.userId ?? '');
     }
 
     return detail;
   }
 
   async setHomeIpFromRequest(
-    userId: string,
+    organizationId: string,
     networkId: string,
     requestIp: string,
   ): Promise<NetworkDetail> {
-    const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
+    const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    return this.updateNetwork(userId, networkId, {
+    return this.updateNetwork(organizationId, networkId, {
       baseVersion: network.version,
       changes: [
         {
@@ -120,19 +128,24 @@ export class NetworksService {
     });
   }
 
-  async deleteNetwork(userId: string, networkId: string): Promise<void> {
-    const network = await this.networksRepository.findByIdAndUserId(networkId, userId);
+  async deleteNetwork(organizationId: string, networkId: string): Promise<void> {
+    const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    await this.networksRepository.deleteByIdAndUserId(networkId, userId);
+    await this.networksRepository.deleteByIdAndOrgId(networkId, organizationId);
   }
 
+  /**
+   * Called by the realtime gateway (which only knows userId, not organizationId).
+   * Looks up the user's org's first network via org membership and checks whether
+   * the request IP matches the network's homePublicIp.
+   */
   async checkOnHome(
     userId: string,
     requestIp: string,
   ): Promise<{ networkId: string | null; onHome: boolean }> {
-    const networks = await this.networksRepository.findAllByUserId(userId);
+    const networks = await this.networksRepository.findAllByMemberUserId(userId);
     const network = networks[0] ?? null;
     if (!network) return { networkId: null, onHome: false };
 
