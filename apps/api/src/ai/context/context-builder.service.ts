@@ -41,7 +41,7 @@ export class ContextBuilderService {
     userTier: string,
   ): Promise<string> {
     const [network, realtime, account, product] = await Promise.all([
-      this.networkProvider.getContext(userId),
+      this.networkProvider.getContext(organizationId),
       this.realtimeProvider.getContext(organizationId, userId),
       this.accountProvider.getContext(userId, userTier),
       this.productProvider.getContext(),

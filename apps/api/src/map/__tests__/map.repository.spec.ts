@@ -67,7 +67,7 @@ describe('MapRepository (integration)', () => {
   });
 
   describe('findDevicesInBbox', () => {
-    it('returns Phase-13 columns (networkId, mobility, browserDeviceId) — guards DEVICE_COLUMNS drift', async () => {
+    it('returns Phase-13 columns (organizationId, networkId, mobility, browserDeviceId) — guards DEVICE_COLUMNS drift', async () => {
       // latitude/longitude trigger device_location_sync, which populates the
       // geometry column so the device passes the `location IS NOT NULL` filter.
       await prisma.device.create({
@@ -84,10 +84,11 @@ describe('MapRepository (integration)', () => {
         },
       });
 
-      const devices = await repository.findDevicesInBbox(testUserId, BBOX);
+      const devices = await repository.findDevicesInBbox(testOrgId, BBOX);
 
       expect(devices).toHaveLength(1);
       const device = devices[0];
+      expect(device.organizationId).toBe(testOrgId);
       expect(device.browserDeviceId).toBe('browser-abc-123');
       expect(device.networkId).toBe(testNetworkId);
       expect(device.mobility).toBe(DeviceMobility.ROAMS);
@@ -109,13 +110,46 @@ describe('MapRepository (integration)', () => {
         },
       });
 
-      const onFloor = await repository.findDevicesInBbox(testUserId, BBOX, 2);
+      const onFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 2);
       expect(onFloor).toHaveLength(1);
       expect(onFloor[0].networkId).toBe(testNetworkId);
       expect(onFloor[0].mobility).toBe(DeviceMobility.HOME_ONLY);
 
-      const otherFloor = await repository.findDevicesInBbox(testUserId, BBOX, 1);
+      const otherFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 1);
       expect(otherFloor).toHaveLength(0);
+    });
+
+    it('does NOT return devices belonging to a different org (org isolation)', async () => {
+      // Create a second org with a device in the same bounding box
+      const otherOrg = await prisma.organization.create({
+        data: { name: `Other Org ${Date.now()}` },
+      });
+      const otherUser = await prisma.user.create({
+        data: { email: `maprepo-other-${Date.now()}@example.com`, emailVerified: false },
+      });
+      await prisma.organizationMember.create({
+        data: { userId: otherUser.id, organizationId: otherOrg.id, role: 'MEMBER' },
+      });
+      await prisma.device.create({
+        data: {
+          organizationId: otherOrg.id,
+          userId: otherUser.id,
+          name: 'Other Org Device',
+          category: DeviceCategory.ROUTER,
+          latitude: 40.7128,
+          longitude: -74.006,
+        },
+      });
+
+      // Query scoped to testOrgId — must NOT see the other org's device
+      const devices = await repository.findDevicesInBbox(testOrgId, BBOX);
+      expect(devices.every((d) => d.organizationId === testOrgId)).toBe(true);
+
+      // Cleanup
+      await prisma.device.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.organizationMember.deleteMany({ where: { userId: otherUser.id } });
+      await prisma.user.deleteMany({ where: { id: otherUser.id } });
+      await prisma.organization.deleteMany({ where: { id: otherOrg.id } });
     });
   });
 });
