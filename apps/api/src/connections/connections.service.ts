@@ -108,7 +108,7 @@ export class ConnectionsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CONNECTION_UPDATED,
       { connectionId, connection: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      updated.userId ?? '',
+      organizationId,
     );
     return dto;
   }
@@ -123,7 +123,7 @@ export class ConnectionsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CONNECTION_DELETED,
       { connectionId },
-      connection.userId ?? '',
+      organizationId,
     );
   }
 

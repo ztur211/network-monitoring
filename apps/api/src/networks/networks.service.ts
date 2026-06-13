@@ -56,7 +56,7 @@ export class NetworksService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
       { networkId: network.id, network: detail },
-      network.userId ?? '',
+      organizationId,
     );
     return detail;
   }
@@ -101,7 +101,7 @@ export class NetworksService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.NETWORK_UPDATED,
       { networkId, network: detail, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      updated.userId ?? '',
+      organizationId,
     );
 
     if (patch.changes.some((c) => c.field === 'homePublicIp')) {
