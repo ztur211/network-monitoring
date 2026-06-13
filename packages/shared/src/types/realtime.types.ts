@@ -25,6 +25,11 @@ export const WS_EVENTS = {
   ORG_MEMBER_ADDED: 'v1:org:member:added',
   ORG_MEMBER_UPDATED: 'v1:org:member:updated',
   ORG_MEMBER_REMOVED: 'v1:org:member:removed',
+  ORG_INVITATION_CREATED: 'v1:org:invitation:created',
+  ORG_INVITATION_REVOKED: 'v1:org:invitation:revoked',
+  ORG_INVITATION_ACCEPTED: 'v1:org:invitation:accepted',
+  ORG_JOIN_REQUEST_CREATED: 'v1:org:joinRequest:created',
+  ORG_JOIN_REQUEST_DECIDED: 'v1:org:joinRequest:decided',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';
