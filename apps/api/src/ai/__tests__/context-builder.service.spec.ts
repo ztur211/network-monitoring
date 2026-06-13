@@ -60,7 +60,7 @@ describe('ContextBuilderService', () => {
 
       await service.buildSystemPrompt('org-42', 'user-42', 'PERSONAL_PAID');
 
-      expect(mockNetwork.getContext).toHaveBeenCalledWith('user-42');
+      expect(mockNetwork.getContext).toHaveBeenCalledWith('org-42');
       expect(mockRealtime.getContext).toHaveBeenCalledWith('org-42', 'user-42');
       expect(mockAccount.getContext).toHaveBeenCalledWith('user-42', 'PERSONAL_PAID');
     });

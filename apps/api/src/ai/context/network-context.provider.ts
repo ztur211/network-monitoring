@@ -5,9 +5,9 @@ import { NetworkContextRepository } from './network-context.repository';
 export class NetworkContextProvider {
   constructor(private readonly repository: NetworkContextRepository) {}
 
-  async getContext(userId: string): Promise<string> {
+  async getContext(organizationId: string): Promise<string> {
     const { devices, connections, fiberRuns, circuits } =
-      await this.repository.getNetworkEntities(userId);
+      await this.repository.getNetworkEntities(organizationId);
 
     const lines: string[] = ['## Documented Network'];
 

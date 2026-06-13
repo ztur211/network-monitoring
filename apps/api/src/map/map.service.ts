@@ -11,24 +11,24 @@ export class MapService {
   constructor(private readonly mapRepository: MapRepository) {}
 
   async getDevicesInBbox(
-    userId: string,
+    organizationId: string,
     bbox: string,
     floor?: number,
   ): Promise<{ items: DeviceDto[] }> {
     const coords = this.parseBbox(bbox);
-    const devices = await this.mapRepository.findDevicesInBbox(userId, coords, floor);
+    const devices = await this.mapRepository.findDevicesInBbox(organizationId, coords, floor);
     return { items: devices.map((d) => this.deviceToDto(d)) };
   }
 
-  async getFiberRunsInBbox(userId: string, bbox: string): Promise<{ items: FiberRunDto[] }> {
+  async getFiberRunsInBbox(organizationId: string, bbox: string): Promise<{ items: FiberRunDto[] }> {
     const coords = this.parseBbox(bbox);
-    const runs = await this.mapRepository.findFiberRunsInBbox(userId, coords);
+    const runs = await this.mapRepository.findFiberRunsInBbox(organizationId, coords);
     return { items: runs.map((r) => this.fiberRunToDto(r)) };
   }
 
-  async getCircuitsInBbox(userId: string, bbox: string): Promise<{ items: CircuitDto[] }> {
+  async getCircuitsInBbox(organizationId: string, bbox: string): Promise<{ items: CircuitDto[] }> {
     const coords = this.parseBbox(bbox);
-    const circuits = await this.mapRepository.findCircuitsInBbox(userId, coords);
+    const circuits = await this.mapRepository.findCircuitsInBbox(organizationId, coords);
     return { items: circuits.map((c) => this.circuitToDto(c)) };
   }
 

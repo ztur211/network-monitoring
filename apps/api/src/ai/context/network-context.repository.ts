@@ -10,17 +10,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class NetworkContextRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getNetworkEntities(userId: string) {
+  async getNetworkEntities(organizationId: string) {
     const [devices, connections, fiberRuns, circuits] = await Promise.all([
       this.prisma.device.findMany({
-        where: { userId },
+        where: { organizationId },
         select: {
           name: true, category: true, ipAddress: true, floor: true, floorLabel: true, notes: true,
         },
         orderBy: { name: 'asc' },
       }),
       this.prisma.deviceConnection.findMany({
-        where: { userId },
+        where: { organizationId },
         select: {
           connectionType: true, notes: true,
           sourceDevice: { select: { name: true } },
@@ -28,7 +28,7 @@ export class NetworkContextRepository {
         },
       }),
       this.prisma.fiberRun.findMany({
-        where: { userId },
+        where: { organizationId },
         select: {
           name: true, cableType: true, lengthMeters: true, notes: true,
           startDevice: { select: { name: true } },
@@ -36,7 +36,7 @@ export class NetworkContextRepository {
         },
       }),
       this.prisma.circuit.findMany({
-        where: { userId },
+        where: { organizationId },
         select: {
           ispName: true, circuitId: true, serviceType: true, bandwidth: true, notes: true,
           device: { select: { name: true } },
