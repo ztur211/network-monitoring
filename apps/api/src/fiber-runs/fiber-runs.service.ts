@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { FiberRun } from '@prisma/client';
 import { FiberRunDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
@@ -14,6 +15,7 @@ export class FiberRunsService {
     private readonly fiberRunsRepository: FiberRunsRepository,
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
+    private readonly audit: AuditService,
   ) {}
 
   async listFiberRuns(organizationId: string, deviceId?: string): Promise<PaginatedResponse<FiberRunDto>> {
@@ -53,6 +55,7 @@ export class FiberRunsService {
       userId: creatorUserId,
       ...dto,
     });
+    await this.audit.recordCreate(organizationId, 'FiberRun', run);
     return this.toDto(run);
   }
 
@@ -92,6 +95,7 @@ export class FiberRunsService {
     }
 
     const dto = this.toDto(updated);
+    await this.audit.recordUpdate(organizationId, 'FiberRun', fiberRunId, patch.changes);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.FIBER_RUN_UPDATED,
       { fiberRunId, fiberRun: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
@@ -106,6 +110,7 @@ export class FiberRunsService {
       throw new NodeScopeException('FIBER_001', 'FIBER_RUN_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
     await this.fiberRunsRepository.deleteByIdAndOrgId(fiberRunId, organizationId);
+    await this.audit.recordDelete(organizationId, 'FiberRun', run);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.FIBER_RUN_DELETED,
       { fiberRunId },
