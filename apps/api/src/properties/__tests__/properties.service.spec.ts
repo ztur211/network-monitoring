@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { PropertiesService } from '../properties.service';
 import { PropertiesRepository } from '../properties.repository';
+import { ContainmentService } from '../containment.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
 
@@ -9,22 +10,31 @@ const repoMock = () => ({
   findChildren: jest.fn(), countChildren: jest.fn(), existsSiblingName: jest.fn(),
   updateWithVersion: jest.fn(), deleteByIdAndOrgId: jest.fn(),
   getSubtreeIds: jest.fn(), isAtOrUnder: jest.fn(),
+  countDevicesUnder: jest.fn(), countChartersUnder: jest.fn(),
 });
 const conflictMock = () => ({ emitEntityEvent: jest.fn(), buildUpdatePayload: jest.fn().mockReturnValue({}) });
 const auditMock = () => ({ recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() });
+const containmentMock = () => ({
+  assertDevicePlacement: jest.fn(),
+  assertReparentKeepsContainment: jest.fn(),
+  assertCharterRemovable: jest.fn(),
+});
 
 describe('PropertiesService', () => {
   let service: PropertiesService;
   let repo: ReturnType<typeof repoMock>;
+  let containment: ReturnType<typeof containmentMock>;
 
   beforeEach(async () => {
     repo = repoMock();
+    containment = containmentMock();
     const moduleRef = await Test.createTestingModule({
       providers: [
         PropertiesService,
         { provide: PropertiesRepository, useValue: repo },
         { provide: ConflictResolutionService, useValue: conflictMock() },
         { provide: AuditService, useValue: auditMock() },
+        { provide: ContainmentService, useValue: containment },
       ],
     }).compile();
     service = moduleRef.get(PropertiesService);
@@ -48,8 +58,36 @@ describe('PropertiesService', () => {
 
   it('blocks deleting a node with children (PROP_004)', async () => {
     repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
-    repo.countChildren.mockResolvedValue(2);
+    // subtree has 2 entries (the node + 1 child)
+    repo.getSubtreeIds.mockResolvedValue(['p1', 'child1']);
+    repo.countDevicesUnder.mockResolvedValue(0);
+    repo.countChartersUnder.mockResolvedValue(0);
     await expect(service.deleteProperty('o1', 'p1')).rejects.toMatchObject({ code: 'PROP_004' });
+  });
+
+  it('blocks deleting a node with placed devices (PROP_004)', async () => {
+    repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
+    repo.getSubtreeIds.mockResolvedValue(['p1']); // leaf node, no children
+    repo.countDevicesUnder.mockResolvedValue(1);
+    repo.countChartersUnder.mockResolvedValue(0);
+    await expect(service.deleteProperty('o1', 'p1')).rejects.toMatchObject({ code: 'PROP_004' });
+  });
+
+  it('blocks deleting a node that is chartered by a network (PROP_004)', async () => {
+    repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
+    repo.getSubtreeIds.mockResolvedValue(['p1']); // leaf node, no children
+    repo.countDevicesUnder.mockResolvedValue(0);
+    repo.countChartersUnder.mockResolvedValue(1);
+    await expect(service.deleteProperty('o1', 'p1')).rejects.toMatchObject({ code: 'PROP_004' });
+  });
+
+  it('allows deleting a leaf node with no devices or charters', async () => {
+    repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
+    repo.getSubtreeIds.mockResolvedValue(['p1']); // only self
+    repo.countDevicesUnder.mockResolvedValue(0);
+    repo.countChartersUnder.mockResolvedValue(0);
+    repo.deleteByIdAndOrgId.mockResolvedValue(undefined);
+    await expect(service.deleteProperty('o1', 'p1')).resolves.toBeUndefined();
   });
 
   it('rejects a reparent that would create a cycle (PROP_005)', async () => {
@@ -59,5 +97,20 @@ describe('PropertiesService', () => {
     repo.getSubtreeIds.mockResolvedValue(['p1', 'p2']); // p2 is under p1 → cycle
     await expect(service.updateProperty('o1', 'p1', { baseVersion: 1, changes: [{ field: 'parentId', oldValue: null, newValue: 'p2' }] } as any))
       .rejects.toMatchObject({ code: 'PROP_005' });
+  });
+
+  it('throws PROP_007 when reparent would orphan a device (from ContainmentService)', async () => {
+    repo.findByIdAndOrgId
+      .mockResolvedValueOnce({ id: 'p1', type: 'BUILDING', parentId: 'oldSite', version: 1, organizationId: 'o1' })
+      .mockResolvedValueOnce({ id: 'newSite', type: 'SITE', organizationId: 'o1' }); // new parent
+    repo.getSubtreeIds.mockResolvedValue(['p1']);
+    repo.existsSiblingName.mockResolvedValue(false);
+    const err = Object.assign(new Error(), { code: 'PROP_007' });
+    containment.assertReparentKeepsContainment.mockRejectedValue(err);
+    await expect(service.updateProperty('o1', 'p1', {
+      baseVersion: 1,
+      changes: [{ field: 'parentId', oldValue: 'oldSite', newValue: 'newSite' }],
+    } as any)).rejects.toMatchObject({ code: 'PROP_007' });
+    expect(containment.assertReparentKeepsContainment).toHaveBeenCalledWith('o1', 'p1', 'newSite');
   });
 });
