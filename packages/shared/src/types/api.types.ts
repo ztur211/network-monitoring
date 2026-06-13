@@ -17,7 +17,7 @@ export interface UserDto {
 
 export interface DeviceDto {
   id: string;
-  userId: string;
+  userId: string | null;
   name: string;
   category: string;
   latitude: number | null;
