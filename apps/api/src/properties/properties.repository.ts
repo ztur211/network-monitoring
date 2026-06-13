@@ -77,4 +77,34 @@ export class PropertiesRepository {
     `;
     return rows.length > 0;
   }
+
+  /** Self + all ancestors (org-scoped), via an upward recursive CTE. */
+  async getAncestorIds(organizationId: string, id: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      WITH RECURSIVE ancestors AS (
+        SELECT id, "parentId" FROM "Property" WHERE id = ${id} AND "organizationId" = ${organizationId}
+        UNION ALL
+        SELECT p.id, p."parentId" FROM "Property" p JOIN ancestors a ON p.id = a."parentId"
+      )
+      SELECT id FROM ancestors;`;
+    return rows.map((r) => r.id);
+  }
+
+  devicesUnder(organizationId: string, propertyIds: string[]): Promise<{ id: string; networkId: string; propertyId: string }[]> {
+    if (propertyIds.length === 0) return Promise.resolve([]);
+    return this.prisma.device.findMany({
+      where: { organizationId, propertyId: { in: propertyIds } },
+      select: { id: true, networkId: true, propertyId: true },
+    });
+  }
+
+  countDevicesUnder(organizationId: string, propertyIds: string[]): Promise<number> {
+    if (propertyIds.length === 0) return Promise.resolve(0);
+    return this.prisma.device.count({ where: { organizationId, propertyId: { in: propertyIds } } });
+  }
+
+  countChartersUnder(organizationId: string, propertyIds: string[]): Promise<number> {
+    if (propertyIds.length === 0) return Promise.resolve(0);
+    return this.prisma.networkProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } });
+  }
 }
