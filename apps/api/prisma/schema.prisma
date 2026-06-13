@@ -45,9 +45,6 @@ enum DeviceCategory {
   PRINTER
   IOT_DEVICE
 
-  // Browser-as-device (always visible, minZoom 0) - the user's current session device
-  BROWSER_CLIENT
-
   // Other - minZoom 16
   CUSTOM
 }
@@ -178,30 +175,32 @@ model Verification {
 // ─── Device & Network Models ──────────────────────────────────────────────────
 
 model Device {
-  id              String         @id @default(uuid())
-  organizationId  String
-  userId          String?
-  networkId       String?
-  name            String
-  category        DeviceCategory
-  mobility        DeviceMobility @default(UNKNOWN)
-  browserDeviceId String?
-  latitude        Float?
-  longitude       Float?
-  location        Unsupported("geometry(Point, 4326)")?
-  floor           Int?
-  floorLabel      String?
-  ipAddress       String?
-  macAddress      String?
-  notes           String?
-  version         Int            @default(1)
+  id             String         @id @default(uuid())
+  organizationId String
+  userId         String?
+  networkId      String
+  propertyId     String
+  roleCode       String?
+  name           String
+  category       DeviceCategory
+  mobility       DeviceMobility @default(UNKNOWN)
+  latitude       Float?
+  longitude      Float?
+  location       Unsupported("geometry(Point, 4326)")?
+  floor          Int?
+  floorLabel     String?
+  ipAddress      String?
+  macAddress     String?
+  notes          String?
+  version        Int            @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  network      Network?     @relation(fields: [networkId], references: [id], onDelete: SetNull)
+  network      Network      @relation(fields: [networkId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
 
   connectionsFrom DeviceConnection[] @relation("sourceDevice")
   connectionsTo   DeviceConnection[] @relation("targetDevice")
@@ -209,24 +208,17 @@ model Device {
   fiberRunsTo     FiberRun[]         @relation("endDevice")
   circuits        Circuit[]
 
-  @@unique([organizationId, browserDeviceId])
   @@index([organizationId])
   @@index([organizationId, category])
   @@index([organizationId, floor])
   @@index([organizationId, networkId])
+  @@index([organizationId, propertyId])
 }
 
 model Network {
   id             String  @id @default(uuid())
   organizationId String
   userId         String?
-  // RESERVED — null in MVP. FK target for the future Property model in the
-  // Multi-Property tier (post-MVP Priority 2). The Property → Network → Device
-  // hierarchy is the structural anchor of that tier: a Property has many
-  // Networks; a Network belongs to at most one Property. Services do not read
-  // or write this column in MVP. Device.propertyId and DeviceMetric.propertyId
-  // are NOT reserved — they reach Property via Device → Network → Property.
-  propertyId     String?
   name           String
   homeAddress    String?
   homeLatitude   Float?
@@ -240,12 +232,12 @@ model Network {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   devices      Device[]
+  networkLinks NetworkProperty[]
 
   @@index([organizationId])
-  @@index([organizationId, propertyId])
 }
 
 model DeviceConnection {
@@ -385,17 +377,18 @@ model Organization {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  members      OrganizationMember[]
-  domains      OrganizationDomain[]
-  changeLogs   ChangeLog[]
-  devices      Device[]
-  networks     Network[]
-  connections  DeviceConnection[]
-  fiberRuns    FiberRun[]
-  circuits     Circuit[]
-  invitations  Invitation[]
-  joinRequests JoinRequest[]
-  properties   Property[]
+  members          OrganizationMember[]
+  domains          OrganizationDomain[]
+  changeLogs       ChangeLog[]
+  devices          Device[]
+  networks         Network[]
+  connections      DeviceConnection[]
+  fiberRuns        FiberRun[]
+  circuits         Circuit[]
+  invitations      Invitation[]
+  joinRequests     JoinRequest[]
+  properties       Property[]
+  networkProperties NetworkProperty[]
 }
 
 model OrganizationDomain {
@@ -470,13 +463,33 @@ model Property {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent       Property?    @relation("PropertyTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children     Property[]   @relation("PropertyTree")
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        Property?         @relation("PropertyTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Property[]        @relation("PropertyTree")
+  devices       Device[]
+  networkLinks  NetworkProperty[]
 
   @@index([organizationId])
   @@index([organizationId, parentId])
   @@index([organizationId, type])
+}
+
+// ─── Network Charter Models (F2 Phase B) ─────────────────────────────────────
+
+model NetworkProperty {
+  id             String   @id @default(uuid())
+  organizationId String
+  networkId      String
+  propertyId     String
+  createdAt      DateTime @default(now())
+
+  network      Network      @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([networkId, propertyId])
+  @@index([organizationId])
+  @@index([propertyId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
