@@ -71,6 +71,12 @@ enum OrgRole {
   MEMBER
 }
 
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
 enum ChangeAction {
   CREATE
   UPDATE
@@ -109,6 +115,7 @@ model User {
   networks   Network[]
 
   orgMember    OrganizationMember?
+  joinRequests JoinRequest[]
 }
 
 model Account {
@@ -371,14 +378,16 @@ model Organization {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  members     OrganizationMember[]
-  domains     OrganizationDomain[]
-  changeLogs  ChangeLog[]
-  devices     Device[]
-  networks    Network[]
-  connections DeviceConnection[]
-  fiberRuns   FiberRun[]
-  circuits    Circuit[]
+  members      OrganizationMember[]
+  domains      OrganizationDomain[]
+  changeLogs   ChangeLog[]
+  devices      Device[]
+  networks     Network[]
+  connections  DeviceConnection[]
+  fiberRuns    FiberRun[]
+  circuits     Circuit[]
+  invitations  Invitation[]
+  joinRequests JoinRequest[]
 }
 
 model OrganizationDomain {
@@ -405,6 +414,39 @@ model OrganizationMember {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model Invitation {
+  id              String    @id @default(uuid())
+  organizationId  String
+  email           String
+  role            OrgRole   @default(MEMBER)
+  token           String    @unique
+  expiresAt       DateTime
+  invitedByUserId String?
+  acceptedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model JoinRequest {
+  id              String            @id @default(uuid())
+  organizationId  String
+  userId          String
+  status          JoinRequestStatus @default(PENDING)
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([userId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───

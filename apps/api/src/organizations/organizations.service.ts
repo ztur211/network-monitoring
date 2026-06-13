@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { OrgRole } from '@prisma/client';
-import { OrganizationDto, OrganizationMemberDto } from '@nodescope/shared';
+import { OrganizationDto, OrganizationMemberDto, WS_EVENTS } from '@nodescope/shared';
 import { OrganizationsRepository } from './organizations.repository';
 import { UsersRepository } from '../users/users.repository';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -69,6 +69,66 @@ export class OrganizationsService {
     const updated = await this.repo.updateOrganizationWithVersion(organizationId, updatePayload, patch.baseVersion);
     if (!updated) throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     return this.toDto(updated);
+  }
+
+  private assertCanManage(actorRole: OrgRole, targetCurrentRole: OrgRole, nextRole?: OrgRole): void {
+    if (actorRole === 'OWNER') return;
+    if (actorRole === 'ADMIN') {
+      const touchesPrivileged =
+        targetCurrentRole !== 'MEMBER' || (nextRole !== undefined && nextRole !== 'MEMBER');
+      if (touchesPrivileged) {
+        throw new NodeScopeException('ORG_003', 'INSUFFICIENT_ORG_ROLE', HttpStatus.FORBIDDEN);
+      }
+      return;
+    }
+    throw new NodeScopeException('ORG_003', 'INSUFFICIENT_ORG_ROLE', HttpStatus.FORBIDDEN);
+  }
+
+  async changeMemberRole(
+    organizationId: string,
+    actorRole: OrgRole,
+    targetUserId: string,
+    nextRole: OrgRole,
+  ): Promise<void> {
+    const target = await this.repo.findMemberByUserAndOrg(targetUserId, organizationId);
+    if (!target) {
+      throw new NodeScopeException('ORG_002', 'NOT_AN_ORG_MEMBER', HttpStatus.NOT_FOUND);
+    }
+    this.assertCanManage(actorRole, target.role, nextRole);
+    if (
+      target.role === 'OWNER' &&
+      nextRole !== 'OWNER' &&
+      (await this.repo.countOwners(organizationId)) <= 1
+    ) {
+      throw new NodeScopeException('ORG_013', 'LAST_OWNER_PROTECTED', HttpStatus.CONFLICT);
+    }
+    await this.repo.updateMemberRole(targetUserId, organizationId, nextRole);
+    this.conflict.emitEntityEvent(
+      WS_EVENTS.ORG_MEMBER_UPDATED,
+      { userId: targetUserId, role: nextRole },
+      organizationId,
+    );
+  }
+
+  async removeMember(
+    organizationId: string,
+    actorRole: OrgRole,
+    targetUserId: string,
+  ): Promise<void> {
+    const target = await this.repo.findMemberByUserAndOrg(targetUserId, organizationId);
+    if (!target) {
+      throw new NodeScopeException('ORG_002', 'NOT_AN_ORG_MEMBER', HttpStatus.NOT_FOUND);
+    }
+    this.assertCanManage(actorRole, target.role);
+    if (target.role === 'OWNER' && (await this.repo.countOwners(organizationId)) <= 1) {
+      throw new NodeScopeException('ORG_013', 'LAST_OWNER_PROTECTED', HttpStatus.CONFLICT);
+    }
+    await this.repo.deleteMember(targetUserId, organizationId);
+    this.conflict.emitEntityEvent(
+      WS_EVENTS.ORG_MEMBER_REMOVED,
+      { userId: targetUserId },
+      organizationId,
+    );
   }
 
   private toDto(o: {
