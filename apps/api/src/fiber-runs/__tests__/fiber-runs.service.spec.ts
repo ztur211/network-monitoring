@@ -3,6 +3,7 @@ import { FiberRunsService } from '../fiber-runs.service';
 import { FiberRunsRepository } from '../fiber-runs.repository';
 import { DevicesRepository } from '../../devices/devices.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
+import { AuditService } from '../../audit/audit.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 const makeFiberRun = (overrides = {}) => ({
@@ -60,6 +61,12 @@ const mockConflict: jest.Mocked<ConflictResolutionService> = {
   emitEntityEvent: jest.fn(),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
+const mockAudit = {
+  recordCreate: jest.fn().mockResolvedValue(undefined),
+  recordUpdate: jest.fn().mockResolvedValue(undefined),
+  recordDelete: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('FiberRunsService', () => {
   let service: FiberRunsService;
 
@@ -70,6 +77,7 @@ describe('FiberRunsService', () => {
         { provide: FiberRunsRepository, useValue: mockRepo },
         { provide: DevicesRepository, useValue: mockDevicesRepo },
         { provide: ConflictResolutionService, useValue: mockConflict },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -131,6 +139,11 @@ describe('FiberRunsService', () => {
       expect(result.id).toBe('run-1');
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: 'org-1', userId: 'user-1' }),
+      );
+      expect(mockAudit.recordCreate).toHaveBeenCalledWith(
+        'org-1',
+        'FiberRun',
+        expect.objectContaining({ id: 'run-1' }),
       );
     });
 
