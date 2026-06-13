@@ -29,6 +29,5 @@ export const DEVICE_CATEGORY_CONFIG: Record<DeviceCategory, DeviceCategoryConfig
   TABLET:              { minZoom: 18, label: 'End-User Devices' },
   PRINTER:             { minZoom: 18, label: 'End-User Devices' },
   IOT_DEVICE:          { minZoom: 18, label: 'End-User Devices' },
-  BROWSER_CLIENT:      { minZoom: 0,  label: 'This Browser' },
   CUSTOM:              { minZoom: 16, label: 'Other' },
 };

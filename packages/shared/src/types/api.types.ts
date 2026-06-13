@@ -18,6 +18,9 @@ export interface UserDto {
 export interface DeviceDto {
   id: string;
   userId: string | null;
+  networkId: string;
+  propertyId: string;
+  roleCode: string | null;
   name: string;
   category: string;
   latitude: number | null;
@@ -27,10 +30,15 @@ export interface DeviceDto {
   ipAddress: string | null;
   macAddress: string | null;
   notes: string | null;
-  browserDeviceId: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NetworkPropertyDto {
+  id: string;
+  networkId: string;
+  propertyId: string;
 }
 
 export interface FiberRunDto {
