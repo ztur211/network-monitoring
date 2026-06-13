@@ -21,6 +21,10 @@ export const WS_EVENTS = {
   ONBOARDING_TURN: 'v1:onboarding:turn',
   ERROR: 'v1:error',
   PONG: 'v1:pong',
+  ORG_UPDATED: 'v1:org:updated',
+  ORG_MEMBER_ADDED: 'v1:org:member:added',
+  ORG_MEMBER_UPDATED: 'v1:org:member:updated',
+  ORG_MEMBER_REMOVED: 'v1:org:member:removed',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';
