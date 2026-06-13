@@ -8,6 +8,7 @@ import { ConnectionType } from '@prisma/client';
 
 const makeConnection = (overrides = {}) => ({
   id: 'conn-1',
+  organizationId: 'org-1',
   userId: 'user-1',
   sourceDeviceId: 'dev-a',
   targetDeviceId: 'dev-b',
@@ -21,6 +22,7 @@ const makeConnection = (overrides = {}) => ({
 
 const makeDevice = (id: string) => ({
   id,
+  organizationId: 'org-1',
   userId: 'user-1',
   networkId: null,
   name: `Device ${id}`,
@@ -33,17 +35,17 @@ const makeDevice = (id: string) => ({
 });
 
 const mockRepo: jest.Mocked<ConnectionsRepository> = {
-  findAllByUserId: jest.fn(),
-  findByIdAndUserId: jest.fn(),
+  findAllByOrgId: jest.fn(),
+  findByIdAndOrgId: jest.fn(),
   create: jest.fn(),
   updateWithVersion: jest.fn(),
-  deleteByIdAndUserId: jest.fn(),
-  countByUserId: jest.fn(),
+  deleteByIdAndOrgId: jest.fn(),
+  countByOrgId: jest.fn(),
   existsDuplicate: jest.fn(),
 } as unknown as jest.Mocked<ConnectionsRepository>;
 
 const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
-  findByIdAndUserId: jest.fn(),
+  findByIdAndOrgId: jest.fn(),
 } as unknown as jest.Mocked<DevicesRepository>;
 
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
@@ -72,61 +74,63 @@ describe('ConnectionsService', () => {
     const VALID_UUID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 
     it('lists all connections when no deviceId filter is given', async () => {
-      mockRepo.findAllByUserId.mockResolvedValue([]);
-      mockRepo.countByUserId.mockResolvedValue(0);
+      mockRepo.findAllByOrgId.mockResolvedValue([]);
+      mockRepo.countByOrgId.mockResolvedValue(0);
 
-      const result = await service.listConnections('user-1');
+      const result = await service.listConnections('org-1');
 
       expect(result).toEqual({ items: [], total: 0 });
-      expect(mockRepo.findAllByUserId).toHaveBeenCalledWith('user-1', undefined);
+      expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1', undefined);
     });
 
     it('passes a valid UUID deviceId through to the repository', async () => {
-      mockRepo.findAllByUserId.mockResolvedValue([makeConnection()]);
-      mockRepo.countByUserId.mockResolvedValue(1);
+      mockRepo.findAllByOrgId.mockResolvedValue([makeConnection()]);
+      mockRepo.countByOrgId.mockResolvedValue(1);
 
-      await service.listConnections('user-1', VALID_UUID);
+      await service.listConnections('org-1', VALID_UUID);
 
-      expect(mockRepo.findAllByUserId).toHaveBeenCalledWith('user-1', VALID_UUID);
+      expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1', VALID_UUID);
     });
 
     it('rejects an array-shaped deviceId with GEN_001 instead of 500-ing in Prisma', async () => {
-      // Express's qs parses `?deviceId[]=a&deviceId[]=b` into an array.
       const arrayDeviceId = ['dev-a', 'dev-b'] as unknown as string;
 
-      await expect(service.listConnections('user-1', arrayDeviceId)).rejects.toMatchObject({
+      await expect(service.listConnections('org-1', arrayDeviceId)).rejects.toMatchObject({
         code: 'GEN_001',
       });
-      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
+      expect(mockRepo.findAllByOrgId).not.toHaveBeenCalled();
     });
 
     it('rejects a non-UUID deviceId with GEN_001', async () => {
-      await expect(service.listConnections('user-1', 'not-a-uuid')).rejects.toMatchObject({
+      await expect(service.listConnections('org-1', 'not-a-uuid')).rejects.toMatchObject({
         code: 'GEN_001',
       });
-      expect(mockRepo.findAllByUserId).not.toHaveBeenCalled();
+      expect(mockRepo.findAllByOrgId).not.toHaveBeenCalled();
     });
   });
 
   describe('createConnection', () => {
-    it('creates connection for valid different devices', async () => {
-      mockDevicesRepo.findByIdAndUserId
+    it('creates connection for valid different devices in the org', async () => {
+      mockDevicesRepo.findByIdAndOrgId
         .mockResolvedValueOnce(makeDevice('dev-a'))
         .mockResolvedValueOnce(makeDevice('dev-b'));
       mockRepo.existsDuplicate.mockResolvedValue(false);
       mockRepo.create.mockResolvedValue(makeConnection());
 
-      const result = await service.createConnection('user-1', {
+      const result = await service.createConnection('org-1', 'user-1', {
         sourceDeviceId: 'dev-a',
         targetDeviceId: 'dev-b',
         connectionType: ConnectionType.ETHERNET,
       });
       expect(result.id).toBe('conn-1');
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1', userId: 'user-1' }),
+      );
     });
 
     it('throws CONN_002 for self-connection', async () => {
       await expect(
-        service.createConnection('user-1', {
+        service.createConnection('org-1', 'user-1', {
           sourceDeviceId: 'dev-a',
           targetDeviceId: 'dev-a',
           connectionType: ConnectionType.ETHERNET,
@@ -135,13 +139,13 @@ describe('ConnectionsService', () => {
     });
 
     it('throws CONN_003 for duplicate connection', async () => {
-      mockDevicesRepo.findByIdAndUserId
+      mockDevicesRepo.findByIdAndOrgId
         .mockResolvedValueOnce(makeDevice('dev-a'))
         .mockResolvedValueOnce(makeDevice('dev-b'));
       mockRepo.existsDuplicate.mockResolvedValue(true);
 
       await expect(
-        service.createConnection('user-1', {
+        service.createConnection('org-1', 'user-1', {
           sourceDeviceId: 'dev-a',
           targetDeviceId: 'dev-b',
           connectionType: ConnectionType.ETHERNET,
@@ -149,11 +153,11 @@ describe('ConnectionsService', () => {
       ).rejects.toThrow(NodeScopeException);
     });
 
-    it('throws DEVICE_001 when source device not found', async () => {
-      mockDevicesRepo.findByIdAndUserId.mockResolvedValue(null);
+    it('throws DEVICE_001 when source device not found in org', async () => {
+      mockDevicesRepo.findByIdAndOrgId.mockResolvedValue(null);
 
       await expect(
-        service.createConnection('user-1', {
+        service.createConnection('org-1', 'user-1', {
           sourceDeviceId: 'missing',
           targetDeviceId: 'dev-b',
           connectionType: ConnectionType.ETHERNET,
@@ -163,41 +167,79 @@ describe('ConnectionsService', () => {
   });
 
   describe('getConnection', () => {
-    it('returns connection when found', async () => {
-      mockRepo.findByIdAndUserId.mockResolvedValue(makeConnection());
-      const result = await service.getConnection('user-1', 'conn-1');
+    it('returns connection when found in org', async () => {
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeConnection());
+      const result = await service.getConnection('org-1', 'conn-1');
       expect(result.id).toBe('conn-1');
+      expect(mockRepo.findByIdAndOrgId).toHaveBeenCalledWith('conn-1', 'org-1');
     });
 
     it('throws CONN_001 when not found', async () => {
-      mockRepo.findByIdAndUserId.mockResolvedValue(null);
-      await expect(service.getConnection('user-1', 'missing')).rejects.toThrow(NodeScopeException);
+      mockRepo.findByIdAndOrgId.mockResolvedValue(null);
+      await expect(service.getConnection('org-1', 'missing')).rejects.toThrow(NodeScopeException);
     });
   });
 
   describe('updateConnection', () => {
     it('applies changeset and returns updated dto', async () => {
-      mockRepo.findByIdAndUserId.mockResolvedValue(makeConnection());
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeConnection());
       mockConflict.buildUpdatePayload.mockReturnValue({ notes: 'new note' });
       mockRepo.updateWithVersion.mockResolvedValue(makeConnection({ notes: 'new note', version: 2 }));
-      
 
-      const result = await service.updateConnection('user-1', 'conn-1', {
+      const result = await service.updateConnection('org-1', 'conn-1', {
         baseVersion: 1,
         changes: [{ field: 'notes', oldValue: null, newValue: 'new note' }],
       });
       expect(result.notes).toBe('new note');
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:connection:updated',
+        expect.objectContaining({ connectionId: 'conn-1' }),
+        expect.any(String),
+      );
+    });
+
+    it('throws CONN_001 when not found', async () => {
+      mockRepo.findByIdAndOrgId.mockResolvedValue(null);
+      await expect(
+        service.updateConnection('org-1', 'missing', {
+          baseVersion: 1,
+          changes: [{ field: 'notes', oldValue: null, newValue: 'x' }],
+        }),
+      ).rejects.toMatchObject({ code: 'CONN_001' });
+    });
+
+    it('throws SYNC_001 on version conflict', async () => {
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeConnection());
+      mockConflict.buildUpdatePayload.mockReturnValue({ notes: 'x' });
+      mockRepo.updateWithVersion.mockResolvedValue(null);
+      await expect(
+        service.updateConnection('org-1', 'conn-1', {
+          baseVersion: 1,
+          changes: [{ field: 'notes', oldValue: null, newValue: 'x' }],
+        }),
+      ).rejects.toMatchObject({ code: 'SYNC_001' });
     });
   });
 
   describe('deleteConnection', () => {
     it('deletes and publishes event', async () => {
-      mockRepo.findByIdAndUserId.mockResolvedValue(makeConnection());
-      mockRepo.deleteByIdAndUserId.mockResolvedValue(undefined);
-      
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeConnection());
+      mockRepo.deleteByIdAndOrgId.mockResolvedValue(undefined);
 
-      await service.deleteConnection('user-1', 'conn-1');
-      expect(mockRepo.deleteByIdAndUserId).toHaveBeenCalledWith('conn-1', 'user-1');
+      await service.deleteConnection('org-1', 'conn-1');
+      expect(mockRepo.deleteByIdAndOrgId).toHaveBeenCalledWith('conn-1', 'org-1');
+      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+        'v1:connection:deleted',
+        expect.objectContaining({ connectionId: 'conn-1' }),
+        expect.any(String),
+      );
+    });
+
+    it('throws CONN_001 when not found', async () => {
+      mockRepo.findByIdAndOrgId.mockResolvedValue(null);
+      await expect(service.deleteConnection('org-1', 'missing')).rejects.toMatchObject({
+        code: 'CONN_001',
+      });
     });
   });
 });

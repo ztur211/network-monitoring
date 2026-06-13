@@ -35,7 +35,7 @@ export interface DeviceDto {
 
 export interface FiberRunDto {
   id: string;
-  userId: string;
+  userId: string | null;
   name: string;
   startDeviceId: string;
   endDeviceId: string;
@@ -49,7 +49,7 @@ export interface FiberRunDto {
 
 export interface CircuitDto {
   id: string;
-  userId: string;
+  userId: string | null;
   ispName: string;
   circuitId: string | null;
   serviceType: string;
@@ -63,7 +63,7 @@ export interface CircuitDto {
 
 export interface DeviceConnectionDto {
   id: string;
-  userId: string;
+  userId: string | null;
   sourceDeviceId: string;
   targetDeviceId: string;
   connectionType: ConnectionType;

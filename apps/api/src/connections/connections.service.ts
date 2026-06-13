@@ -16,7 +16,7 @@ export class ConnectionsService {
     private readonly conflictService: ConflictResolutionService,
   ) {}
 
-  async listConnections(userId: string, deviceId?: string): Promise<PaginatedResponse<DeviceConnectionDto>> {
+  async listConnections(organizationId: string, deviceId?: string): Promise<PaginatedResponse<DeviceConnectionDto>> {
     // `deviceId` is a raw query param; a malformed value (e.g. the array Express
     // parses from `?deviceId[]=a&deviceId[]=b`) would otherwise reach Prisma as an
     // invalid scalar filter and 500. A bad filter is client input → 400.
@@ -24,27 +24,31 @@ export class ConnectionsService {
       throw new NodeScopeException('GEN_001', 'INVALID_DEVICE_ID', HttpStatus.BAD_REQUEST);
     }
     const [items, total] = await Promise.all([
-      this.connectionsRepository.findAllByUserId(userId, deviceId),
-      this.connectionsRepository.countByUserId(userId),
+      this.connectionsRepository.findAllByOrgId(organizationId, deviceId),
+      this.connectionsRepository.countByOrgId(organizationId),
     ]);
     return { items: items.map((c) => this.toDto(c)), total };
   }
 
-  async createConnection(userId: string, dto: CreateConnectionDto): Promise<DeviceConnectionDto> {
+  async createConnection(
+    organizationId: string,
+    creatorUserId: string,
+    dto: CreateConnectionDto,
+  ): Promise<DeviceConnectionDto> {
     if (dto.sourceDeviceId === dto.targetDeviceId) {
       throw new NodeScopeException('CONN_002', 'SELF_CONNECTION', HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     const [source, target] = await Promise.all([
-      this.devicesRepository.findByIdAndUserId(dto.sourceDeviceId, userId),
-      this.devicesRepository.findByIdAndUserId(dto.targetDeviceId, userId),
+      this.devicesRepository.findByIdAndOrgId(dto.sourceDeviceId, organizationId),
+      this.devicesRepository.findByIdAndOrgId(dto.targetDeviceId, organizationId),
     ]);
     if (!source || !target) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
     const duplicate = await this.connectionsRepository.existsDuplicate(
-      userId,
+      organizationId,
       dto.sourceDeviceId,
       dto.targetDeviceId,
       dto.connectionType,
@@ -53,12 +57,16 @@ export class ConnectionsService {
       throw new NodeScopeException('CONN_003', 'DUPLICATE_CONNECTION', HttpStatus.CONFLICT);
     }
 
-    const connection = await this.connectionsRepository.create({ userId, ...dto });
+    const connection = await this.connectionsRepository.create({
+      organizationId,
+      userId: creatorUserId,
+      ...dto,
+    });
     return this.toDto(connection);
   }
 
-  async getConnection(userId: string, connectionId: string): Promise<DeviceConnectionDto> {
-    const connection = await this.connectionsRepository.findByIdAndUserId(connectionId, userId);
+  async getConnection(organizationId: string, connectionId: string): Promise<DeviceConnectionDto> {
+    const connection = await this.connectionsRepository.findByIdAndOrgId(connectionId, organizationId);
     if (!connection) {
       throw new NodeScopeException('CONN_001', 'CONNECTION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -66,11 +74,11 @@ export class ConnectionsService {
   }
 
   async updateConnection(
-    userId: string,
+    organizationId: string,
     connectionId: string,
     patch: PatchConnectionDto,
   ): Promise<DeviceConnectionDto> {
-    const connection = await this.connectionsRepository.findByIdAndUserId(connectionId, userId);
+    const connection = await this.connectionsRepository.findByIdAndOrgId(connectionId, organizationId);
     if (!connection) {
       throw new NodeScopeException('CONN_001', 'CONNECTION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -84,7 +92,7 @@ export class ConnectionsService {
 
     const updated = await this.connectionsRepository.updateWithVersion(
       connectionId,
-      userId,
+      organizationId,
       updatePayload,
       patch.baseVersion,
     );
@@ -95,19 +103,23 @@ export class ConnectionsService {
     const dto = this.toDto(updated);
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CONNECTION_UPDATED,
-      { connectionId, connection: dto, changes: patch.changes, updatedBy: userId },
-      userId,
+      { connectionId, connection: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
+      updated.userId ?? '',
     );
     return dto;
   }
 
-  async deleteConnection(userId: string, connectionId: string): Promise<void> {
-    const connection = await this.connectionsRepository.findByIdAndUserId(connectionId, userId);
+  async deleteConnection(organizationId: string, connectionId: string): Promise<void> {
+    const connection = await this.connectionsRepository.findByIdAndOrgId(connectionId, organizationId);
     if (!connection) {
       throw new NodeScopeException('CONN_001', 'CONNECTION_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    await this.connectionsRepository.deleteByIdAndUserId(connectionId, userId);
-    this.conflictService.emitEntityEvent(WS_EVENTS.CONNECTION_DELETED, { connectionId }, userId);
+    await this.connectionsRepository.deleteByIdAndOrgId(connectionId, organizationId);
+    this.conflictService.emitEntityEvent(
+      WS_EVENTS.CONNECTION_DELETED,
+      { connectionId },
+      connection.userId ?? '',
+    );
   }
 
   private toDto(connection: DeviceConnection): DeviceConnectionDto {
