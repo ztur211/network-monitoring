@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { Property, PropertyType } from '@prisma/client';
 import { PropertyDto, WS_EVENTS } from '@nodescope/shared';
 import { PropertiesRepository } from './properties.repository';
+import { ContainmentService } from './containment.service';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -14,6 +15,7 @@ export class PropertiesService {
     private readonly repo: PropertiesRepository,
     private readonly conflict: ConflictResolutionService,
     private readonly audit: AuditService,
+    private readonly containment: ContainmentService,
   ) {}
 
   async listProperties(organizationId: string): Promise<PropertyDto[]> {
@@ -59,7 +61,7 @@ export class PropertiesService {
       }
       const newParentType = await this.resolveParentType(organizationId, nextParentId);
       assertValidNesting(newParentType, current.type);
-      // NOTE: containment re-validation (devices/charters) is added in Phase B.
+      await this.containment.assertReparentKeepsContainment(organizationId, id, nextParentId);
     }
 
     if (nameChange || parentChange) {
@@ -82,10 +84,13 @@ export class PropertiesService {
   async deleteProperty(organizationId: string, id: string): Promise<void> {
     const p = await this.repo.findByIdAndOrgId(id, organizationId);
     if (!p) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
-    if ((await this.repo.countChildren(organizationId, id)) > 0) {
+    const subtreeIds = await this.repo.getSubtreeIds(organizationId, id);
+    const hasChildren = subtreeIds.length > 1;
+    const devices = await this.repo.countDevicesUnder(organizationId, subtreeIds);
+    const charters = await this.repo.countChartersUnder(organizationId, subtreeIds);
+    if (hasChildren || devices > 0 || charters > 0) {
       throw new NodeScopeException('PROP_004', 'PROPERTY_NOT_EMPTY', HttpStatus.CONFLICT);
     }
-    // NOTE: Phase B also blocks on placed devices and network charters before deleting.
     await this.repo.deleteByIdAndOrgId(id, organizationId);
     this.conflict.emitEntityEvent(WS_EVENTS.PROPERTY_DELETED, { id }, organizationId);
     await this.audit.recordDelete(organizationId, 'Property', p);
