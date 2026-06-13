@@ -1,4 +1,3 @@
-import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JoinRequestStatus, OrgRole } from '@prisma/client';
 import { JoinRequestsService } from '../join-requests.service';
