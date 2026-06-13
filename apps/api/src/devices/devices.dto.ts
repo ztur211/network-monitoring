@@ -7,6 +7,7 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -23,6 +24,9 @@ import { ChangesetChangeDto } from '../common/dto/changeset.dto';
 export const DEVICE_WRITABLE_FIELDS = [
   'name',
   'category',
+  'networkId',
+  'propertyId',
+  'roleCode',
   'latitude',
   'longitude',
   'floor',
@@ -41,6 +45,17 @@ export class CreateDeviceDto {
 
   @IsEnum(DeviceCategory)
   category: DeviceCategory;
+
+  @IsUUID()
+  networkId: string;
+
+  @IsUUID()
+  propertyId: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  roleCode?: string;
 
   @IsOptional()
   @IsLatitude()

@@ -50,6 +50,9 @@ export class MapService {
   private deviceToDto(device: Device): DeviceDto {
     return {
       id: device.id,
+      networkId: device.networkId,
+      propertyId: device.propertyId,
+      roleCode: device.roleCode,
       userId: device.userId,
       name: device.name,
       category: device.category,
@@ -60,7 +63,6 @@ export class MapService {
       ipAddress: device.ipAddress,
       macAddress: device.macAddress,
       notes: device.notes,
-      browserDeviceId: device.browserDeviceId,
       version: device.version,
       createdAt: device.createdAt.toISOString(),
       updatedAt: device.updatedAt.toISOString(),

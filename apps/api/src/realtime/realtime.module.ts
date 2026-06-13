@@ -2,7 +2,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { RedisModule } from '../redis/redis.module';
 import { DataSourcesModule } from '../data-sources/data-sources.module';
 import { AiModule } from '../ai/ai.module';
-import { DevicesModule } from '../devices/devices.module';
 import { NetworksModule } from '../networks/networks.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { RealtimeGateway } from './realtime.gateway';
@@ -14,7 +13,6 @@ import { REALTIME_SERVICE } from './realtime.types';
     DataSourcesModule,
     AiModule,
     OrganizationsModule,
-    forwardRef(() => DevicesModule),
     forwardRef(() => NetworksModule),
   ],
   providers: [

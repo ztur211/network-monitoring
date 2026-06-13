@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { DeviceCategory, DeviceMobility, Network } from '@prisma/client';
+import { DeviceCategory, Network } from '@prisma/client';
 import {
   OnboardingProgress,
   OnboardingStepId,
@@ -8,8 +8,6 @@ import {
 } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
-import { DevicesRepository } from '../devices/devices.repository';
-import { DevicesService } from '../devices/devices.service';
 import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocoding.interface';
 import { NetworksRepository } from '../networks/networks.repository';
 import { NetworksService } from '../networks/networks.service';
@@ -49,8 +47,6 @@ export class OnboardingService {
     private readonly redis: RedisService,
     private readonly networksService: NetworksService,
     private readonly networksRepository: NetworksRepository,
-    private readonly devicesService: DevicesService,
-    private readonly devicesRepository: DevicesRepository,
     private readonly usersRepository: UsersRepository,
     private readonly aiService: AiService,
     private readonly conflictService: ConflictResolutionService,
@@ -87,7 +83,7 @@ export class OnboardingService {
     const result = handleStep(state.stepId, state.progress, input);
 
     for (const effect of result.sideEffects) {
-      await this.enactSideEffect(organizationId, userId, ip, dto.browserDeviceId, effect);
+      await this.enactSideEffect(organizationId, userId, ip, effect);
     }
 
     const ai = await this.aiService.generateOnboardingMessage(
@@ -162,30 +158,16 @@ export class OnboardingService {
     organizationId: string,
     userId: string,
     ip: string,
-    browserDeviceId: string,
     effect: OnboardingSideEffect,
   ): Promise<void> {
     switch (effect.type) {
       case 'SaveNetwork':
         await this.persistNetworkFields(organizationId, userId, effect.payload as unknown as Record<string, unknown>);
         break;
-      case 'SaveBrowserDevice': {
-        const network = await this.findOrgNetwork(organizationId);
-        const mobility = effect.payload.mobility as DeviceMobility | undefined;
-        if (!mobility) {
-          this.logger.warn({ effect }, 'SaveBrowserDevice missing mobility — skipping');
-          break;
-        }
-        await this.devicesService.createBrowserDevice(
-          organizationId,
-          userId,
-          browserDeviceId,
-          effect.payload.name,
-          mobility,
-          network?.id,
-        );
+      case 'SaveBrowserDevice':
+        // BROWSER_CLIENT retired in F2 Phase B — browser device creation is no longer supported
+        this.logger.debug({ effect }, 'SaveBrowserDevice side-effect is a no-op after BROWSER_CLIENT retirement');
         break;
-      }
       case 'SaveRouterDevice':
         await this.createInfrastructureDevice(organizationId, userId, DeviceCategory.ROUTER, effect.payload);
         break;
@@ -254,26 +236,18 @@ export class OnboardingService {
 
   private async createInfrastructureDevice(
     organizationId: string,
-    userId: string,
+    _userId: string,
     category: DeviceCategory,
     payload: { name: string; macAddress: string | undefined },
   ): Promise<void> {
-    const network = await this.findOrgNetwork(organizationId);
-    try {
-      await this.devicesRepository.create({
-        organizationId,
-        userId,
-        name: payload.name,
-        category,
-        macAddress: payload.macAddress,
-        networkId: network?.id,
-      });
-    } catch (err) {
-      this.logger.warn(
-        { err, category, payload },
-        'Failed to persist infrastructure device during onboarding — wizard continues',
-      );
-    }
+    // Device creation during onboarding requires networkId + propertyId (F2 Phase B).
+    // The wizard does not yet collect property context (that arrives in F2 Phase C),
+    // so infrastructure devices are deferred — log and continue. The wizard flow is
+    // unaffected because the try/catch already swallowed failures from this call.
+    this.logger.debug(
+      { organizationId, category, payload },
+      'createInfrastructureDevice is a no-op until Phase C provides propertyId context',
+    );
   }
 }
 
