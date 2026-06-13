@@ -15,6 +15,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
+import { OrgId } from '../organizations/decorators/org-id.decorator';
 import { CreateCircuitDto, ListCircuitsQueryDto, PatchCircuitDto } from './circuits.dto';
 import { CircuitsService } from './circuits.service';
 
@@ -24,46 +25,50 @@ export class CircuitsController {
 
   @Get()
   async listCircuits(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Query() query: ListCircuitsQueryDto,
   ) {
-    const data = await this.circuitsService.listCircuits(user.id, query);
+    const data = await this.circuitsService.listCircuits(orgId, query);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
-  async createCircuit(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCircuitDto) {
-    const data = await this.circuitsService.createCircuit(user.id, dto);
+  async createCircuit(
+    @OrgId() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCircuitDto,
+  ) {
+    const data = await this.circuitsService.createCircuit(orgId, user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Get(':id')
   async getCircuit(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const data = await this.circuitsService.getCircuit(user.id, id);
+    const data = await this.circuitsService.getCircuit(orgId, id);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Patch(':id')
   async updateCircuit(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() patch: PatchCircuitDto,
   ) {
-    const data = await this.circuitsService.updateCircuit(user.id, id, patch);
+    const data = await this.circuitsService.updateCircuit(orgId, id, patch);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Delete(':id')
   async deleteCircuit(
-    @CurrentUser() user: AuthenticatedUser,
+    @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.circuitsService.deleteCircuit(user.id, id);
+    await this.circuitsService.deleteCircuit(orgId, id);
     return { success: true, data: null, timestamp: new Date().toISOString() };
   }
 }

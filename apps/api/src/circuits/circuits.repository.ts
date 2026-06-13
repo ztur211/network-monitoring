@@ -4,7 +4,8 @@ import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateCircuitData = {
-  userId: string;
+  organizationId: string;
+  userId: string | null;
   ispName: string;
   serviceType: string;
   circuitId?: string;
@@ -22,13 +23,13 @@ type CursorPayload = {
 export class CircuitsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findWithCursor(userId: string, limit: number, cursor?: string): Promise<Circuit[]> {
-    let where: Prisma.CircuitWhereInput = { userId };
+  async findWithCursor(organizationId: string, limit: number, cursor?: string): Promise<Circuit[]> {
+    let where: Prisma.CircuitWhereInput = { organizationId };
 
     if (cursor) {
       const decoded = this.decodeCursor(cursor);
       where = {
-        userId,
+        organizationId,
         OR: [
           { createdAt: { lt: new Date(decoded.createdAt) } },
           { createdAt: new Date(decoded.createdAt), id: { lt: decoded.id } },
@@ -58,12 +59,12 @@ export class CircuitsRepository {
     }
   }
 
-  countByUserId(userId: string): Promise<number> {
-    return this.prisma.circuit.count({ where: { userId } });
+  countByOrgId(organizationId: string): Promise<number> {
+    return this.prisma.circuit.count({ where: { organizationId } });
   }
 
-  findByIdAndUserId(circuitId: string, userId: string): Promise<Circuit | null> {
-    return this.prisma.circuit.findFirst({ where: { id: circuitId, userId } });
+  findByIdAndOrgId(circuitId: string, organizationId: string): Promise<Circuit | null> {
+    return this.prisma.circuit.findFirst({ where: { id: circuitId, organizationId } });
   }
 
   create(data: CreateCircuitData): Promise<Circuit> {
@@ -72,19 +73,19 @@ export class CircuitsRepository {
 
   async updateWithVersion(
     circuitId: string,
-    userId: string,
+    organizationId: string,
     data: Prisma.CircuitUpdateInput,
     expectedVersion: number,
   ): Promise<Circuit | null> {
     const result = await this.prisma.circuit.updateMany({
-      where: { id: circuitId, userId, version: expectedVersion },
+      where: { id: circuitId, organizationId, version: expectedVersion },
       data: { ...data, version: { increment: 1 } },
     });
     if (result.count === 0) return null;
     return this.prisma.circuit.findUnique({ where: { id: circuitId } });
   }
 
-  async deleteByIdAndUserId(circuitId: string, userId: string): Promise<void> {
-    await this.prisma.circuit.deleteMany({ where: { id: circuitId, userId } });
+  async deleteByIdAndOrgId(circuitId: string, organizationId: string): Promise<void> {
+    await this.prisma.circuit.deleteMany({ where: { id: circuitId, organizationId } });
   }
 }
