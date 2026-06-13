@@ -80,7 +80,10 @@ ALTER TABLE "DeviceConnection" ADD CONSTRAINT "DeviceConnection_organizationId_f
 ALTER TABLE "DeviceConnection" ADD CONSTRAINT "DeviceConnection_userId_fkey"
   FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
-CREATE UNIQUE INDEX "DeviceConnection_organizationId_sourceDeviceId_targetDeviceId_connectionType_key"
+-- NB: index name is Prisma's 63-char truncation of
+-- DeviceConnection_organizationId_sourceDeviceId_targetDeviceId_connectionType_key,
+-- which differs from Postgres's naive truncation — must match Prisma to avoid drift.
+CREATE UNIQUE INDEX "DeviceConnection_organizationId_sourceDeviceId_targetDevice_key"
   ON "DeviceConnection"("organizationId", "sourceDeviceId", "targetDeviceId", "connectionType");
 CREATE INDEX "DeviceConnection_organizationId_sourceDeviceId_idx" ON "DeviceConnection"("organizationId", "sourceDeviceId");
 CREATE INDEX "DeviceConnection_organizationId_targetDeviceId_idx" ON "DeviceConnection"("organizationId", "targetDeviceId");
