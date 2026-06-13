@@ -9,6 +9,8 @@ const mockRepository = {
   findLatestForUsers: jest.fn(),
 };
 
+const ORG = 'org-test';
+
 describe('DataSourcesService', () => {
   let service: DataSourcesService;
 
@@ -24,9 +26,9 @@ describe('DataSourcesService', () => {
   });
 
   describe('ingest', () => {
-    it('writes metric via repository', async () => {
+    it('writes metric via repository with organizationId and userId', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', {
+      await service.ingest(ORG, 'user-1', {
         bandwidthDown: 100,
         bandwidthUp: 10,
         latency: 20,
@@ -34,6 +36,7 @@ describe('DataSourcesService', () => {
       });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({
+          organizationId: ORG,
           userId: 'user-1',
           sourceType: 'browser',
           bandwidthDown: 100,
@@ -46,14 +49,14 @@ describe('DataSourcesService', () => {
 
     it('ignores unknown fields in raw payload', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: 50, unknownField: 'x' });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: 50, unknownField: 'x' });
       const callArg = mockRepository.createMetric.mock.calls[0][0] as Record<string, unknown>;
       expect(callArg['unknownField']).toBeUndefined();
     });
 
     it('passes deviceId through to repository when present', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { deviceId: 'device-uuid-1', bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { deviceId: 'device-uuid-1', bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ deviceId: 'device-uuid-1' }),
       );
@@ -61,7 +64,7 @@ describe('DataSourcesService', () => {
 
     it('passes tag through to repository when present', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { tag: 'speedtest', bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { tag: 'speedtest', bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ tag: 'speedtest' }),
       );
@@ -69,7 +72,7 @@ describe('DataSourcesService', () => {
 
     it('defaults deviceId to null when absent', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ deviceId: null }),
       );
@@ -77,7 +80,7 @@ describe('DataSourcesService', () => {
 
     it('defaults tag to null when absent', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ tag: null }),
       );
@@ -85,7 +88,7 @@ describe('DataSourcesService', () => {
 
     it('ignores non-string deviceId', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { deviceId: 12345, bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { deviceId: 12345, bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ deviceId: null }),
       );
@@ -93,7 +96,7 @@ describe('DataSourcesService', () => {
 
     it('ignores non-string tag', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { tag: 42, bandwidthDown: 50 });
+      await service.ingest(ORG, 'user-1', { tag: 42, bandwidthDown: 50 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ tag: null }),
       );
@@ -101,7 +104,7 @@ describe('DataSourcesService', () => {
 
     it('drops non-finite numbers (Infinity / NaN)', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: Infinity, latency: NaN, bandwidthUp: 10 });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: Infinity, latency: NaN, bandwidthUp: 10 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ bandwidthDown: null, latency: null, bandwidthUp: 10 }),
       );
@@ -109,7 +112,7 @@ describe('DataSourcesService', () => {
 
     it('drops an over-magnitude number', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: 1e308 });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: 1e308 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ bandwidthDown: null }),
       );
@@ -117,7 +120,7 @@ describe('DataSourcesService', () => {
 
     it('accepts a large but bounded number', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', { bandwidthDown: 1_000_000 });
+      await service.ingest(ORG, 'user-1', { bandwidthDown: 1_000_000 });
       expect(mockRepository.createMetric).toHaveBeenCalledWith(
         expect.objectContaining({ bandwidthDown: 1_000_000 }),
       );
@@ -125,7 +128,7 @@ describe('DataSourcesService', () => {
 
     it('drops over-length strings (connectionQuality, tag)', async () => {
       mockRepository.createMetric.mockResolvedValue(undefined);
-      await service.ingest('user-1', {
+      await service.ingest(ORG, 'user-1', {
         connectionQuality: 'q'.repeat(300),
         tag: 't'.repeat(300),
         bandwidthDown: 50,
@@ -139,7 +142,7 @@ describe('DataSourcesService', () => {
   describe('getLatestMetric', () => {
     it('returns null when no metrics exist', async () => {
       mockRepository.findLatestForUser.mockResolvedValue(null);
-      const result = await service.getLatestMetric('user-1');
+      const result = await service.getLatestMetric(ORG, 'user-1');
       expect(result).toBeNull();
     });
 
@@ -147,6 +150,7 @@ describe('DataSourcesService', () => {
       const now = new Date();
       mockRepository.findLatestForUser.mockResolvedValue({
         id: 'metric-1',
+        organizationId: ORG,
         userId: 'user-1',
         sourceType: 'browser',
         bandwidthDown: 100,
@@ -155,7 +159,7 @@ describe('DataSourcesService', () => {
         connectionQuality: '4g',
         time: now,
       });
-      const result = await service.getLatestMetric('user-1');
+      const result = await service.getLatestMetric(ORG, 'user-1');
       expect(result).toEqual<MetricRecord>({
         sourceType: 'browser',
         bandwidthDown: 100,
@@ -169,7 +173,7 @@ describe('DataSourcesService', () => {
 
   describe('getLatestMetrics (batch)', () => {
     it('returns empty map when no users provided', async () => {
-      const result = await service.getLatestMetrics([]);
+      const result = await service.getLatestMetrics(ORG, []);
       expect(result).toEqual(new Map());
     });
 
@@ -177,6 +181,7 @@ describe('DataSourcesService', () => {
       const now = new Date();
       mockRepository.findLatestForUsers.mockResolvedValue([
         {
+          organizationId: ORG,
           userId: 'user-1',
           sourceType: 'browser',
           bandwidthDown: 100,
@@ -186,7 +191,7 @@ describe('DataSourcesService', () => {
           time: now,
         },
       ]);
-      const result = await service.getLatestMetrics(['user-1', 'user-2']);
+      const result = await service.getLatestMetrics(ORG, ['user-1', 'user-2']);
       expect(result.get('user-1')).toEqual(
         expect.objectContaining({ bandwidthDown: 100, latency: 20 }),
       );
@@ -197,7 +202,7 @@ describe('DataSourcesService', () => {
   describe('getDataSourceStatus', () => {
     it('reports connected false when no metrics exist', async () => {
       mockRepository.findLatestForUser.mockResolvedValue(null);
-      const statuses = await service.getDataSourceStatus('user-1');
+      const statuses = await service.getDataSourceStatus(ORG, 'user-1');
       const browser = statuses.find((s) => s.type === 'browser');
       expect(browser!.connected).toBe(false);
       expect(browser!.lastSeen).toBeNull();
@@ -206,6 +211,7 @@ describe('DataSourcesService', () => {
     it('reports connected true when recent metric exists', async () => {
       const recent = new Date(Date.now() - 60_000);
       mockRepository.findLatestForUser.mockResolvedValue({
+        organizationId: ORG,
         userId: 'user-1',
         time: recent,
         sourceType: 'browser',
@@ -214,7 +220,7 @@ describe('DataSourcesService', () => {
         latency: null,
         connectionQuality: null,
       });
-      const statuses = await service.getDataSourceStatus('user-1');
+      const statuses = await service.getDataSourceStatus(ORG, 'user-1');
       const browser = statuses.find((s) => s.type === 'browser');
       expect(browser!.connected).toBe(true);
       expect(browser!.lastSeen).toBe(recent.toISOString());
@@ -223,6 +229,7 @@ describe('DataSourcesService', () => {
     it('reports connected false when last metric is older than threshold', async () => {
       const old = new Date(Date.now() - 300_000);
       mockRepository.findLatestForUser.mockResolvedValue({
+        organizationId: ORG,
         userId: 'user-1',
         time: old,
         sourceType: 'browser',
@@ -231,7 +238,7 @@ describe('DataSourcesService', () => {
         latency: null,
         connectionQuality: null,
       });
-      const statuses = await service.getDataSourceStatus('user-1');
+      const statuses = await service.getDataSourceStatus(ORG, 'user-1');
       const browser = statuses.find((s) => s.type === 'browser');
       expect(browser!.connected).toBe(false);
     });

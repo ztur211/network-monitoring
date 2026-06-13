@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('DevicesController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let orgId: string;
   const testEmail = `e2e-devices-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -31,10 +32,18 @@ describe('DevicesController (e2e)', () => {
 
     const setCookie = res.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+
+    const prisma = app.get(PrismaService);
+    const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const org = await prisma.organization.create({ data: { name: `E2E Devices ${Date.now()}` } });
+    orgId = org.id;
+    await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
@@ -84,14 +93,14 @@ describe('DevicesController (e2e)', () => {
       deviceId = res.body.data.id;
     });
 
-    it('returns 409 DEVICE_003 when name is already taken (case-insensitive)', async () => {
+    it('returns 409 ORG_005 when name is already taken in org (case-insensitive)', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
         .send({ name: 'test router', category: 'SWITCH' });
 
       expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('DEVICE_003');
+      expect(res.body.error.code).toBe('ORG_005');
     });
 
     it('replays a create idempotently — same Idempotency-Key returns the original row, no duplicate', async () => {
@@ -192,6 +201,32 @@ describe('DevicesController (e2e)', () => {
         .set('Cookie', sessionCookie);
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('Audit ALS end-to-end', () => {
+    it('writes a ChangeLog CREATE row with the session actor (ALS end-to-end)', async () => {
+      const prisma = app.get(PrismaService);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/devices')
+        .set('Cookie', sessionCookie)
+        .send({ name: `AuditE2E ${Date.now()}`, category: 'ROUTER' })
+        .expect(201);
+
+      const newId = res.body.data.id;
+
+      const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+      const logs = await prisma.changeLog.findMany({
+        where: { entityType: 'Device', entityId: newId, action: 'CREATE' },
+      });
+
+      expect(logs).toHaveLength(1);
+      // AuthGuard must have populated userId in the ALS store
+      expect(logs[0].userId).toBe(u.id);
+      // AuditContextMiddleware must have populated a real requestId (not the fallback 'unknown')
+      expect(logs[0].requestId).not.toBe('unknown');
+      expect(logs[0].requestId.length).toBeGreaterThan(0);
     });
   });
 });

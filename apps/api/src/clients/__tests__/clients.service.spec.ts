@@ -19,7 +19,7 @@ describe('ClientsService', () => {
   });
 
   const platformFor = async (userAgent: string): Promise<string | null> => {
-    const result = await service.getClients('user-1', userAgent);
+    const result = await service.getClients('org-1', 'user-1', userAgent);
     return result.currentDevice.platform;
   };
 
@@ -108,14 +108,14 @@ describe('ClientsService', () => {
 
   describe('getClients envelope', () => {
     it('reports the agent as unavailable (post-MVP)', async () => {
-      const result = await service.getClients('user-1', 'any');
+      const result = await service.getClients('org-1', 'user-1', 'any');
       expect(result.agentStatus.available).toBe(false);
       expect(result.agentStatus.message).toContain('Desktop Agent');
     });
 
     it('returns null metrics when there is no latest metric', async () => {
       mockDataSources.getLatestMetric.mockResolvedValue(null);
-      const result = await service.getClients('user-1', 'any');
+      const result = await service.getClients('org-1', 'user-1', 'any');
       expect(result.currentDevice.metrics).toBeNull();
     });
 
@@ -129,6 +129,7 @@ describe('ClientsService', () => {
         timestamp,
       });
       const result = await service.getClients(
+        'org-1',
         'user-1',
         'Mozilla/5.0 (Windows NT 10.0)',
       );

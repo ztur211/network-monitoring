@@ -48,6 +48,7 @@ export class AiService {
   ) {}
 
   async sendMessageStream(
+    organizationId: string,
     userId: string,
     userTier: string,
     ip: string,
@@ -59,7 +60,7 @@ export class AiService {
     const conversationId = dto.conversationId ?? this.conversation.createConversationId();
     const [history, systemPrompt] = await Promise.all([
       this.conversation.getHistory(userId, conversationId),
-      this.contextBuilder.buildSystemPrompt(userId, userTier),
+      this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier),
     ]);
 
     const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);

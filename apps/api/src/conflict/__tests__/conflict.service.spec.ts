@@ -6,7 +6,7 @@ import { ChangesetDto, WS_EVENTS } from '@nodescope/shared';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS } from '../../devices/devices.dto';
 
-const mockRealtimeService = { pushToUser: jest.fn() };
+const mockRealtimeService = { pushToUser: jest.fn(), pushToOrg: jest.fn() };
 
 /** Asserts a call throws a NodeScopeException carrying GEN_001 / 400. */
 function expectGen001BadRequest(fn: () => unknown): void {
@@ -178,23 +178,35 @@ describe('ConflictResolutionService', () => {
   });
 
   describe('emitEntityEvent', () => {
-    it('calls realtimeService.pushToUser with event and payload including timestamp', () => {
+    it('emits entity events to the org room, not a user room', () => {
+      const entityPayload = { deviceId: 'd1' };
+      service.emitEntityEvent(WS_EVENTS.DEVICE_UPDATED, entityPayload, 'org1');
+      expect(mockRealtimeService.pushToOrg).toHaveBeenCalledWith(
+        'org1',
+        WS_EVENTS.DEVICE_UPDATED,
+        expect.objectContaining({ deviceId: 'd1' }),
+      );
+      expect(mockRealtimeService.pushToUser).not.toHaveBeenCalled();
+    });
+
+    it('enriches the payload with a timestamp', () => {
       const entityPayload = { deviceId: 'dev-1', device: { id: 'dev-1' } };
-      service.emitEntityEvent(WS_EVENTS.DEVICE_UPDATED, entityPayload, 'user-1');
-      expect(mockRealtimeService.pushToUser).toHaveBeenCalledWith(
-        'user-1',
+      service.emitEntityEvent(WS_EVENTS.DEVICE_UPDATED, entityPayload, 'org-1');
+      expect(mockRealtimeService.pushToOrg).toHaveBeenCalledWith(
+        'org-1',
         WS_EVENTS.DEVICE_UPDATED,
         expect.objectContaining({ deviceId: 'dev-1', timestamp: expect.any(String) }),
       );
     });
 
-    it('calls realtimeService.pushToUser for delete events', () => {
-      service.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId: 'dev-1' }, 'user-1');
-      expect(mockRealtimeService.pushToUser).toHaveBeenCalledWith(
-        'user-1',
+    it('routes delete events to the org room', () => {
+      service.emitEntityEvent(WS_EVENTS.DEVICE_DELETED, { deviceId: 'dev-1' }, 'org-1');
+      expect(mockRealtimeService.pushToOrg).toHaveBeenCalledWith(
+        'org-1',
         WS_EVENTS.DEVICE_DELETED,
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
+      expect(mockRealtimeService.pushToUser).not.toHaveBeenCalled();
     });
   });
 });

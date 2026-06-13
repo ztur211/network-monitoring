@@ -26,9 +26,10 @@ export class DataSourcesService {
 
   constructor(private readonly repository: DataSourcesRepository) {}
 
-  async ingest(userId: string, raw: unknown): Promise<void> {
+  async ingest(organizationId: string, userId: string, raw: unknown): Promise<void> {
     const payload = this.parseRawPayload(raw);
     await this.repository.createMetric({
+      organizationId,
       userId,
       sourceType: 'browser',
       bandwidthDown: payload.bandwidthDown ?? null,
@@ -38,19 +39,22 @@ export class DataSourcesService {
       deviceId: payload.deviceId ?? null,
       tag: payload.tag ?? null,
     });
-    this.logger.debug({ userId }, 'Metric ingested from browser collector');
+    this.logger.debug({ organizationId, userId }, 'Metric ingested from browser collector');
   }
 
-  async getLatestMetric(userId: string): Promise<MetricRecord | null> {
-    const row = await this.repository.findLatestForUser(userId);
+  async getLatestMetric(organizationId: string, userId: string): Promise<MetricRecord | null> {
+    const row = await this.repository.findLatestForUser(organizationId, userId);
     if (!row) return null;
     return this.rowToMetricRecord(row);
   }
 
-  async getLatestMetrics(userIds: string[]): Promise<Map<string, MetricsDto>> {
+  async getLatestMetrics(
+    organizationId: string,
+    userIds: string[],
+  ): Promise<Map<string, MetricsDto>> {
     if (userIds.length === 0) return new Map();
 
-    const rows = await this.repository.findLatestForUsers(userIds);
+    const rows = await this.repository.findLatestForUsers(organizationId, userIds);
     const result = new Map<string, MetricsDto>();
     for (const row of rows) {
       result.set(row.userId, {
@@ -64,8 +68,11 @@ export class DataSourcesService {
     return result;
   }
 
-  async getDataSourceStatus(userId: string): Promise<DataSourceStatus[]> {
-    const latest = await this.repository.findLatestForUser(userId);
+  async getDataSourceStatus(
+    organizationId: string,
+    userId: string,
+  ): Promise<DataSourceStatus[]> {
+    const latest = await this.repository.findLatestForUser(organizationId, userId);
     const now = Date.now();
     const lastSeenDate = latest?.time as Date | undefined;
     const connected =

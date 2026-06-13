@@ -12,6 +12,7 @@ describe('NetworksController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
   let networkId: string;
+  let orgId: string;
   const testEmail = `e2e-networks-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -32,10 +33,18 @@ describe('NetworksController (e2e)', () => {
 
     const setCookie = signUp.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+
+    const prisma = app.get(PrismaService);
+    const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const org = await prisma.organization.create({ data: { name: `E2E Networks ${Date.now()}` } });
+    orgId = org.id;
+    await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
@@ -78,6 +87,12 @@ describe('NetworksController (e2e)', () => {
         ? otherSignUp.headers['set-cookie'][0]
         : otherSignUp.headers['set-cookie'];
 
+      // Provision org for this ephemeral user so OrgContextGuard resolves
+      const prisma = app.get(PrismaService);
+      const otherUser = await prisma.user.findUniqueOrThrow({ where: { email: otherEmail } });
+      const otherOrg = await prisma.organization.create({ data: { name: `E2E Networks Other ${Date.now()}` } });
+      await prisma.organizationMember.create({ data: { userId: otherUser.id, organizationId: otherOrg.id, role: 'OWNER' } });
+
       const res = await request(app.getHttpServer())
         .post('/api/v1/networks')
         .set('Cookie', otherCookie)
@@ -86,7 +101,8 @@ describe('NetworksController (e2e)', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('GEN_001');
 
-      const prisma = app.get(PrismaService);
+      await prisma.organizationMember.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.organization.delete({ where: { id: otherOrg.id } });
       await prisma.user.deleteMany({ where: { email: otherEmail } });
     });
   });

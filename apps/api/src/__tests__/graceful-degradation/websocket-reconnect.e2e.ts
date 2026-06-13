@@ -13,6 +13,7 @@ import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { DevicesService } from '../../devices/devices.service';
 import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
+import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { Socket } from 'socket.io';
 import { auth } from '../../auth/better-auth.config';
 
@@ -30,6 +31,10 @@ const mockDataSources = {
 };
 
 const mockAiService = {};
+
+const mockOrganizationsRepository = {
+  findMemberByUserId: jest.fn().mockResolvedValue(null),
+};
 
 const mockDevicesService = {
   findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
@@ -63,6 +68,7 @@ describe('Graceful degradation — WebSocket reconnection', () => {
         { provide: DevicesService, useValue: mockDevicesService },
         { provide: NetworksService, useValue: mockNetworksService },
         { provide: AiService, useValue: mockAiService },
+        { provide: OrganizationsRepository, useValue: mockOrganizationsRepository },
       ],
     }).compile();
     gateway = module.get(RealtimeGateway);

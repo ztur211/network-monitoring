@@ -28,6 +28,7 @@ export const auth = betterAuth({
       tier: { type: 'string', defaultValue: 'PERSONAL_FREE', input: false, returned: true },
       homeLatitude: { type: 'number', required: false, input: false, returned: true },
       homeLongitude: { type: 'number', required: false, input: false, returned: true },
+      isSuperAdmin: { type: 'boolean', defaultValue: false, input: false, returned: true },
     },
   },
   trustedOrigins: [process.env.FRONTEND_URL ?? 'http://localhost:8081'],

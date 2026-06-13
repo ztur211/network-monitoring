@@ -5,8 +5,8 @@ import { DataSourcesService } from '../../data-sources/data-sources.service';
 export class RealtimeContextProvider {
   constructor(private readonly dataSourcesService: DataSourcesService) {}
 
-  async getContext(userId: string): Promise<string> {
-    const metric = await this.dataSourcesService.getLatestMetric(userId);
+  async getContext(organizationId: string, userId: string): Promise<string> {
+    const metric = await this.dataSourcesService.getLatestMetric(organizationId, userId);
 
     const lines = ['## Realtime Context'];
     lines.push(

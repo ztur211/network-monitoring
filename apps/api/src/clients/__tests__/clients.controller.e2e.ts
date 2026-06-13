@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('GET /api/v1/clients', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let orgId: string;
   const testEmail = `e2e-clients-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -27,10 +28,18 @@ describe('GET /api/v1/clients', () => {
       .send({ email: testEmail, password: 'Password123!', name: 'Clients Test User' });
     const setCookie = signUpRes.headers['set-cookie'];
     sessionCookie = Array.isArray(setCookie) ? setCookie[0] : (setCookie ?? '');
+
+    const prisma = app.get(PrismaService);
+    const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const org = await prisma.organization.create({ data: { name: `E2E Clients ${Date.now()}` } });
+    orgId = org.id;
+    await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await app.close();
   });
