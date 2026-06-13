@@ -312,7 +312,7 @@ describe('OnboardingService', () => {
       expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
         'v1:onboarding:turn',
         expect.objectContaining({ stepId: 'networkName', complete: false }),
-        USER_ID,
+        ORG_ID,
       );
     });
 

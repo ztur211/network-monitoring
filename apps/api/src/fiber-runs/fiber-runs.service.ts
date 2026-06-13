@@ -99,7 +99,7 @@ export class FiberRunsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.FIBER_RUN_UPDATED,
       { fiberRunId, fiberRun: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      updated.userId ?? '',
+      organizationId,
     );
     return dto;
   }
@@ -114,7 +114,7 @@ export class FiberRunsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.FIBER_RUN_DELETED,
       { fiberRunId },
-      run.userId ?? '',
+      organizationId,
     );
   }
 

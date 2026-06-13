@@ -113,7 +113,7 @@ export class DevicesService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
       { deviceId, device: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      updated.userId ?? '',
+      organizationId,
     );
     return dto;
   }
@@ -128,7 +128,7 @@ export class DevicesService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_DELETED,
       { deviceId },
-      device.userId ?? '',
+      organizationId,
     );
   }
 
@@ -194,7 +194,7 @@ export class DevicesService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.DEVICE_UPDATED,
       { deviceId: device.id, device: dto, updatedBy: creatorUserId },
-      creatorUserId,
+      organizationId,
     );
     return dto;
   }

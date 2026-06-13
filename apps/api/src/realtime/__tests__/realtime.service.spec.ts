@@ -9,6 +9,7 @@ import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import { auth } from '../../auth/better-auth.config';
 
 const mockRoom = { emit: jest.fn() };
 const mockServer = {
@@ -218,6 +219,53 @@ describe('RealtimeGateway — service interface', () => {
       await run();
 
       expect(fetchSockets).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('handleConnection', () => {
+    const makeClientSocket = () => {
+      const joinedRooms: string[] = [];
+      return {
+        data: {} as Record<string, unknown>,
+        handshake: { headers: {}, address: '127.0.0.1' },
+        join: jest.fn().mockImplementation((room: string) => {
+          joinedRooms.push(room);
+          return Promise.resolve();
+        }),
+        disconnect: jest.fn(),
+        _joinedRooms: joinedRooms,
+      } as unknown as Parameters<RealtimeGateway['handleConnection']>[0] & { _joinedRooms: string[] };
+    };
+
+    it('joins org:{orgId} room when user has an org membership', async () => {
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue({
+        user: { id: 'u-1', tier: 'PERSONAL_FREE' },
+        session: { id: 's-1', token: 'tok' },
+      } as never);
+      mockOrgsRepo.findMemberByUserId.mockResolvedValue({ organizationId: 'org-abc' });
+
+      const client = makeClientSocket();
+      await gateway.handleConnection(client);
+
+      const joined = client._joinedRooms;
+      expect(joined).toContain('org:org-abc');
+      expect(joined).toContain('user:u-1');
+      expect(joined).toContain('tier:PERSONAL_FREE');
+    });
+
+    it('does NOT join any org room when user has no org membership', async () => {
+      jest.spyOn(auth.api, 'getSession').mockResolvedValue({
+        user: { id: 'u-2', tier: 'PERSONAL_FREE' },
+        session: { id: 's-2', token: 'tok2' },
+      } as never);
+      mockOrgsRepo.findMemberByUserId.mockResolvedValue(null);
+
+      const client = makeClientSocket();
+      await gateway.handleConnection(client);
+
+      const joined = client._joinedRooms;
+      expect(joined.some((r) => r.startsWith('org:'))).toBe(false);
+      expect(joined).toContain('user:u-2');
     });
   });
 

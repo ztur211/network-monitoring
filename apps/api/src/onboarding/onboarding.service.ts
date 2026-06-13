@@ -117,7 +117,7 @@ export class OnboardingService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.ONBOARDING_TURN,
       { stepId: response.stepId, complete: response.complete },
-      userId,
+      organizationId,
     );
 
     return response;

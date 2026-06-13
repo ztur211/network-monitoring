@@ -403,7 +403,7 @@ describe('DevicesService', () => {
       expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
         'v1:device:updated',
         expect.objectContaining({ updatedBy: 'user-1' }),
-        'user-1',
+        'org-1',
       );
     });
   });

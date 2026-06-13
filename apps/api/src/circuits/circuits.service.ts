@@ -112,7 +112,7 @@ export class CircuitsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CIRCUIT_UPDATED,
       { circuitId, circuit: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      updated.userId ?? '',
+      organizationId,
     );
     return dto;
   }
@@ -127,7 +127,7 @@ export class CircuitsService {
     this.conflictService.emitEntityEvent(
       WS_EVENTS.CIRCUIT_DELETED,
       { circuitId },
-      circuit.userId ?? '',
+      organizationId,
     );
   }
 
