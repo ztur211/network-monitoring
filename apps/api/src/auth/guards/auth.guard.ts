@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../better-auth.config';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { auditAls } from '../../audit/audit.als';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -27,6 +28,9 @@ export class AuthGuard implements CanActivate {
 
     request.user = session.user;
     request.session = session.session;
+
+    const auditStore = auditAls.getStore();
+    if (auditStore) auditStore.userId = (session.user as { id: string }).id;
 
     return true;
   }
