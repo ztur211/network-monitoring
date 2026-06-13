@@ -34,6 +34,8 @@ export const WS_EVENTS = {
   PROPERTY_UPDATED: 'v1:property:updated',
   PROPERTY_DELETED: 'v1:property:deleted',
   PROPERTY_MOVED:   'v1:property:moved',
+  NETWORK_CHARTER_ADDED:   'v1:network:charter:added',
+  NETWORK_CHARTER_REMOVED: 'v1:network:charter:removed',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';
