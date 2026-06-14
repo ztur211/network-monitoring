@@ -298,5 +298,14 @@ describe('DevicesController (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.suggestedName).toBe('hq-rtr-01');
     });
+
+    it('returns 400 GEN_001 for an invalid category', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/devices/name-suggestion?propertyId=${codedPropertyId}&category=NOT_A_CATEGORY`)
+        .set('Cookie', sessionCookie);
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('GEN_001');
+    });
   });
 });

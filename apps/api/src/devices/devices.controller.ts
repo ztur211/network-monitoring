@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -50,7 +51,7 @@ export class DevicesController {
   async getNameSuggestion(
     @OrgId() orgId: string,
     @Query('propertyId', ParseUUIDPipe) propertyId: string,
-    @Query('category') category: DeviceCategory,
+    @Query('category', new ParseEnumPipe(DeviceCategory)) category: DeviceCategory,
     @Query('roleCode') roleCode?: string,
   ) {
     const suggestedName = await this.nameSuggestion.suggest(orgId, propertyId, category, roleCode ?? null);
