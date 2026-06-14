@@ -6,6 +6,8 @@ import { ContainmentService } from './containment.service';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
+import { PermissionsService } from '../permissions/permissions.service';
+import type { OrgMemberContext } from '../organizations/org-context.types';
 
 @Injectable()
 export class NetworkPropertyService {
@@ -15,17 +17,22 @@ export class NetworkPropertyService {
     private readonly containment: ContainmentService,
     private readonly conflict: ConflictResolutionService,
     private readonly audit: AuditService,
+    private readonly permissions: PermissionsService,
   ) {}
 
-  async list(organizationId: string, networkId: string) {
-    return (await this.charters.listByNetwork(organizationId, networkId)).map((c) => ({
-      id: c.id,
-      networkId: c.networkId,
-      propertyId: c.propertyId,
-    }));
+  async list(member: OrgMemberContext, networkId: string) {
+    const organizationId = member.organizationId;
+    const scope = await this.permissions.scopeFilter(member);
+    const charters = await this.charters.listByNetwork(organizationId, networkId);
+    const visible = scope ? charters.filter((c) => scope.propertyIdIn.includes(c.propertyId)) : charters;
+    return visible.map((c) => ({ id: c.id, networkId: c.networkId, propertyId: c.propertyId }));
   }
 
-  async add(organizationId: string, networkId: string, propertyId: string) {
+  async add(member: OrgMemberContext, networkId: string, propertyId: string) {
+    const organizationId = member.organizationId;
+    const current = (await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId);
+    await this.permissions.assertNetworkFullCoverage(member, current);
+    await this.permissions.assertCanConfigure(member, propertyId);
     const property = await this.props.findByIdAndOrgId(propertyId, organizationId);
     if (!property) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
     if (await this.charters.existsCharter(organizationId, networkId, propertyId)) {
@@ -37,7 +44,10 @@ export class NetworkPropertyService {
     return { id: created.id, networkId, propertyId };
   }
 
-  async remove(organizationId: string, networkId: string, propertyId: string) {
+  async remove(member: OrgMemberContext, networkId: string, propertyId: string) {
+    const organizationId = member.organizationId;
+    const current = (await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId);
+    await this.permissions.assertNetworkFullCoverage(member, current);
     const existing = await this.charters.existsCharter(organizationId, networkId, propertyId);
     if (!existing) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
     await this.containment.assertCharterRemovable(organizationId, networkId, propertyId);

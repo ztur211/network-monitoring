@@ -5,6 +5,8 @@ import { PropertiesRepository } from '../properties.repository';
 import { ContainmentService } from '../containment.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
+import { PermissionsService } from '../../permissions/permissions.service';
+import type { OrgMemberContext } from '../../organizations/org-context.types';
 
 const charterRepoMock = () => ({
   listByNetwork: jest.fn(),
@@ -17,6 +19,13 @@ const propsRepoMock = () => ({ findByIdAndOrgId: jest.fn() });
 const containmentMock = () => ({ assertCharterRemovable: jest.fn() });
 const conflictMock = () => ({ emitEntityEvent: jest.fn() });
 const auditMock = () => ({ recordCreate: jest.fn(), recordDelete: jest.fn() });
+const permissionsMock = () => ({
+  scopeFilter: jest.fn().mockResolvedValue(null),
+  assertNetworkFullCoverage: jest.fn().mockResolvedValue(undefined),
+  assertCanConfigure: jest.fn().mockResolvedValue(undefined),
+});
+
+const ownerMember: OrgMemberContext = { id: 'u1', organizationId: 'o1', role: 'OWNER' };
 
 describe('NetworkPropertyService', () => {
   let svc: NetworkPropertyService;
@@ -25,6 +34,7 @@ describe('NetworkPropertyService', () => {
   let containment: ReturnType<typeof containmentMock>;
   let conflict: ReturnType<typeof conflictMock>;
   let audit: ReturnType<typeof auditMock>;
+  let permissions: ReturnType<typeof permissionsMock>;
 
   beforeEach(async () => {
     charterRepo = charterRepoMock();
@@ -32,6 +42,7 @@ describe('NetworkPropertyService', () => {
     containment = containmentMock();
     conflict = conflictMock();
     audit = auditMock();
+    permissions = permissionsMock();
 
     const m = await Test.createTestingModule({
       providers: [
@@ -41,41 +52,57 @@ describe('NetworkPropertyService', () => {
         { provide: ContainmentService, useValue: containment },
         { provide: ConflictResolutionService, useValue: conflict },
         { provide: AuditService, useValue: audit },
+        { provide: PermissionsService, useValue: permissions },
       ],
     }).compile();
     svc = m.get(NetworkPropertyService);
   });
 
   describe('list', () => {
-    it('returns mapped DTOs from the repository', async () => {
+    it('returns all mapped DTOs for OWNER (scopeFilter null)', async () => {
       charterRepo.listByNetwork.mockResolvedValue([
         { id: 'c1', networkId: 'net1', propertyId: 'prop1', organizationId: 'o1', createdAt: new Date() },
       ]);
-      const result = await svc.list('o1', 'net1');
+      permissions.scopeFilter.mockResolvedValue(null);
+      const result = await svc.list(ownerMember, 'net1');
+      expect(result).toEqual([{ id: 'c1', networkId: 'net1', propertyId: 'prop1' }]);
+    });
+
+    it('filters to in-scope charters when scopeFilter returns a set', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([
+        { id: 'c1', networkId: 'net1', propertyId: 'prop1', organizationId: 'o1', createdAt: new Date() },
+        { id: 'c2', networkId: 'net1', propertyId: 'prop2', organizationId: 'o1', createdAt: new Date() },
+      ]);
+      permissions.scopeFilter.mockResolvedValue({ propertyIdIn: ['prop1'] });
+      const adminMember: OrgMemberContext = { id: 'u2', organizationId: 'o1', role: 'ADMIN' };
+      const result = await svc.list(adminMember, 'net1');
       expect(result).toEqual([{ id: 'c1', networkId: 'net1', propertyId: 'prop1' }]);
     });
   });
 
   describe('add', () => {
     it('throws PROP_001 when property does not exist in the org', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([]);
       propsRepo.findByIdAndOrgId.mockResolvedValue(null);
-      await expect(svc.add('o1', 'net1', 'missing-prop')).rejects.toMatchObject({ code: 'PROP_001' });
+      await expect(svc.add(ownerMember, 'net1', 'missing-prop')).rejects.toMatchObject({ code: 'PROP_001' });
     });
 
     it('throws PROP_006 when charter already exists', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([]);
       propsRepo.findByIdAndOrgId.mockResolvedValue({ id: 'prop1' });
       charterRepo.existsCharter.mockResolvedValue({ id: 'existing-charter' });
-      await expect(svc.add('o1', 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_006' });
+      await expect(svc.add(ownerMember, 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_006' });
     });
 
     it('creates the charter and emits the event on success', async () => {
       const created = { id: 'c1', networkId: 'net1', propertyId: 'prop1', organizationId: 'o1', createdAt: new Date() };
+      charterRepo.listByNetwork.mockResolvedValue([]);
       propsRepo.findByIdAndOrgId.mockResolvedValue({ id: 'prop1' });
       charterRepo.existsCharter.mockResolvedValue(null);
       charterRepo.create.mockResolvedValue(created);
       audit.recordCreate.mockResolvedValue(undefined);
 
-      const result = await svc.add('o1', 'net1', 'prop1');
+      const result = await svc.add(ownerMember, 'net1', 'prop1');
       expect(result).toEqual({ id: 'c1', networkId: 'net1', propertyId: 'prop1' });
       expect(charterRepo.create).toHaveBeenCalledWith('o1', 'net1', 'prop1');
       expect(conflict.emitEntityEvent).toHaveBeenCalledWith(
@@ -85,31 +112,61 @@ describe('NetworkPropertyService', () => {
       );
       expect(audit.recordCreate).toHaveBeenCalledWith('o1', 'NetworkProperty', created);
     });
+
+    it('propagates PERM_004 from assertNetworkFullCoverage when ADMIN has partial coverage', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([
+        { id: 'c1', networkId: 'net1', propertyId: 'sB', organizationId: 'o1', createdAt: new Date() },
+      ]);
+      const err = Object.assign(new Error(), { code: 'PERM_004' });
+      permissions.assertNetworkFullCoverage.mockRejectedValue(err);
+      const adminMember: OrgMemberContext = { id: 'u2', organizationId: 'o1', role: 'ADMIN' };
+      await expect(svc.add(adminMember, 'net1', 'sA')).rejects.toMatchObject({ code: 'PERM_004' });
+    });
+
+    it('propagates ORG_003 from assertNetworkFullCoverage when caller is MEMBER', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([]);
+      const err = Object.assign(new Error(), { code: 'ORG_003' });
+      permissions.assertNetworkFullCoverage.mockRejectedValue(err);
+      const memberCtx: OrgMemberContext = { id: 'u3', organizationId: 'o1', role: 'MEMBER' };
+      await expect(svc.add(memberCtx, 'net1', 'sA')).rejects.toMatchObject({ code: 'ORG_003' });
+    });
+
+    it('propagates PERM_001 from assertCanConfigure when new site out of ADMIN scope', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([]);
+      permissions.assertNetworkFullCoverage.mockResolvedValue(undefined);
+      const err = Object.assign(new Error(), { code: 'PERM_001' });
+      permissions.assertCanConfigure.mockRejectedValue(err);
+      const adminMember: OrgMemberContext = { id: 'u2', organizationId: 'o1', role: 'ADMIN' };
+      await expect(svc.add(adminMember, 'net1', 'out-of-scope-site')).rejects.toMatchObject({ code: 'PERM_001' });
+    });
   });
 
   describe('remove', () => {
     it('throws PROP_001 when charter does not exist', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([]);
       charterRepo.existsCharter.mockResolvedValue(null);
-      await expect(svc.remove('o1', 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_001' });
+      await expect(svc.remove(ownerMember, 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_001' });
     });
 
     it('delegates to assertCharterRemovable and throws when in use (PROP_008)', async () => {
       const existing = { id: 'c1', networkId: 'net1', propertyId: 'prop1', organizationId: 'o1', createdAt: new Date() };
+      charterRepo.listByNetwork.mockResolvedValue([{ propertyId: 'prop1' }]);
       charterRepo.existsCharter.mockResolvedValue(existing);
       const err = Object.assign(new Error(), { code: 'PROP_008' });
       containment.assertCharterRemovable.mockRejectedValue(err);
-      await expect(svc.remove('o1', 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_008' });
+      await expect(svc.remove(ownerMember, 'net1', 'prop1')).rejects.toMatchObject({ code: 'PROP_008' });
       expect(charterRepo.deleteByNetworkAndProperty).not.toHaveBeenCalled();
     });
 
     it('deletes and emits the event on success', async () => {
       const existing = { id: 'c1', networkId: 'net1', propertyId: 'prop1', organizationId: 'o1', createdAt: new Date() };
+      charterRepo.listByNetwork.mockResolvedValue([{ propertyId: 'prop1' }]);
       charterRepo.existsCharter.mockResolvedValue(existing);
       containment.assertCharterRemovable.mockResolvedValue(undefined);
       charterRepo.deleteByNetworkAndProperty.mockResolvedValue(1);
       audit.recordDelete.mockResolvedValue(undefined);
 
-      await svc.remove('o1', 'net1', 'prop1');
+      await svc.remove(ownerMember, 'net1', 'prop1');
       expect(charterRepo.deleteByNetworkAndProperty).toHaveBeenCalledWith('o1', 'net1', 'prop1');
       expect(conflict.emitEntityEvent).toHaveBeenCalledWith(
         'v1:network:charter:removed',
@@ -117,6 +174,17 @@ describe('NetworkPropertyService', () => {
         'o1',
       );
       expect(audit.recordDelete).toHaveBeenCalledWith('o1', 'NetworkProperty', existing);
+    });
+
+    it('propagates PERM_004 from assertNetworkFullCoverage when ADMIN has partial coverage', async () => {
+      charterRepo.listByNetwork.mockResolvedValue([
+        { propertyId: 'sA' },
+        { propertyId: 'sB' },
+      ]);
+      const err = Object.assign(new Error(), { code: 'PERM_004' });
+      permissions.assertNetworkFullCoverage.mockRejectedValue(err);
+      const adminMember: OrgMemberContext = { id: 'u2', organizationId: 'o1', role: 'ADMIN' };
+      await expect(svc.remove(adminMember, 'net1', 'sA')).rejects.toMatchObject({ code: 'PERM_004' });
     });
   });
 });
