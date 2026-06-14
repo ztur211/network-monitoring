@@ -91,7 +91,7 @@ describe('MapRepository (integration)', () => {
         },
       });
 
-      const devices = await repository.findDevicesInBbox(testOrgId, BBOX);
+      const devices = await repository.findDevicesInBbox(testOrgId, BBOX, undefined, null);
 
       expect(devices).toHaveLength(1);
       const device = devices[0];
@@ -129,12 +129,12 @@ describe('MapRepository (integration)', () => {
         },
       });
 
-      const onFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 2);
+      const onFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 2, null);
       expect(onFloor).toHaveLength(1);
       expect(onFloor[0].networkId).toBe(testNetworkId);
       expect(onFloor[0].mobility).toBe(DeviceMobility.HOME_ONLY);
 
-      const otherFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 1);
+      const otherFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 1, null);
       expect(otherFloor).toHaveLength(0);
 
       // cleanup
@@ -177,7 +177,7 @@ describe('MapRepository (integration)', () => {
       });
 
       // Query scoped to testOrgId — must NOT see the other org's device
-      const devices = await repository.findDevicesInBbox(testOrgId, BBOX);
+      const devices = await repository.findDevicesInBbox(testOrgId, BBOX, undefined, null);
       expect(devices.every((d) => d.organizationId === testOrgId)).toBe(true);
 
       // Cleanup
@@ -188,6 +188,65 @@ describe('MapRepository (integration)', () => {
       await prisma.organizationMember.deleteMany({ where: { userId: otherUser.id } });
       await prisma.user.deleteMany({ where: { id: otherUser.id } });
       await prisma.organization.deleteMany({ where: { id: otherOrg.id } });
+    });
+
+    it('site-scope filter returns only devices in the allowed property (MEMBER scope)', async () => {
+      // Seed two sites under the same org
+      const siteA = await prisma.property.create({
+        data: { organizationId: testOrgId, name: 'Site A', type: 'SITE' },
+      });
+      const siteB = await prisma.property.create({
+        data: { organizationId: testOrgId, name: 'Site B', type: 'SITE' },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: testOrgId, networkId: testNetworkId, propertyId: siteA.id },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: testOrgId, networkId: testNetworkId, propertyId: siteB.id },
+      });
+
+      // Device under Site A — inside bbox
+      await prisma.device.create({
+        data: {
+          organizationId: testOrgId,
+          userId: testUserId,
+          networkId: testNetworkId,
+          propertyId: siteA.id,
+          name: 'Device Site A',
+          category: DeviceCategory.ROUTER,
+          latitude: 40.7128,
+          longitude: -74.006,
+        },
+      });
+
+      // Device under Site B — inside bbox but out of scope
+      await prisma.device.create({
+        data: {
+          organizationId: testOrgId,
+          userId: testUserId,
+          networkId: testNetworkId,
+          propertyId: siteB.id,
+          name: 'Device Site B',
+          category: DeviceCategory.SWITCH,
+          latitude: 40.7128,
+          longitude: -74.006,
+        },
+      });
+
+      // Unscoped (OWNER) — sees both
+      const all = await repository.findDevicesInBbox(testOrgId, BBOX, undefined, null);
+      expect(all.length).toBeGreaterThanOrEqual(2);
+
+      // Scoped to siteA only — sees only the siteA device
+      const scoped = await repository.findDevicesInBbox(testOrgId, BBOX, undefined, [siteA.id]);
+      expect(scoped).toHaveLength(1);
+      expect(scoped[0].propertyId).toBe(siteA.id);
+      expect(scoped[0].name).toBe('Device Site A');
+
+      // Cleanup
+      await prisma.device.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.networkProperty.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.property.deleteMany({ where: { organizationId: testOrgId } });
     });
   });
 });
