@@ -50,7 +50,7 @@ export class PropertiesService {
     const created = await this.repo.create({
       organizationId, parentId: dto.parentId ?? null, type: dto.type, name: dto.name, code: dto.code ?? null,
     });
-    this.conflict.emitEntityEvent(WS_EVENTS.PROPERTY_CREATED, { id: created.id }, organizationId);
+    await this.conflict.emitScoped(organizationId, created.id, WS_EVENTS.PROPERTY_CREATED, { id: created.id });
     await this.audit.recordCreate(organizationId, 'Property', created);
     return this.toDto(created);
   }
@@ -99,8 +99,17 @@ export class PropertiesService {
     const updated = await this.repo.updateWithVersion(id, organizationId, payload, patch.baseVersion);
     if (!updated) throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
 
-    const event = parentChange ? WS_EVENTS.PROPERTY_MOVED : WS_EVENTS.PROPERTY_UPDATED;
-    this.conflict.emitEntityEvent(event, { id }, organizationId);
+    if (parentChange) {
+      const oldParentId = current.parentId;
+      await this.conflict.emitScopedMulti(
+        organizationId,
+        [id, oldParentId].filter((x): x is string => !!x),
+        WS_EVENTS.PROPERTY_MOVED,
+        { id },
+      );
+    } else {
+      await this.conflict.emitScoped(organizationId, id, WS_EVENTS.PROPERTY_UPDATED, { id });
+    }
     await this.audit.recordUpdate(organizationId, 'Property', id, patch.changes);
     return this.toDto(updated);
   }
@@ -122,8 +131,9 @@ export class PropertiesService {
     if (assignments > 0) {
       throw new NodeScopeException('PERM_005', 'PROPERTY_ASSIGNED', HttpStatus.CONFLICT);
     }
+    // Emit BEFORE delete so the ancestor lookup in emitScoped can still resolve the row
+    await this.conflict.emitScoped(organizationId, id, WS_EVENTS.PROPERTY_DELETED, { id });
     await this.repo.deleteByIdAndOrgId(id, organizationId);
-    this.conflict.emitEntityEvent(WS_EVENTS.PROPERTY_DELETED, { id }, organizationId);
     await this.audit.recordDelete(organizationId, 'Property', p);
   }
 
