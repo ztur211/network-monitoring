@@ -127,10 +127,12 @@ export class CircuitsService {
 
     const dto = this.toDto(updated);
     await this.audit.recordUpdate(organizationId, 'Circuit', circuitId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    const site = await this.circuitGoverningSite(organizationId, updated.deviceId);
+    await this.conflictService.emitScoped(
+      organizationId,
+      site,
       WS_EVENTS.CIRCUIT_UPDATED,
       { circuitId, circuit: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
     return dto;
   }
@@ -146,13 +148,10 @@ export class CircuitsService {
       member,
       await this.circuitGoverningSite(organizationId, circuit.deviceId),
     );
+    const site = await this.circuitGoverningSite(organizationId, circuit.deviceId);
     await this.circuitsRepository.deleteByIdAndOrgId(circuitId, organizationId);
     await this.audit.recordDelete(organizationId, 'Circuit', circuit);
-    this.conflictService.emitEntityEvent(
-      WS_EVENTS.CIRCUIT_DELETED,
-      { circuitId },
-      organizationId,
-    );
+    await this.conflictService.emitScoped(organizationId, site, WS_EVENTS.CIRCUIT_DELETED, { circuitId });
   }
 
   /**

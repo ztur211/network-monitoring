@@ -65,6 +65,8 @@ const mockDevicesRepo: jest.Mocked<DevicesRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 const mockAudit = {
@@ -240,10 +242,11 @@ describe('FiberRunsService', () => {
       });
       expect(result.name).toBe('Updated');
       expect(mockRepo.updateWithVersion).toHaveBeenCalledWith('run-1', 'org-1', expect.any(Object), 1);
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        ['prop-1', 'prop-2'],
         'v1:fiber-run:updated',
         expect.objectContaining({ fiberRunId: 'run-1' }),
-        expect.any(String),
       );
     });
 
@@ -300,10 +303,11 @@ describe('FiberRunsService', () => {
 
       await service.deleteFiberRun(member, 'run-1');
       expect(mockRepo.deleteByIdAndOrgId).toHaveBeenCalledWith('run-1', 'org-1');
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        ['prop-1', 'prop-2'],
         'v1:fiber-run:deleted',
         expect.objectContaining({ fiberRunId: 'run-1' }),
-        expect.any(String),
       );
     });
 

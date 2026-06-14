@@ -59,9 +59,11 @@ const mockDevicesRepo: jest.Mocked<Pick<DevicesRepository, 'findByIdAndOrgId'>> 
   findByIdAndOrgId: jest.fn(),
 };
 
-const mockConflict: jest.Mocked<Pick<ConflictResolutionService, 'buildUpdatePayload' | 'emitEntityEvent'>> = {
+const mockConflict: jest.Mocked<Pick<ConflictResolutionService, 'buildUpdatePayload' | 'emitEntityEvent' | 'emitScoped' | 'emitScopedMulti'>> = {
   buildUpdatePayload: jest.fn(),
   emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockAudit = {
@@ -202,10 +204,11 @@ describe('CircuitsService', () => {
       expect(result.ispName).toBe('Verizon');
       // device-less circuit → __nosite__ assertion
       expect(mockPermissions.assertCanConfigure).toHaveBeenCalledWith(ownerMember, '__nosite__');
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScoped).toHaveBeenCalledWith(
+        'org-1',
+        '__nosite__',
         'v1:circuit:updated',
         expect.objectContaining({ circuitId: 'cir-1' }),
-        expect.any(String),
       );
     });
 
@@ -261,10 +264,11 @@ describe('CircuitsService', () => {
       // device-less circuit → __nosite__ assertion
       expect(mockPermissions.assertCanConfigure).toHaveBeenCalledWith(ownerMember, '__nosite__');
       expect(mockRepo.deleteByIdAndOrgId).toHaveBeenCalledWith('cir-1', 'org-1');
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScoped).toHaveBeenCalledWith(
+        'org-1',
+        '__nosite__',
         'v1:circuit:deleted',
         expect.objectContaining({ circuitId: 'cir-1' }),
-        expect.any(String),
       );
     });
 

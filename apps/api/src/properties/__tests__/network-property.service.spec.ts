@@ -17,7 +17,11 @@ const charterRepoMock = () => ({
 });
 const propsRepoMock = () => ({ findByIdAndOrgId: jest.fn() });
 const containmentMock = () => ({ assertCharterRemovable: jest.fn() });
-const conflictMock = () => ({ emitEntityEvent: jest.fn() });
+const conflictMock = () => ({
+  emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
+});
 const auditMock = () => ({ recordCreate: jest.fn(), recordDelete: jest.fn() });
 const permissionsMock = () => ({
   scopeFilter: jest.fn().mockResolvedValue(null),
@@ -105,10 +109,11 @@ describe('NetworkPropertyService', () => {
       const result = await svc.add(ownerMember, 'net1', 'prop1');
       expect(result).toEqual({ id: 'c1', networkId: 'net1', propertyId: 'prop1' });
       expect(charterRepo.create).toHaveBeenCalledWith('o1', 'net1', 'prop1');
-      expect(conflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(conflict.emitScopedMulti).toHaveBeenCalledWith(
+        'o1',
+        expect.arrayContaining(['prop1']),
         'v1:network:charter:added',
         expect.objectContaining({ id: 'c1', networkId: 'net1', propertyId: 'prop1' }),
-        'o1',
       );
       expect(audit.recordCreate).toHaveBeenCalledWith('o1', 'NetworkProperty', created);
     });
@@ -168,10 +173,11 @@ describe('NetworkPropertyService', () => {
 
       await svc.remove(ownerMember, 'net1', 'prop1');
       expect(charterRepo.deleteByNetworkAndProperty).toHaveBeenCalledWith('o1', 'net1', 'prop1');
-      expect(conflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(conflict.emitScopedMulti).toHaveBeenCalledWith(
+        'o1',
+        expect.arrayContaining(['prop1']),
         'v1:network:charter:removed',
         expect.objectContaining({ networkId: 'net1', propertyId: 'prop1' }),
-        'o1',
       );
       expect(audit.recordDelete).toHaveBeenCalledWith('o1', 'NetworkProperty', existing);
     });

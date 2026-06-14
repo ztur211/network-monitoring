@@ -61,10 +61,12 @@ export class NetworksService {
     });
     await this.audit.recordCreate(organizationId, 'Network', network);
     const detail = this.toDetail(network);
-    this.conflictService.emitEntityEvent(
+    // No charters yet on create → OWNER-only fan-out
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [],
       WS_EVENTS.NETWORK_UPDATED,
       { networkId: network.id, network: detail },
-      organizationId,
     );
     return detail;
   }
@@ -116,10 +118,12 @@ export class NetworksService {
 
     const detail = this.toDetail(updated);
     await this.audit.recordUpdate(organizationId, 'Network', networkId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    const charterSites = await this.networksRepository.charteredPropertyIds(organizationId, networkId);
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      charterSites,
       WS_EVENTS.NETWORK_UPDATED,
       { networkId, network: detail, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
 
     if (patch.changes.some((c) => c.field === 'homePublicIp')) {

@@ -15,7 +15,12 @@ const repoMock = () => ({
   countDevicesUnder: jest.fn(), countChartersUnder: jest.fn(),
   countAssignmentsUnder: jest.fn(),
 });
-const conflictMock = () => ({ emitEntityEvent: jest.fn(), buildUpdatePayload: jest.fn().mockReturnValue({}) });
+const conflictMock = () => ({
+  emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
+  buildUpdatePayload: jest.fn().mockReturnValue({}),
+});
 const auditMock = () => ({ recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() });
 const containmentMock = () => ({
   assertDevicePlacement: jest.fn(),

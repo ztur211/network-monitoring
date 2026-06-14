@@ -107,10 +107,11 @@ export class FiberRunsService {
 
     const dto = this.toDto(updated);
     await this.audit.recordUpdate(organizationId, 'FiberRun', fiberRunId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [startSiteId, endSiteId],
       WS_EVENTS.FIBER_RUN_UPDATED,
       { fiberRunId, fiberRun: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
     return dto;
   }
@@ -132,10 +133,11 @@ export class FiberRunsService {
 
     await this.fiberRunsRepository.deleteByIdAndOrgId(fiberRunId, organizationId);
     await this.audit.recordDelete(organizationId, 'FiberRun', run);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [startSiteId, endSiteId],
       WS_EVENTS.FIBER_RUN_DELETED,
       { fiberRunId },
-      organizationId,
     );
   }
 

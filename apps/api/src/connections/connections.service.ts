@@ -117,10 +117,11 @@ export class ConnectionsService {
 
     const dto = this.toDto(updated);
     await this.audit.recordUpdate(organizationId, 'DeviceConnection', connectionId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [sourceSiteId, targetSiteId],
       WS_EVENTS.CONNECTION_UPDATED,
       { connectionId, connection: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
     return dto;
   }
@@ -142,10 +143,11 @@ export class ConnectionsService {
 
     await this.connectionsRepository.deleteByIdAndOrgId(connectionId, organizationId);
     await this.audit.recordDelete(organizationId, 'DeviceConnection', connection);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [sourceSiteId, targetSiteId],
       WS_EVENTS.CONNECTION_DELETED,
       { connectionId },
-      organizationId,
     );
   }
 

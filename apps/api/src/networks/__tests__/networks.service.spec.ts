@@ -57,6 +57,8 @@ const mockRepo: jest.Mocked<Pick<
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 const mockRealtime = {
@@ -161,15 +163,16 @@ describe('NetworksService', () => {
       expect(mockRepo.create).not.toHaveBeenCalled();
     });
 
-    it('emits v1:network:updated on successful create', async () => {
+    it('emits v1:network:updated on successful create (OWNER-only, no charters yet)', async () => {
       mockRepo.countByOrgId.mockResolvedValue(0);
       mockRepo.create.mockResolvedValue(makeNetwork());
 
       await service.createNetwork(OWNER, 'user-1', { name: 'Home' });
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        [],
         'v1:network:updated',
         expect.objectContaining({ network: expect.objectContaining({ id: 'net-1' }) }),
-        expect.any(String),
       );
     });
   });
@@ -247,9 +250,9 @@ describe('NetworksService', () => {
       expect(mockRepo.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('emits v1:network:updated with the updated dto and changes', async () => {
+    it('emits v1:network:updated with the updated dto and changes (scoped to charter sites)', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
-      mockRepo.charteredPropertyIds.mockResolvedValue([]);
+      mockRepo.charteredPropertyIds.mockResolvedValue(['site-a']);
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
       const updated = makeNetwork({ name: 'Renamed', version: 2 });
       mockRepo.updateWithVersion.mockResolvedValue(updated);
@@ -259,13 +262,14 @@ describe('NetworksService', () => {
         changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
       });
 
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        ['site-a'],
         'v1:network:updated',
         expect.objectContaining({
           networkId: 'net-1',
           network: expect.objectContaining({ name: 'Renamed', version: 2 }),
         }),
-        expect.any(String),
       );
     });
 
@@ -361,7 +365,7 @@ describe('NetworksService', () => {
       expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
     });
 
-    it('emits v1:network:updated through the conflict service', async () => {
+    it('emits v1:network:updated through the conflict service (scoped to charter sites)', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork({ homePublicIp: null }));
       mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
@@ -371,13 +375,14 @@ describe('NetworksService', () => {
 
       await service.setHomeIpFromRequest(OWNER, 'net-1', '203.0.113.42');
 
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        [],
         'v1:network:updated',
         expect.objectContaining({
           networkId: 'net-1',
           network: expect.objectContaining({ homePublicIp: '203.0.113.42' }),
         }),
-        expect.any(String),
       );
     });
   });
