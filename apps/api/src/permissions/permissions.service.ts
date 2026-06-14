@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { OrganizationMember } from '@prisma/client';
+import { AccessSummaryDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { PropertiesService } from '../properties/properties.service';
 import { PermissionsRepository } from './permissions.repository';
@@ -45,5 +46,16 @@ export class PermissionsService {
   async scopeFilter(member: OrganizationMember): Promise<{ propertyIdIn: string[] } | null> {
     if (member.role === 'OWNER') return null;
     return { propertyIdIn: await this.scopePropertyIds(member.organizationId, member.id) };
+  }
+
+  async accessSummary(member: OrganizationMember): Promise<AccessSummaryDto> {
+    const unscoped = member.role === 'OWNER';
+    return {
+      role: member.role,
+      assignedRootPropertyIds: unscoped
+        ? []
+        : await this.repo.effectiveRootPropertyIds(member.organizationId, member.id),
+      unscoped,
+    };
   }
 }
