@@ -41,6 +41,23 @@ export class PermissionsRepository {
     return rows.map((r) => r.id);
   }
 
+  /** The property and every ancestor up to the root (org-scoped), via a recursive CTE.
+   *  Used by the scoped realtime fan-out to resolve which sockets should receive an
+   *  event when a node is mutated — callers walk up the tree to find all interested rooms. */
+  async ancestorPropertyIds(organizationId: string, propertyId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      WITH RECURSIVE ancestors AS (
+        SELECT "id", "parentId" FROM "Property"
+          WHERE "id" = ${propertyId} AND "organizationId" = ${organizationId}
+        UNION ALL
+        SELECT p."id", p."parentId" FROM "Property" p
+          JOIN ancestors a ON p."id" = a."parentId" AND p."organizationId" = ${organizationId}
+      )
+      SELECT "id" FROM ancestors;
+    `;
+    return rows.map((r) => r.id);
+  }
+
   /** Union of (team assignments via membership) and (direct member assignments). Deduped. */
   async effectiveRootPropertyIds(organizationId: string, memberId: string): Promise<string[]> {
     const [teamRoots, directRoots] = await Promise.all([
