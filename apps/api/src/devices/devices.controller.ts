@@ -18,6 +18,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { CreateDeviceDto, PatchDeviceDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 import { NameSuggestionService } from './name-suggestion.service';
@@ -36,6 +37,7 @@ export class DevicesController {
   }
 
   @Post()
+  @OrgRoles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
   async createDevice(
@@ -68,6 +70,7 @@ export class DevicesController {
   }
 
   @Patch(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async updateDevice(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -78,6 +81,7 @@ export class DevicesController {
   }
 
   @Delete(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async deleteDevice(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
