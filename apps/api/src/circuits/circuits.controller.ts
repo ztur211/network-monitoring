@@ -16,6 +16,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { CreateCircuitDto, ListCircuitsQueryDto, PatchCircuitDto } from './circuits.dto';
 import { CircuitsService } from './circuits.service';
 
@@ -35,6 +36,7 @@ export class CircuitsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
+  @OrgRoles('OWNER', 'ADMIN')
   async createCircuit(
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -54,6 +56,7 @@ export class CircuitsController {
   }
 
   @Patch(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async updateCircuit(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -64,6 +67,7 @@ export class CircuitsController {
   }
 
   @Delete(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async deleteCircuit(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
