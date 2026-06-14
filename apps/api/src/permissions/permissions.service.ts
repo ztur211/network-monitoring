@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { Team } from '@prisma/client';
 import { AccessSummaryDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
@@ -55,6 +56,43 @@ export class PermissionsService {
     for (const propertyId of charteredPropertyIds) {
       if (!(await this.inScope(member.organizationId, member.id, propertyId))) {
         throw new NodeScopeException('PERM_004', 'NETWORK_PARTIAL_SCOPE', HttpStatus.FORBIDDEN);
+      }
+    }
+  }
+
+  /** Sites an actor may delegate = the actor's own scope. OWNER unlimited. Beyond ⇒ PERM_002. */
+  async assertWithinGrantorScope(actor: OrgMemberContext, propertyIds: string[]): Promise<void> {
+    if (actor.role === 'OWNER') return;
+    for (const pid of propertyIds) {
+      if (!(await this.inScope(actor.organizationId, actor.id, pid))) {
+        throw new NodeScopeException('PERM_002', 'SCOPE_EXCEEDS_GRANTOR', HttpStatus.FORBIDDEN);
+      }
+    }
+  }
+
+  /** OWNER manages anyone; ADMIN manages MEMBERs only. Else PERM_003. (Role CHANGES stay OWNER-only — enforce at the call site.) */
+  assertCanManageMember(actor: OrgMemberContext, target: OrgMemberContext): void {
+    if (actor.role === 'OWNER') return;
+    if (actor.role === 'ADMIN' && target.role === 'MEMBER') return;
+    throw new NodeScopeException('PERM_003', 'CANNOT_MANAGE_TARGET', HttpStatus.FORBIDDEN);
+  }
+
+  /** Team structure (rename/delete/assign-sites): OWNER any; ADMIN iff they CREATED the team AND every site ⊆ their scope. */
+  async assertCanManageTeamStructure(actor: OrgMemberContext, team: Team, teamPropertyIds: string[]): Promise<void> {
+    if (actor.role === 'OWNER') return;
+    if (actor.role !== 'ADMIN' || team.creatorMemberId !== actor.id) {
+      throw new NodeScopeException('PERM_003', 'CANNOT_MANAGE_TARGET', HttpStatus.FORBIDDEN);
+    }
+    await this.assertWithinGrantorScope(actor, teamPropertyIds); // PERM_002 if any site beyond scope
+  }
+
+  /** Team membership (add/remove members): OWNER any; ADMIN iff the team's sites are ALL within their scope (creator or not). */
+  async assertCanManageTeamMembership(actor: OrgMemberContext, teamPropertyIds: string[]): Promise<void> {
+    if (actor.role === 'OWNER') return;
+    if (actor.role !== 'ADMIN') throw new NodeScopeException('PERM_003', 'CANNOT_MANAGE_TARGET', HttpStatus.FORBIDDEN);
+    for (const pid of teamPropertyIds) {
+      if (!(await this.inScope(actor.organizationId, actor.id, pid))) {
+        throw new NodeScopeException('PERM_003', 'CANNOT_MANAGE_TARGET', HttpStatus.FORBIDDEN);
       }
     }
   }
