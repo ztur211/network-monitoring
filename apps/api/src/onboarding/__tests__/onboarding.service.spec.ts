@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OnboardingService } from '../onboarding.service';
-import { NetworksService } from '../../networks/networks.service';
 import { NetworksRepository } from '../../networks/networks.repository';
 import { UsersRepository } from '../../users/users.repository';
 import { AiService } from '../../ai/ai.service';
@@ -15,13 +14,10 @@ const mockRedis = {
   del: jest.fn(),
 };
 
-const mockNetworksService = {
-  createNetwork: jest.fn(),
-};
-
 const mockNetworksRepo = {
   countByOrgId: jest.fn(),
   findAllByOrgId: jest.fn(),
+  create: jest.fn(),
   updateWithVersion: jest.fn(),
 };
 
@@ -61,7 +57,6 @@ describe('OnboardingService', () => {
       providers: [
         OnboardingService,
         { provide: RedisService, useValue: mockRedis },
-        { provide: NetworksService, useValue: mockNetworksService },
         { provide: NetworksRepository, useValue: mockNetworksRepo },
         { provide: UsersRepository, useValue: mockUsersRepo },
         { provide: AiService, useValue: mockAi },
@@ -76,6 +71,7 @@ describe('OnboardingService', () => {
 
     mockNetworksRepo.countByOrgId.mockResolvedValue(0);
     mockNetworksRepo.findAllByOrgId.mockResolvedValue([]);
+    mockNetworksRepo.create.mockResolvedValue({ id: 'net-1' });
     mockUsersRepo.isOnboardingComplete.mockResolvedValue(false);
     mockUsersRepo.markOnboardingComplete.mockResolvedValue(undefined);
     mockRedis.get.mockResolvedValue(null);
@@ -167,21 +163,18 @@ describe('OnboardingService', () => {
       expect(result.progress.networkName).toBe('Home');
     });
 
-    it('SaveNetwork side effect calls networksService.createNetwork when no network exists', async () => {
+    it('SaveNetwork side effect calls networksRepository.create when no network exists', async () => {
       mockRedis.get.mockResolvedValue(
         JSON.stringify({ stepId: 'address', progress: { networkName: 'Home' } }),
       );
       mockGeocoder.geocode.mockResolvedValue(null);
-      mockNetworksService.createNetwork.mockResolvedValue({ id: 'net-1' });
 
       await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         fieldValues: { address: '1 Main St' },
       });
 
-      expect(mockNetworksService.createNetwork).toHaveBeenCalledWith(
-        ORG_ID,
-        USER_ID,
-        expect.objectContaining({ name: 'Home', homeAddress: '1 Main St' }),
+      expect(mockNetworksRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: ORG_ID, userId: USER_ID, name: 'Home', homeAddress: '1 Main St' }),
       );
     });
 
@@ -256,7 +249,6 @@ describe('OnboardingService', () => {
         longitude: -74.006,
         displayName: 'NYC',
       });
-      mockNetworksService.createNetwork.mockResolvedValue({ id: 'net-1' });
       mockNetworksRepo.findAllByOrgId
         .mockResolvedValueOnce([]) // first call (SaveNetwork enactment)
         .mockResolvedValue([

@@ -14,8 +14,8 @@ import {
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
-import { OrgId } from '../organizations/decorators/org-id.decorator';
-import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
+import { OrgMember } from '../organizations/decorators/org-member.decorator';
+import type { OrgMemberContext } from '../organizations/org-context.types';
 import { CreateNetworkDto, PatchNetworkDto } from './networks.dto';
 import { NetworksService } from './networks.service';
 
@@ -24,63 +24,59 @@ export class NetworksController {
   constructor(private readonly networksService: NetworksService) {}
 
   @Get()
-  async listNetworks(@OrgId() orgId: string) {
-    const data = await this.networksService.listNetworks(orgId);
+  async listNetworks(@OrgMember() member: OrgMemberContext) {
+    const data = await this.networksService.listNetworks(member);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @OrgRoles('OWNER', 'ADMIN')
   async createNetwork(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateNetworkDto,
   ) {
-    const data = await this.networksService.createNetwork(orgId, user.id, dto);
+    const data = await this.networksService.createNetwork(member, user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Get(':id')
   async getNetwork(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const data = await this.networksService.getNetwork(orgId, id);
+    const data = await this.networksService.getNetwork(member, id);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Patch(':id')
-  @OrgRoles('OWNER', 'ADMIN')
   async updateNetwork(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() patch: PatchNetworkDto,
   ) {
-    const data = await this.networksService.updateNetwork(orgId, id, patch);
+    const data = await this.networksService.updateNetwork(member, id, patch);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Post(':id/set-home-ip')
   @HttpCode(HttpStatus.OK)
-  @OrgRoles('OWNER', 'ADMIN')
   async setHomeIp(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const ip = req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0';
-    const data = await this.networksService.setHomeIpFromRequest(orgId, id, ip);
+    const data = await this.networksService.setHomeIpFromRequest(member, id, ip);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Delete(':id')
-  @OrgRoles('OWNER', 'ADMIN')
   async deleteNetwork(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.networksService.deleteNetwork(orgId, id);
+    await this.networksService.deleteNetwork(member, id);
     return { success: true, data: null, timestamp: new Date().toISOString() };
   }
 }
