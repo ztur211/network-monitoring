@@ -58,4 +58,12 @@ describe('PermissionsRepository (integration)', () => {
     await expect(repo.createTeam({ organizationId: orgId, name: 'ops', creatorMemberId: ownerId }))
       .rejects.toThrow(); // Prisma P2002 from team_org_name_lower_uniq
   });
+
+  it('ancestorPropertyIds returns the node and every ancestor', async () => {
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'HQ' } });
+    const bld = await prisma.property.create({ data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'A' } });
+    const flr = await prisma.property.create({ data: { organizationId: orgId, parentId: bld.id, type: 'FLOOR', name: '1' } });
+    const ids = await repo.ancestorPropertyIds(orgId, flr.id);
+    expect(ids.sort()).toEqual([site.id, bld.id, flr.id].sort());
+  });
 });
