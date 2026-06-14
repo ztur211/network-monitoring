@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Team } from '@prisma/client';
-import { AccessSummaryDto, TeamDto } from '@nodescope/shared';
+import { AccessSummaryDto, TeamDto, TeamMemberDto, TeamPropertyDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { AuditService } from '../audit/audit.service';
@@ -165,6 +165,48 @@ export class PermissionsService {
     await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
     await this.repo.deleteTeam(actor.organizationId, teamId);
     await this.audit.recordDelete(actor.organizationId, 'Team', team);
+  }
+
+  async addMemberToTeam(actor: OrgMemberContext, teamId: string, memberId: string): Promise<TeamMemberDto> {
+    await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamMembership(actor, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    const target = await this.repo.findMemberById(actor.organizationId, memberId);
+    if (!target) throw new NodeScopeException('ORG_001', 'NOT_A_MEMBER', HttpStatus.NOT_FOUND);
+    this.assertCanManageMember(actor, target);
+    const existing = await this.repo.findTeamMember(actor.organizationId, teamId, memberId);
+    if (existing) return { id: existing.id, teamId, memberId };
+    const tm = await this.repo.addTeamMember({ organizationId: actor.organizationId, teamId, memberId });
+    await this.audit.recordCreate(actor.organizationId, 'TeamMember', tm);
+    return { id: tm.id, teamId, memberId };
+  }
+
+  async removeMemberFromTeam(actor: OrgMemberContext, teamId: string, memberId: string): Promise<void> {
+    await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamMembership(actor, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    const target = await this.repo.findMemberById(actor.organizationId, memberId);
+    if (target) this.assertCanManageMember(actor, target);
+    const existing = await this.repo.findTeamMember(actor.organizationId, teamId, memberId);
+    await this.repo.removeTeamMember(actor.organizationId, teamId, memberId);
+    if (existing) await this.audit.recordDelete(actor.organizationId, 'TeamMember', existing);
+  }
+
+  async assignSiteToTeam(actor: OrgMemberContext, teamId: string, propertyId: string): Promise<TeamPropertyDto> {
+    const team = await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    await this.assertWithinGrantorScope(actor, [propertyId]);
+    const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
+    if (existing) return { id: existing.id, teamId, propertyId };
+    const tp = await this.repo.addTeamProperty({ organizationId: actor.organizationId, teamId, propertyId });
+    await this.audit.recordCreate(actor.organizationId, 'TeamProperty', tp);
+    return { id: tp.id, teamId, propertyId };
+  }
+
+  async unassignSiteFromTeam(actor: OrgMemberContext, teamId: string, propertyId: string): Promise<void> {
+    const team = await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
+    await this.repo.removeTeamProperty(actor.organizationId, teamId, propertyId);
+    if (existing) await this.audit.recordDelete(actor.organizationId, 'TeamProperty', existing);
   }
 
   private async loadTeamOr404(organizationId: string, teamId: string): Promise<Team> {

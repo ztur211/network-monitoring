@@ -1,4 +1,4 @@
-import { IsInt, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsInt, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -15,7 +15,6 @@ export class UpdateTeamDto {
   name!: string;
 }
 
-// (used by later tasks)
-export class AddTeamMemberDto { @IsString() memberId!: string; }
-export class AddTeamPropertyDto { @IsString() propertyId!: string; }
-export class AddMemberPropertyDto { @IsString() propertyId!: string; }
+export class AddTeamMemberDto { @IsUUID() memberId!: string; }
+export class AddTeamPropertyDto { @IsUUID() propertyId!: string; }
+export class AddMemberPropertyDto { @IsUUID() propertyId!: string; }
