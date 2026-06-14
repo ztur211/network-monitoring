@@ -19,17 +19,30 @@ type CursorPayload = {
   id: string;
 };
 
+/** Scope filter for site-bound circuit reads. `null` = OWNER (unscoped). */
+export type CircuitScope = { propertyIdIn: string[] } | null;
+
 @Injectable()
 export class CircuitsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findWithCursor(organizationId: string, limit: number, cursor?: string): Promise<Circuit[]> {
-    let where: Prisma.CircuitWhereInput = { organizationId };
+  async findWithCursor(
+    organizationId: string,
+    limit: number,
+    cursor?: string,
+    scope?: CircuitScope,
+  ): Promise<Circuit[]> {
+    const scopeClause: Prisma.CircuitWhereInput = scope
+      ? { device: { propertyId: { in: scope.propertyIdIn } } }
+      : {};
+
+    let where: Prisma.CircuitWhereInput = { organizationId, ...scopeClause };
 
     if (cursor) {
       const decoded = this.decodeCursor(cursor);
       where = {
         organizationId,
+        ...scopeClause,
         OR: [
           { createdAt: { lt: new Date(decoded.createdAt) } },
           { createdAt: new Date(decoded.createdAt), id: { lt: decoded.id } },
@@ -59,12 +72,35 @@ export class CircuitsRepository {
     }
   }
 
-  countByOrgId(organizationId: string): Promise<number> {
-    return this.prisma.circuit.count({ where: { organizationId } });
+  countByOrgId(organizationId: string, scope?: CircuitScope): Promise<number> {
+    const scopeClause: Prisma.CircuitWhereInput = scope
+      ? { device: { propertyId: { in: scope.propertyIdIn } } }
+      : {};
+    return this.prisma.circuit.count({ where: { organizationId, ...scopeClause } });
   }
 
+  /** Org-wide lookup — used by the write path so an out-of-scope ADMIN gets PERM_001 rather than 404. */
   findByIdAndOrgId(circuitId: string, organizationId: string): Promise<Circuit | null> {
     return this.prisma.circuit.findFirst({ where: { id: circuitId, organizationId } });
+  }
+
+  /**
+   * Scope-filtered lookup — used by the read path. A scoped ADMIN or MEMBER only sees a circuit
+   * when its linked device's site is within their assigned scope. Device-less circuits (no
+   * `device` row) are excluded for scoped members because the `device` relation filter fails to
+   * match a null `deviceId`.
+   */
+  findVisibleByIdAndOrgId(
+    circuitId: string,
+    organizationId: string,
+    scope: CircuitScope,
+  ): Promise<Circuit | null> {
+    const scopeClause: Prisma.CircuitWhereInput = scope
+      ? { device: { propertyId: { in: scope.propertyIdIn } } }
+      : {};
+    return this.prisma.circuit.findFirst({
+      where: { id: circuitId, organizationId, ...scopeClause },
+    });
   }
 
   create(data: CreateCircuitData): Promise<Circuit> {
