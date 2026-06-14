@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('FiberRunsController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let memberCookie: string;
   let deviceAId: string;
   let deviceBId: string;
   let fiberRunId: string;
@@ -18,6 +19,12 @@ describe('FiberRunsController (e2e)', () => {
   let networkId: string;
   let siteId: string;
   const testEmail = `e2e-fiber-${Date.now()}@example.com`;
+  const memberEmail = `e2e-fiber-member-${Date.now()}@example.com`;
+
+  const pickCookie = (res: request.Response): string => {
+    const c = res.headers['set-cookie'];
+    return Array.isArray(c) ? c[0] : (c as unknown as string);
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -31,18 +38,25 @@ describe('FiberRunsController (e2e)', () => {
     );
     await app.init();
 
-    const signUp = await request(app.getHttpServer())
-      .post('/api/auth/sign-up/email')
-      .send({ email: testEmail, password: 'Password123!', name: 'FiberRuns Test User' });
+    sessionCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: testEmail, password: 'Password123!', name: 'FiberRuns Test User' }),
+    );
 
-    const setCookie = signUp.headers['set-cookie'];
-    sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    memberCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: memberEmail, password: 'Password123!', name: 'FiberRuns Member User' }),
+    );
 
     const prisma = app.get(PrismaService);
     const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const member = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
     const org = await prisma.organization.create({ data: { name: `E2E FiberRuns ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+    await prisma.organizationMember.create({ data: { userId: member.id, organizationId: orgId, role: 'MEMBER' } });
 
     const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
     networkId = network.id;
@@ -73,7 +87,7 @@ describe('FiberRunsController (e2e)', () => {
     await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
-    await prisma.user.deleteMany({ where: { email: testEmail } });
+    await prisma.user.deleteMany({ where: { email: { in: [testEmail, memberEmail] } } });
     await app.close();
   });
 
@@ -155,6 +169,46 @@ describe('FiberRunsController (e2e)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toBeNull();
+    });
+  });
+
+  describe('MEMBER read-only on fiber-runs', () => {
+    it('MEMBER GET /api/v1/fiber-runs → 200 (read is allowed)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/fiber-runs')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('MEMBER POST /api/v1/fiber-runs → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/fiber-runs')
+        .set('Cookie', memberCookie)
+        .send({ name: 'Member Fiber', startDeviceId: deviceAId, endDeviceId: deviceBId });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER PATCH /api/v1/fiber-runs/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/fiber-runs/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie)
+        .send({ baseVersion: 1, changes: [{ field: 'cableType', oldValue: null, newValue: 'blocked' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER DELETE /api/v1/fiber-runs/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .delete('/api/v1/fiber-runs/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
     });
   });
 });
