@@ -5,11 +5,12 @@ import { DevicesRepository } from './devices.repository';
 import { NameSuggestionService } from './name-suggestion.service';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 import { PropertiesModule } from '../properties/properties.module';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 
 @Module({
-  imports: [OrganizationsModule, forwardRef(() => ConflictResolutionModule), PropertiesModule],
+  imports: [OrganizationsModule, forwardRef(() => ConflictResolutionModule), PropertiesModule, PermissionsModule],
   controllers: [DevicesController],
   providers: [DevicesService, DevicesRepository, IdempotencyInterceptor, NameSuggestionService],
   exports: [DevicesService, DevicesRepository],

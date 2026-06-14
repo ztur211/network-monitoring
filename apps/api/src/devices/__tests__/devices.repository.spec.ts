@@ -8,6 +8,7 @@ import { ChangeLogRepository } from '../../audit/change-log.repository';
 import { auditAls } from '../../audit/audit.als';
 import { DevicesService } from '../devices.service';
 import { ContainmentService } from '../../properties/containment.service';
+import { PermissionsService } from '../../permissions/permissions.service';
 import { DeviceCategory } from '@prisma/client';
 import { CreateDeviceDto } from '../devices.dto';
 
@@ -236,6 +237,7 @@ describe('DevicesService audit integration', () => {
         DevicesService,
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: ContainmentService, useValue: mockContainment },
+        { provide: PermissionsService, useValue: { scopeFilter: jest.fn().mockResolvedValue(null), assertCanConfigure: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -266,12 +268,16 @@ describe('DevicesService audit integration', () => {
     await auditAls.run(
       { requestId: 'r1', userId: user.id, ipAddress: null, userAgent: null },
       async () =>
-        service.createDevice(org.id, user.id, {
-          name: 'AuditCam',
-          category: DeviceCategory.IOT_DEVICE,
-          networkId: network.id,
-          propertyId: property.id,
-        } as CreateDeviceDto),
+        service.createDevice(
+          { id: 'owner-m', organizationId: org.id, role: 'OWNER' },
+          user.id,
+          {
+            name: 'AuditCam',
+            category: DeviceCategory.IOT_DEVICE,
+            networkId: network.id,
+            propertyId: property.id,
+          } as CreateDeviceDto,
+        ),
     );
 
     const logs = await prisma.changeLog.findMany({
