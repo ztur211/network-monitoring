@@ -14,6 +14,7 @@ const charterRepoMock = () => ({
   create: jest.fn(),
   deleteByNetworkAndProperty: jest.fn(),
   propertyIdsByNetwork: jest.fn(),
+  deviceFootprintPropertyIds: jest.fn().mockResolvedValue([]),
 });
 const propsRepoMock = () => ({ findByIdAndOrgId: jest.fn() });
 const containmentMock = () => ({ assertCharterRemovable: jest.fn() });

@@ -21,6 +21,11 @@ describe('NetworksController (e2e)', () => {
   let sAId: string;
   /** sB: site ADMIN is NOT assigned to. */
   let sBId: string;
+  /**
+   * A network with NO charters but a device placed under sB.
+   * Used to prove device-footprint coverage enforcement (PERM_004).
+   */
+  let footprintNetworkId: string;
   const testEmail = `e2e-networks-${Date.now()}@example.com`;
   const memberEmail = `e2e-networks-member-${Date.now()}@example.com`;
   const adminEmail = `e2e-networks-admin-${Date.now()}@example.com`;
@@ -92,6 +97,21 @@ describe('NetworksController (e2e)', () => {
     await prisma.teamProperty.create({ data: { organizationId: orgId, teamId: team.id, propertyId: sAId } });
     await prisma.teamMember.create({ data: { organizationId: orgId, teamId: team.id, memberId: adminMembership.id } });
     await prisma.teamMember.create({ data: { organizationId: orgId, teamId: team.id, memberId: memberMembership.id } });
+
+    // Charter-less network with one device placed under sB — proves device-footprint coverage enforcement
+    const footprintNet = await prisma.network.create({
+      data: { organizationId: orgId, userId: u.id, name: `Footprint Test Net ${Date.now()}` },
+    });
+    footprintNetworkId = footprintNet.id;
+    await prisma.device.create({
+      data: {
+        organizationId: orgId,
+        networkId: footprintNet.id,
+        propertyId: sBId,
+        name: 'Test Switch',
+        category: 'SWITCH',
+      },
+    });
   });
 
   afterAll(async () => {
@@ -428,6 +448,45 @@ describe('NetworksController (e2e)', () => {
 
       const ids = (res.body.data as Array<{ id: string }>).map((n) => n.id);
       expect(ids).toContain(scopeTestNetworkId);
+    });
+  });
+
+  describe('F3 device-footprint coverage enforcement', () => {
+    /**
+     * footprintNetworkId has NO charter rows but has one device placed under sB.
+     * ADMIN is scoped to sA only → the device footprint (sB) is outside ADMIN scope
+     * → write must return 403 PERM_004.
+     * OWNER → 200 (unscoped, all sites covered).
+     */
+
+    it('ADMIN (scoped sA only) PATCH charter-less network with device under sB → 403 PERM_004', async () => {
+      const getRes = await request(app.getHttpServer())
+        .get(`/api/v1/networks/${footprintNetworkId}`)
+        .set('Cookie', sessionCookie);
+      const currentVersion = getRes.body.data.version as number;
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/networks/${footprintNetworkId}`)
+        .set('Cookie', adminCookie)
+        .send({ baseVersion: currentVersion, changes: [{ field: 'name', oldValue: 'Footprint Test Net', newValue: 'Hijacked' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('PERM_004');
+    });
+
+    it('OWNER PATCH charter-less network with device under sB → 200 (unscoped)', async () => {
+      const getRes = await request(app.getHttpServer())
+        .get(`/api/v1/networks/${footprintNetworkId}`)
+        .set('Cookie', sessionCookie);
+      const currentVersion = getRes.body.data.version as number;
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/networks/${footprintNetworkId}`)
+        .set('Cookie', sessionCookie)
+        .send({ baseVersion: currentVersion, changes: [{ field: 'name', oldValue: 'Footprint Test Net', newValue: 'Owner Rename OK' }] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.version).toBe(currentVersion + 1);
     });
   });
 });

@@ -30,8 +30,11 @@ export class NetworkPropertyService {
 
   async add(member: OrgMemberContext, networkId: string, propertyId: string) {
     const organizationId = member.organizationId;
-    const current = (await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId);
-    await this.permissions.assertNetworkFullCoverage(member, current);
+    const coverageSites = [...new Set([
+      ...(await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId),
+      ...(await this.charters.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
     await this.permissions.assertCanConfigure(member, propertyId);
     const property = await this.props.findByIdAndOrgId(propertyId, organizationId);
     if (!property) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
@@ -48,8 +51,11 @@ export class NetworkPropertyService {
 
   async remove(member: OrgMemberContext, networkId: string, propertyId: string) {
     const organizationId = member.organizationId;
-    const current = (await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId);
-    await this.permissions.assertNetworkFullCoverage(member, current);
+    const coverageSites = [...new Set([
+      ...(await this.charters.listByNetwork(organizationId, networkId)).map((c) => c.propertyId),
+      ...(await this.charters.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
     const existing = await this.charters.existsCharter(organizationId, networkId, propertyId);
     if (!existing) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
     await this.containment.assertCharterRemovable(organizationId, networkId, propertyId);

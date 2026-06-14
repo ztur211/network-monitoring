@@ -37,6 +37,7 @@ const mockRepo: jest.Mocked<Pick<
   | 'listVisible'
   | 'findVisibleByIdAndOrgId'
   | 'charteredPropertyIds'
+  | 'deviceFootprintPropertyIds'
   | 'findAllByMemberUserId'
   | 'create'
   | 'updateWithVersion'
@@ -48,6 +49,7 @@ const mockRepo: jest.Mocked<Pick<
   listVisible: jest.fn(),
   findVisibleByIdAndOrgId: jest.fn(),
   charteredPropertyIds: jest.fn(),
+  deviceFootprintPropertyIds: jest.fn(),
   findAllByMemberUserId: jest.fn(),
   create: jest.fn(),
   updateWithVersion: jest.fn(),
@@ -102,6 +104,7 @@ describe('NetworksService', () => {
     mockPermissions.scopeFilter.mockResolvedValue(null);
     mockPermissions.assertNetworkFullCoverage.mockResolvedValue(undefined);
     mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
+    mockRepo.deviceFootprintPropertyIds.mockResolvedValue([]);
   });
 
   describe('listNetworks', () => {
