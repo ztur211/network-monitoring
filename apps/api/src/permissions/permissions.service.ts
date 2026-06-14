@@ -46,6 +46,19 @@ export class PermissionsService {
     return { propertyIdIn: await this.scopePropertyIds(member.organizationId, member.id) };
   }
 
+  /** Network-level op: OWNER always; MEMBER → ORG_003; ADMIN must cover EVERY chartered site → else PERM_004. */
+  async assertNetworkFullCoverage(member: OrgMemberContext, charteredPropertyIds: string[]): Promise<void> {
+    if (member.role === 'OWNER') return;
+    if (member.role === 'MEMBER') {
+      throw new NodeScopeException('ORG_003', 'FORBIDDEN_ROLE', HttpStatus.FORBIDDEN);
+    }
+    for (const propertyId of charteredPropertyIds) {
+      if (!(await this.inScope(member.organizationId, member.id, propertyId))) {
+        throw new NodeScopeException('PERM_004', 'NETWORK_PARTIAL_SCOPE', HttpStatus.FORBIDDEN);
+      }
+    }
+  }
+
   async accessSummary(member: OrgMemberContext): Promise<AccessSummaryDto> {
     const unscoped = member.role === 'OWNER';
     return {
