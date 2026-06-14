@@ -11,9 +11,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('NetworksController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let memberCookie: string;
   let networkId: string;
   let orgId: string;
   const testEmail = `e2e-networks-${Date.now()}@example.com`;
+  const memberEmail = `e2e-networks-member-${Date.now()}@example.com`;
+
+  const pickCookie = (res: request.Response): string => {
+    const c = res.headers['set-cookie'];
+    return Array.isArray(c) ? c[0] : (c as unknown as string);
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -27,25 +34,32 @@ describe('NetworksController (e2e)', () => {
     );
     await app.init();
 
-    const signUp = await request(app.getHttpServer())
-      .post('/api/auth/sign-up/email')
-      .send({ email: testEmail, password: 'Password123!', name: 'Networks Test User' });
+    sessionCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: testEmail, password: 'Password123!', name: 'Networks Test User' }),
+    );
 
-    const setCookie = signUp.headers['set-cookie'];
-    sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    memberCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: memberEmail, password: 'Password123!', name: 'Networks Member User' }),
+    );
 
     const prisma = app.get(PrismaService);
     const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const member = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
     const org = await prisma.organization.create({ data: { name: `E2E Networks ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+    await prisma.organizationMember.create({ data: { userId: member.id, organizationId: orgId, role: 'MEMBER' } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
-    await prisma.user.deleteMany({ where: { email: testEmail } });
+    await prisma.user.deleteMany({ where: { email: { in: [testEmail, memberEmail] } } });
     await app.close();
   });
 
@@ -214,6 +228,55 @@ describe('NetworksController (e2e)', () => {
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('NETWORK_002');
+    });
+  });
+
+  describe('MEMBER read-only on networks', () => {
+    it('MEMBER GET /api/v1/networks → 200 (read is allowed)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/networks')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('MEMBER POST /api/v1/networks → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/networks')
+        .set('Cookie', memberCookie)
+        .send({ name: 'Member Network' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER PATCH /api/v1/networks/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/networks/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie)
+        .send({ baseVersion: 1, changes: [{ field: 'isp', oldValue: null, newValue: 'blocked' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER POST /api/v1/networks/:id/set-home-ip → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/networks/00000000-0000-0000-0000-000000000001/set-home-ip')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER DELETE /api/v1/networks/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .delete('/api/v1/networks/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
     });
   });
 });

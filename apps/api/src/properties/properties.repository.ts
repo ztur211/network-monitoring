@@ -90,6 +90,18 @@ export class PropertiesRepository {
     return rows.map((r) => r.id);
   }
 
+  /** Self → root ordered by depth ASC, returning type + code for naming-token resolution. */
+  async getAncestorChain(organizationId: string, id: string): Promise<{ type: PropertyType; code: string | null }[]> {
+    const rows = await this.prisma.$queryRaw<{ type: PropertyType; code: string | null; depth: number }[]>`
+      WITH RECURSIVE chain AS (
+        SELECT id, "parentId", type, code, 0 AS depth FROM "Property" WHERE id = ${id} AND "organizationId" = ${organizationId}
+        UNION ALL
+        SELECT p.id, p."parentId", p.type, p.code, c.depth + 1 FROM "Property" p JOIN chain c ON p.id = c."parentId"
+      )
+      SELECT type, code, depth FROM chain ORDER BY depth ASC;`;
+    return rows.map((r) => ({ type: r.type, code: r.code }));
+  }
+
   devicesUnder(organizationId: string, propertyIds: string[]): Promise<{ id: string; networkId: string; propertyId: string }[]> {
     if (propertyIds.length === 0) return Promise.resolve([]);
     return this.prisma.device.findMany({

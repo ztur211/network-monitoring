@@ -15,6 +15,7 @@ import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { CreateNetworkDto, PatchNetworkDto } from './networks.dto';
 import { NetworksService } from './networks.service';
 
@@ -30,6 +31,7 @@ export class NetworksController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @OrgRoles('OWNER', 'ADMIN')
   async createNetwork(
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -49,6 +51,7 @@ export class NetworksController {
   }
 
   @Patch(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async updateNetwork(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -60,6 +63,7 @@ export class NetworksController {
 
   @Post(':id/set-home-ip')
   @HttpCode(HttpStatus.OK)
+  @OrgRoles('OWNER', 'ADMIN')
   async setHomeIp(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -71,6 +75,7 @@ export class NetworksController {
   }
 
   @Delete(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async deleteNetwork(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
