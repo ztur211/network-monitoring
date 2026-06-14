@@ -17,7 +17,13 @@ export class InvitationsService {
     private readonly realtime: ConflictResolutionService,
   ) {}
 
-  async create(organizationId: string, email: string, role: OrgRole, invitedByUserId: string) {
+  async create(organizationId: string, email: string, role: OrgRole, invitedByUserId: string, actorRole: OrgRole) {
+    if (actorRole === 'MEMBER') {
+      throw new NodeScopeException('ORG_003', 'FORBIDDEN_ROLE', HttpStatus.FORBIDDEN);
+    }
+    if (actorRole !== 'OWNER' && role !== 'MEMBER') {
+      throw new NodeScopeException('PERM_003', 'CANNOT_MANAGE_TARGET', HttpStatus.FORBIDDEN);
+    }
     const normalized = email.trim().toLowerCase();
     await this.invitations.deletePendingByOrgAndEmail(organizationId, normalized);
     const token = randomBytes(32).toString('base64url');
