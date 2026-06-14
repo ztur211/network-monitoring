@@ -4,9 +4,10 @@ import { ConnectionsService } from './connections.service';
 import { ConnectionsRepository } from './connections.repository';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
 import { DevicesModule } from '../devices/devices.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
-  imports: [ConflictResolutionModule, DevicesModule],
+  imports: [ConflictResolutionModule, DevicesModule, PermissionsModule],
   controllers: [ConnectionsController],
   providers: [ConnectionsService, ConnectionsRepository],
   exports: [ConnectionsRepository],
