@@ -39,6 +39,7 @@ const makeDomainMatch = (organizationId = 'org-1') => ({
     name: 'Acme Corp',
     namingPattern: null,
     namingMaxLen: null,
+    namingTemplate: null,
     version: 1,
     createdAt: new Date(),
     updatedAt: new Date(),

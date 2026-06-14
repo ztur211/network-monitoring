@@ -136,6 +136,7 @@ export class OrganizationsService {
     name: string;
     namingPattern: string | null;
     namingMaxLen: number | null;
+    namingTemplate: string | null;
     version: number;
     createdAt: Date;
     updatedAt: Date;
@@ -145,6 +146,7 @@ export class OrganizationsService {
       name: o.name,
       namingPattern: o.namingPattern,
       namingMaxLen: o.namingMaxLen,
+      namingTemplate: o.namingTemplate,
       version: o.version,
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),

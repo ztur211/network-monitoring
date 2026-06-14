@@ -36,6 +36,7 @@ const makeOrg = (overrides = {}) => ({
   name: 'Test Org',
   namingPattern: null,
   namingMaxLen: null,
+  namingTemplate: null,
   version: 1,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
