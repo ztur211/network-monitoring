@@ -197,16 +197,24 @@ export class PermissionsService {
     this.assertCanManageMember(actor, target);
     const existing = await this.repo.findTeamMember(actor.organizationId, teamId, memberId);
     if (existing) return { id: existing.id, teamId, memberId };
-    const tm = await this.repo.addTeamMember({ organizationId: actor.organizationId, teamId, memberId });
-    await this.audit.recordCreate(actor.organizationId, 'TeamMember', tm);
-    await this.realtime().emitScopedMulti(
-      actor.organizationId,
-      await this.repo.teamPropertyIds(actor.organizationId, teamId),
-      WS_EVENTS.TEAM_MEMBER_ADDED,
-      { teamId, memberId },
-    );
-    this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
-    return { id: tm.id, teamId, memberId };
+    try {
+      const tm = await this.repo.addTeamMember({ organizationId: actor.organizationId, teamId, memberId });
+      await this.audit.recordCreate(actor.organizationId, 'TeamMember', tm);
+      await this.realtime().emitScopedMulti(
+        actor.organizationId,
+        await this.repo.teamPropertyIds(actor.organizationId, teamId),
+        WS_EVENTS.TEAM_MEMBER_ADDED,
+        { teamId, memberId },
+      );
+      this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
+      return { id: tm.id, teamId, memberId };
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        const race = await this.repo.findTeamMember(actor.organizationId, teamId, memberId);
+        if (race) return { id: race.id, teamId, memberId };
+      }
+      throw e;
+    }
   }
 
   async removeMemberFromTeam(actor: OrgMemberContext, teamId: string, memberId: string): Promise<void> {
@@ -233,18 +241,26 @@ export class PermissionsService {
     const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
     if (existing) return { id: existing.id, teamId, propertyId };
     const userIds = await this.repo.teamMemberUserIds(actor.organizationId, teamId);
-    const tp = await this.repo.addTeamProperty({ organizationId: actor.organizationId, teamId, propertyId });
-    await this.audit.recordCreate(actor.organizationId, 'TeamProperty', tp);
-    await this.realtime().emitScopedMulti(
-      actor.organizationId,
-      await this.repo.teamPropertyIds(actor.organizationId, teamId),
-      WS_EVENTS.TEAM_PROPERTY_ASSIGNED,
-      { teamId, propertyId },
-    );
-    for (const uid of userIds) {
-      this.realtime().notifyAccessChanged(actor.organizationId, uid);
+    try {
+      const tp = await this.repo.addTeamProperty({ organizationId: actor.organizationId, teamId, propertyId });
+      await this.audit.recordCreate(actor.organizationId, 'TeamProperty', tp);
+      await this.realtime().emitScopedMulti(
+        actor.organizationId,
+        await this.repo.teamPropertyIds(actor.organizationId, teamId),
+        WS_EVENTS.TEAM_PROPERTY_ASSIGNED,
+        { teamId, propertyId },
+      );
+      for (const uid of userIds) {
+        this.realtime().notifyAccessChanged(actor.organizationId, uid);
+      }
+      return { id: tp.id, teamId, propertyId };
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        const race = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
+        if (race) return { id: race.id, teamId, propertyId };
+      }
+      throw e;
     }
-    return { id: tp.id, teamId, propertyId };
   }
 
   async unassignSiteFromTeam(actor: OrgMemberContext, teamId: string, propertyId: string): Promise<void> {
@@ -272,11 +288,19 @@ export class PermissionsService {
     await this.assertWithinGrantorScope(actor, [propertyId]);  // site ⊆ actor scope (PERM_002)
     const existing = await this.repo.findMemberProperty(actor.organizationId, memberId, propertyId);
     if (existing) return { id: existing.id, memberId, propertyId }; // idempotent
-    const mp = await this.repo.addMemberProperty({ organizationId: actor.organizationId, memberId, propertyId });
-    await this.audit.recordCreate(actor.organizationId, 'MemberProperty', mp);
-    await this.realtime().emitScoped(actor.organizationId, propertyId, WS_EVENTS.MEMBER_PROPERTY_ASSIGNED, { memberId, propertyId });
-    this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
-    return { id: mp.id, memberId, propertyId };
+    try {
+      const mp = await this.repo.addMemberProperty({ organizationId: actor.organizationId, memberId, propertyId });
+      await this.audit.recordCreate(actor.organizationId, 'MemberProperty', mp);
+      await this.realtime().emitScoped(actor.organizationId, propertyId, WS_EVENTS.MEMBER_PROPERTY_ASSIGNED, { memberId, propertyId });
+      this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
+      return { id: mp.id, memberId, propertyId };
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        const race = await this.repo.findMemberProperty(actor.organizationId, memberId, propertyId);
+        if (race) return { id: race.id, memberId, propertyId };
+      }
+      throw e;
+    }
   }
 
   async revokeSiteFromMember(actor: OrgMemberContext, memberId: string, propertyId: string): Promise<void> {
