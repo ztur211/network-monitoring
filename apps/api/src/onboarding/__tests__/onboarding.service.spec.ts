@@ -2,8 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OnboardingService } from '../onboarding.service';
 import { NetworksService } from '../../networks/networks.service';
 import { NetworksRepository } from '../../networks/networks.repository';
-import { DevicesService } from '../../devices/devices.service';
-import { DevicesRepository } from '../../devices/devices.repository';
 import { UsersRepository } from '../../users/users.repository';
 import { AiService } from '../../ai/ai.service';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
@@ -25,14 +23,6 @@ const mockNetworksRepo = {
   countByOrgId: jest.fn(),
   findAllByOrgId: jest.fn(),
   updateWithVersion: jest.fn(),
-};
-
-const mockDevicesService = {
-  createBrowserDevice: jest.fn(),
-};
-
-const mockDevicesRepo = {
-  create: jest.fn(),
 };
 
 const mockUsersRepo = {
@@ -73,8 +63,6 @@ describe('OnboardingService', () => {
         { provide: RedisService, useValue: mockRedis },
         { provide: NetworksService, useValue: mockNetworksService },
         { provide: NetworksRepository, useValue: mockNetworksRepo },
-        { provide: DevicesService, useValue: mockDevicesService },
-        { provide: DevicesRepository, useValue: mockDevicesRepo },
         { provide: UsersRepository, useValue: mockUsersRepo },
         { provide: AiService, useValue: mockAi },
         { provide: ConflictResolutionService, useValue: mockConflict },
@@ -108,7 +96,7 @@ describe('OnboardingService', () => {
       mockUsersRepo.isOnboardingComplete.mockResolvedValue(true);
 
       await expect(
-        service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' }),
+        service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {}),
       ).rejects.toMatchObject({ code: 'ONBOARD_002' });
     });
 
@@ -123,18 +111,16 @@ describe('OnboardingService', () => {
       mockRedis.get.mockResolvedValue(null); // no in-flight state
       mockUsersRepo.isOnboardingComplete.mockResolvedValue(false); // never completed
 
-      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
-      });
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {});
 
       expect(result.stepId).toBe('networkName'); // welcome → networkName, not a 409
     });
 
     it('proceeds mid-flow even after SaveNetwork created a Network row (regression: 2026-05-21 smoke)', async () => {
       // Smoke caught: state-machine fires SaveNetwork at the `address` step,
-      // creating a Network row. Every subsequent turn (browserDeviceName,
-      // mobility, ...) was 409-ing because the guard read "user has a
-      // network → onboarding done". The wizard must finish its own flow.
+      // creating a Network row. Every subsequent turn (mobility, ...) was 409-ing
+      // because the guard read "user has a network → onboarding done". The wizard
+      // must finish its own flow.
       mockNetworksRepo.countByOrgId.mockResolvedValue(1);
       mockRedis.get.mockResolvedValue(
         JSON.stringify({
@@ -144,7 +130,6 @@ describe('OnboardingService', () => {
       );
 
       const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         fieldValues: { name: 'My Laptop' },
       });
 
@@ -153,16 +138,14 @@ describe('OnboardingService', () => {
     });
 
     it('on first turn (no Redis state), starts at welcome → advances to networkName', async () => {
-      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
-      });
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {});
       expect(result.stepId).toBe('networkName');
       expect(result.botMessage).toBe('Bot message');
       expect(result.fields.map((f) => f.key)).toContain('name');
     });
 
     it('persists state to Redis with 24h TTL', async () => {
-      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' });
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {});
 
       expect(mockRedis.set).toHaveBeenCalledWith(
         `onboarding:state:${USER_ID}`,
@@ -178,7 +161,6 @@ describe('OnboardingService', () => {
       );
 
       const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         fieldValues: { name: 'Home' },
       });
       expect(result.stepId).toBe('address');
@@ -193,7 +175,6 @@ describe('OnboardingService', () => {
       mockNetworksService.createNetwork.mockResolvedValue({ id: 'net-1' });
 
       await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         fieldValues: { address: '1 Main St' },
       });
 
@@ -204,7 +185,7 @@ describe('OnboardingService', () => {
       );
     });
 
-    it('SaveBrowserDevice side effect calls devicesService.createBrowserDevice with the body browserDeviceId', async () => {
+    it('SaveBrowserDevice side effect is a no-op after BROWSER_CLIENT retirement', async () => {
       mockRedis.get.mockResolvedValue(
         JSON.stringify({
           stepId: 'mobility',
@@ -214,21 +195,13 @@ describe('OnboardingService', () => {
       mockNetworksRepo.findAllByOrgId.mockResolvedValue([
         { id: 'net-1', organizationId: ORG_ID, userId: USER_ID, name: 'Home', version: 1 } as any,
       ]);
-      mockDevicesService.createBrowserDevice.mockResolvedValue({ id: 'dev-1' });
 
-      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-uuid-123',
+      // Should complete without error — the side effect is now a debug no-op
+      const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
         chipChoice: 'HOME_ONLY',
       });
 
-      expect(mockDevicesService.createBrowserDevice).toHaveBeenCalledWith(
-        ORG_ID,
-        USER_ID,
-        'bd-uuid-123',
-        'Laptop',
-        'HOME_ONLY',
-        'net-1',
-      );
+      expect(result.stepId).toBeDefined();
     });
 
     it('SaveHomeIp uses the request IP, not the sentinel from the state machine', async () => {
@@ -244,7 +217,6 @@ describe('OnboardingService', () => {
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
       await service.handleTurn(ORG_ID, USER_ID, '203.0.113.5', {
-        browserDeviceId: 'bd-1',
         chipChoice: 'yes',
       });
 
@@ -269,7 +241,6 @@ describe('OnboardingService', () => {
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
       await service.handleTurn(ORG_ID, USER_ID, '203.0.113.5', {
-        browserDeviceId: 'bd-1',
         chipChoice: 'yes',
       });
 
@@ -294,7 +265,6 @@ describe('OnboardingService', () => {
       mockNetworksRepo.updateWithVersion.mockResolvedValue({ id: 'net-1', version: 2 } as any);
 
       await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         fieldValues: { address: '1 Main St' },
       });
 
@@ -308,7 +278,7 @@ describe('OnboardingService', () => {
     });
 
     it('emits v1:onboarding:turn after each turn', async () => {
-      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', { browserDeviceId: 'bd-1' });
+      await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {});
       expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
         'v1:onboarding:turn',
         expect.objectContaining({ stepId: 'networkName', complete: false }),
@@ -325,7 +295,6 @@ describe('OnboardingService', () => {
       );
 
       const result = await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         chipChoice: 'skip',
       });
 
@@ -339,7 +308,6 @@ describe('OnboardingService', () => {
       );
 
       await service.handleTurn(ORG_ID, USER_ID, '127.0.0.1', {
-        browserDeviceId: 'bd-1',
         chipChoice: 'skip',
       });
 

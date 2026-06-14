@@ -12,6 +12,8 @@ describe('DevicesController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
   let orgId: string;
+  let networkId: string;
+  let siteId: string;
   const testEmail = `e2e-devices-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -38,10 +40,20 @@ describe('DevicesController (e2e)', () => {
     const org = await prisma.organization.create({ data: { name: `E2E Devices ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+
+    const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
+    networkId = network.id;
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `HQ ${Date.now()}` } });
+    siteId = site.id;
+    await prisma.networkProperty.create({ data: { organizationId: orgId, networkId: network.id, propertyId: site.id } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.device.deleteMany({ where: { organizationId: orgId } });
+    await prisma.networkProperty.deleteMany({ where: { organizationId: orgId } });
+    await prisma.network.deleteMany({ where: { organizationId: orgId } });
+    await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
@@ -84,7 +96,7 @@ describe('DevicesController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: 'Test Router', category: 'ROUTER' });
+        .send({ name: 'Test Router', category: 'ROUTER', networkId, propertyId: siteId });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -97,7 +109,7 @@ describe('DevicesController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: 'test router', category: 'SWITCH' });
+        .send({ name: 'test router', category: 'SWITCH', networkId, propertyId: siteId });
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('ORG_005');
@@ -105,7 +117,7 @@ describe('DevicesController (e2e)', () => {
 
     it('replays a create idempotently — same Idempotency-Key returns the original row, no duplicate', async () => {
       const key = 'e2e-idem-key-1';
-      const body = { name: 'Idempotent AP', category: 'ACCESS_POINT' };
+      const body = { name: 'Idempotent AP', category: 'ACCESS_POINT', networkId, propertyId: siteId };
 
       const first = await request(app.getHttpServer())
         .post('/api/v1/devices')
@@ -211,7 +223,7 @@ describe('DevicesController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: `AuditE2E ${Date.now()}`, category: 'ROUTER' })
+        .send({ name: `AuditE2E ${Date.now()}`, category: 'ROUTER', networkId, propertyId: siteId })
         .expect(201);
 
       const newId = res.body.data.id;

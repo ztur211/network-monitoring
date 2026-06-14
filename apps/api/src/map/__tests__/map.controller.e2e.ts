@@ -12,6 +12,8 @@ describe('MapController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
   let orgId: string;
+  let networkId: string;
+  let siteId: string;
   const testEmail = `e2e-map-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -38,10 +40,20 @@ describe('MapController (e2e)', () => {
     const org = await prisma.organization.create({ data: { name: `E2E Map ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+
+    const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
+    networkId = network.id;
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `HQ ${Date.now()}` } });
+    siteId = site.id;
+    await prisma.networkProperty.create({ data: { organizationId: orgId, networkId: network.id, propertyId: site.id } });
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
+    await prisma.device.deleteMany({ where: { organizationId: orgId } });
+    await prisma.networkProperty.deleteMany({ where: { organizationId: orgId } });
+    await prisma.network.deleteMany({ where: { organizationId: orgId } });
+    await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
@@ -76,7 +88,7 @@ describe('MapController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/devices')
         .set('Cookie', sessionCookie)
-        .send({ name: 'Map Test Router', category: 'ROUTER', latitude: 40.7128, longitude: -74.006 });
+        .send({ name: 'Map Test Router', category: 'ROUTER', latitude: 40.7128, longitude: -74.006, networkId, propertyId: siteId });
 
       const res = await request(app.getHttpServer())
         .get('/api/v1/map/devices?bbox=-75,-90,-73,41')

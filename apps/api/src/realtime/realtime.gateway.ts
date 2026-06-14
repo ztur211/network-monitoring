@@ -16,7 +16,6 @@ import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
-import { DevicesService } from '../devices/devices.service';
 import { NetworksService } from '../networks/networks.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
 import { AiService } from '../ai/ai.service';
@@ -33,7 +32,6 @@ interface MetricsSubmitPayload {
   bandwidthUp?: number;
   latency?: number;
   connectionQuality?: string;
-  browserDeviceId?: string;
   tag?: string;
 }
 
@@ -72,8 +70,6 @@ export class RealtimeGateway
     private readonly dataSourcesService: DataSourcesService,
     private readonly aiService: AiService,
     private readonly organizationsRepository: OrganizationsRepository,
-    @Inject(forwardRef(() => DevicesService))
-    private readonly devicesService: DevicesService,
     @Inject(forwardRef(() => NetworksService))
     private readonly networksService: NetworksService,
   ) {}
@@ -163,16 +159,7 @@ export class RealtimeGateway
       return;
     }
 
-    const { browserDeviceId, ...rest } = payload ?? {};
-    const ingestPayload: Record<string, unknown> = { ...rest };
-    if (typeof browserDeviceId === 'string' && browserDeviceId.length > 0) {
-      const deviceId = await this.devicesService.findDeviceIdByBrowserDeviceId(
-        userId,
-        browserDeviceId,
-      );
-      if (deviceId !== null) ingestPayload.deviceId = deviceId;
-    }
-
+    const ingestPayload: Record<string, unknown> = { ...(payload ?? {}) };
     await this.dataSourcesService.ingest(orgId, userId, ingestPayload);
   }
 

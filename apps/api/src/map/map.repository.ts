@@ -16,8 +16,9 @@ type BboxCoords = {
 // any new Device column must be added here, or it returns as `undefined` on the
 // map payload (the cast to Device[] makes the omission silent).
 const DEVICE_COLUMNS = `
-  d.id, d."organizationId", d."userId", d."networkId", d.name, d.category, d.mobility,
-  d."browserDeviceId", d.latitude, d.longitude, d.floor, d."floorLabel",
+  d.id, d."organizationId", d."userId", d."networkId", d."propertyId", d."roleCode",
+  d.name, d.category, d.mobility,
+  d.latitude, d.longitude, d.floor, d."floorLabel",
   d."ipAddress", d."macAddress", d.notes, d.version, d."createdAt", d."updatedAt"
 `;
 

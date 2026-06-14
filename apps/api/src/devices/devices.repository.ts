@@ -8,8 +8,9 @@ type CreateDeviceData = {
   name: string;
   category: DeviceCategory;
   mobility?: DeviceMobility;
-  browserDeviceId?: string;
-  networkId?: string;
+  networkId: string;
+  propertyId: string;
+  roleCode?: string;
   latitude?: number;
   longitude?: number;
   floor?: number;
@@ -36,13 +37,6 @@ export class DevicesRepository {
 
   findByIdAndOrgId(deviceId: string, organizationId: string): Promise<Device | null> {
     return this.prisma.device.findFirst({ where: { id: deviceId, organizationId } });
-  }
-
-  findByOrgIdAndBrowserDeviceId(
-    organizationId: string,
-    browserDeviceId: string,
-  ): Promise<Device | null> {
-    return this.prisma.device.findFirst({ where: { organizationId, browserDeviceId } });
   }
 
   create(data: CreateDeviceData): Promise<Device> {

@@ -183,21 +183,31 @@ describe('NetworksRepository (integration)', () => {
       expect(found).toBeNull();
     });
 
-    it('sets networkId to null on dependent devices (SetNull cascade)', async () => {
+    it('is blocked (Restrict) when devices are still attached to the network', async () => {
       const network = await repository.create({ organizationId: testOrgId, userId: testUserId, name: 'A' });
+      const property = await prisma.property.create({
+        data: { organizationId: testOrgId, name: 'HQ Site', type: 'SITE' },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: testOrgId, networkId: network.id, propertyId: property.id },
+      });
       const device = await prisma.device.create({
         data: {
           organizationId: testOrgId,
           userId: testUserId,
           networkId: network.id,
+          propertyId: property.id,
           name: `Router-${Date.now()}`,
           category: 'ROUTER',
         },
       });
-      await repository.deleteByIdAndOrgId(network.id, testOrgId);
-      const survivor = await prisma.device.findUnique({ where: { id: device.id } });
-      expect(survivor?.networkId).toBeNull();
+      // Restrict: delete of a network with attached devices must throw
+      await expect(repository.deleteByIdAndOrgId(network.id, testOrgId)).rejects.toThrow();
+      // cleanup
       await prisma.device.deleteMany({ where: { id: device.id } });
+      await prisma.networkProperty.deleteMany({ where: { networkId: network.id } });
+      await prisma.property.deleteMany({ where: { id: property.id } });
+      await repository.deleteByIdAndOrgId(network.id, testOrgId);
     });
 
     it('does not delete networks belonging to other orgs (cross-org isolation)', async () => {
