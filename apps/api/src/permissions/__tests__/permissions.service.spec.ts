@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { OrganizationMember } from '@prisma/client';
 import { PermissionsService } from '../permissions.service';
 import { PermissionsRepository } from '../permissions.repository';
+import { AuditService } from '../../audit/audit.service';
 
 describe('PermissionsService', () => {
   let service: PermissionsService;
@@ -9,6 +10,7 @@ describe('PermissionsService', () => {
     effectiveRootPropertyIds: jest.fn(),
     subtreePropertyIds: jest.fn(),
   } as unknown as jest.Mocked<PermissionsRepository>;
+  const mockAudit = { recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -16,6 +18,7 @@ describe('PermissionsService', () => {
       providers: [
         PermissionsService,
         { provide: PermissionsRepository, useValue: repo },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
     service = moduleRef.get(PermissionsService);

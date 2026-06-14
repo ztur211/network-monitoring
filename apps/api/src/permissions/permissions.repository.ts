@@ -59,4 +59,28 @@ export class PermissionsRepository {
     ]);
     return [...ids];
   }
+
+  findTeam(organizationId: string, teamId: string): Promise<Team | null> {
+    return this.prisma.team.findFirst({ where: { id: teamId, organizationId } });
+  }
+
+  async teamPropertyIds(organizationId: string, teamId: string): Promise<string[]> {
+    const rows = await this.prisma.teamProperty.findMany({ where: { organizationId, teamId }, select: { propertyId: true } });
+    return rows.map((r) => r.propertyId);
+  }
+
+  listVisibleTeams(organizationId: string, scope: { propertyIdIn: string[] } | null): Promise<Team[]> {
+    return this.prisma.team.findMany({
+      where: { organizationId, ...(scope ? { properties: { some: { propertyId: { in: scope.propertyIdIn } } } } : {}) },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  renameTeam(organizationId: string, teamId: string, name: string, expectedVersion: number) {
+    return this.prisma.team.updateMany({ where: { id: teamId, organizationId, version: expectedVersion }, data: { name, version: { increment: 1 } } });
+  }
+
+  deleteTeam(organizationId: string, teamId: string) {
+    return this.prisma.team.deleteMany({ where: { id: teamId, organizationId } });
+  }
 }
