@@ -1,11 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Team } from '@prisma/client';
-import { AccessSummaryDto, MemberPropertyDto, TeamDto, TeamMemberDto, TeamPropertyDto } from '@nodescope/shared';
+import { AccessSummaryDto, MemberPropertyDto, TeamDto, TeamMemberDto, TeamPropertyDto, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { AuditService } from '../audit/audit.service';
+import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import { PermissionsRepository } from './permissions.repository';
-import { CreateTeamDto, UpdateTeamDto } from './permissions.dto';
+import { CreateTeamDto } from './permissions.dto';
 
 function toTeamDto(team: Team): TeamDto {
   return {
@@ -28,7 +30,12 @@ export class PermissionsService {
   constructor(
     private readonly repo: PermissionsRepository,
     private readonly audit: AuditService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  private realtime(): IRealtimeService {
+    return this.moduleRef.get<IRealtimeService>(REALTIME_SERVICE, { strict: false });
+  }
 
   effectiveRoots(organizationId: string, memberId: string): Promise<string[]> {
     return this.repo.effectiveRootPropertyIds(organizationId, memberId);
@@ -137,6 +144,8 @@ export class PermissionsService {
     try {
       const team = await this.repo.createTeam({ organizationId: actor.organizationId, name: dto.name, creatorMemberId: actor.id });
       await this.audit.recordCreate(actor.organizationId, 'Team', team);
+      // New team has no sites → emit to OWNER-only (empty site list)
+      await this.realtime().emitScopedMulti(actor.organizationId, [], WS_EVENTS.TEAM_CREATED, { id: team.id });
       return toTeamDto(team);
     } catch (e) {
       if (isUniqueViolation(e)) throw new NodeScopeException('TEAM_002', 'TEAM_NAME_TAKEN', HttpStatus.CONFLICT);
@@ -157,14 +166,27 @@ export class PermissionsService {
     if (result.count === 0) throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     const updated = await this.loadTeamOr404(actor.organizationId, teamId);
     await this.audit.recordUpdate(actor.organizationId, 'Team', teamId, [{ field: 'name', oldValue: team.name, newValue: name }]);
+    await this.realtime().emitScopedMulti(
+      actor.organizationId,
+      await this.repo.teamPropertyIds(actor.organizationId, teamId),
+      WS_EVENTS.TEAM_UPDATED,
+      { id: teamId },
+    );
     return toTeamDto(updated);
   }
 
   async deleteTeamFor(actor: OrgMemberContext, teamId: string): Promise<void> {
     const team = await this.loadTeamOr404(actor.organizationId, teamId);
     await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    // Capture before delete — once deleted, the rows are gone
+    const sites = await this.repo.teamPropertyIds(actor.organizationId, teamId);
+    const userIds = await this.repo.teamMemberUserIds(actor.organizationId, teamId);
     await this.repo.deleteTeam(actor.organizationId, teamId);
     await this.audit.recordDelete(actor.organizationId, 'Team', team);
+    await this.realtime().emitScopedMulti(actor.organizationId, sites, WS_EVENTS.TEAM_DELETED, { id: teamId });
+    for (const uid of userIds) {
+      this.realtime().notifyAccessChanged(actor.organizationId, uid);
+    }
   }
 
   async addMemberToTeam(actor: OrgMemberContext, teamId: string, memberId: string): Promise<TeamMemberDto> {
@@ -177,6 +199,13 @@ export class PermissionsService {
     if (existing) return { id: existing.id, teamId, memberId };
     const tm = await this.repo.addTeamMember({ organizationId: actor.organizationId, teamId, memberId });
     await this.audit.recordCreate(actor.organizationId, 'TeamMember', tm);
+    await this.realtime().emitScopedMulti(
+      actor.organizationId,
+      await this.repo.teamPropertyIds(actor.organizationId, teamId),
+      WS_EVENTS.TEAM_MEMBER_ADDED,
+      { teamId, memberId },
+    );
+    this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
     return { id: tm.id, teamId, memberId };
   }
 
@@ -188,6 +217,13 @@ export class PermissionsService {
     const existing = await this.repo.findTeamMember(actor.organizationId, teamId, memberId);
     await this.repo.removeTeamMember(actor.organizationId, teamId, memberId);
     if (existing) await this.audit.recordDelete(actor.organizationId, 'TeamMember', existing);
+    await this.realtime().emitScopedMulti(
+      actor.organizationId,
+      await this.repo.teamPropertyIds(actor.organizationId, teamId),
+      WS_EVENTS.TEAM_MEMBER_REMOVED,
+      { teamId, memberId },
+    );
+    if (target) this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
   }
 
   async assignSiteToTeam(actor: OrgMemberContext, teamId: string, propertyId: string): Promise<TeamPropertyDto> {
@@ -196,8 +232,18 @@ export class PermissionsService {
     await this.assertWithinGrantorScope(actor, [propertyId]);
     const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
     if (existing) return { id: existing.id, teamId, propertyId };
+    const userIds = await this.repo.teamMemberUserIds(actor.organizationId, teamId);
     const tp = await this.repo.addTeamProperty({ organizationId: actor.organizationId, teamId, propertyId });
     await this.audit.recordCreate(actor.organizationId, 'TeamProperty', tp);
+    await this.realtime().emitScopedMulti(
+      actor.organizationId,
+      await this.repo.teamPropertyIds(actor.organizationId, teamId),
+      WS_EVENTS.TEAM_PROPERTY_ASSIGNED,
+      { teamId, propertyId },
+    );
+    for (const uid of userIds) {
+      this.realtime().notifyAccessChanged(actor.organizationId, uid);
+    }
     return { id: tp.id, teamId, propertyId };
   }
 
@@ -205,8 +251,18 @@ export class PermissionsService {
     const team = await this.loadTeamOr404(actor.organizationId, teamId);
     await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
     const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
+    const userIds = await this.repo.teamMemberUserIds(actor.organizationId, teamId);
     await this.repo.removeTeamProperty(actor.organizationId, teamId, propertyId);
     if (existing) await this.audit.recordDelete(actor.organizationId, 'TeamProperty', existing);
+    await this.realtime().emitScopedMulti(
+      actor.organizationId,
+      await this.repo.teamPropertyIds(actor.organizationId, teamId),
+      WS_EVENTS.TEAM_PROPERTY_UNASSIGNED,
+      { teamId, propertyId },
+    );
+    for (const uid of userIds) {
+      this.realtime().notifyAccessChanged(actor.organizationId, uid);
+    }
   }
 
   async grantSiteToMember(actor: OrgMemberContext, memberId: string, propertyId: string): Promise<MemberPropertyDto> {
@@ -218,6 +274,8 @@ export class PermissionsService {
     if (existing) return { id: existing.id, memberId, propertyId }; // idempotent
     const mp = await this.repo.addMemberProperty({ organizationId: actor.organizationId, memberId, propertyId });
     await this.audit.recordCreate(actor.organizationId, 'MemberProperty', mp);
+    await this.realtime().emitScoped(actor.organizationId, propertyId, WS_EVENTS.MEMBER_PROPERTY_ASSIGNED, { memberId, propertyId });
+    this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
     return { id: mp.id, memberId, propertyId };
   }
 
@@ -228,6 +286,8 @@ export class PermissionsService {
     const existing = await this.repo.findMemberProperty(actor.organizationId, memberId, propertyId);
     await this.repo.removeMemberProperty(actor.organizationId, memberId, propertyId);
     if (existing) await this.audit.recordDelete(actor.organizationId, 'MemberProperty', existing);
+    await this.realtime().emitScoped(actor.organizationId, propertyId, WS_EVENTS.MEMBER_PROPERTY_UNASSIGNED, { memberId, propertyId });
+    if (target) this.realtime().notifyAccessChanged(actor.organizationId, target.userId);
   }
 
   /** A target member's access AS SEEN BY the actor: OWNER sees all the target's roots; an ADMIN sees only the slice ⊆ their own scope. */

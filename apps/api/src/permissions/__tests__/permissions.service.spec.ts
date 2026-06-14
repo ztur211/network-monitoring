@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ModuleRef } from '@nestjs/core';
 import { OrganizationMember } from '@prisma/client';
 import { PermissionsService } from '../permissions.service';
 import { PermissionsRepository } from '../permissions.repository';
@@ -11,6 +12,12 @@ describe('PermissionsService', () => {
     subtreePropertyIds: jest.fn(),
   } as unknown as jest.Mocked<PermissionsRepository>;
   const mockAudit = { recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() };
+  const mockRealtimeService = {
+    notifyAccessChanged: jest.fn(),
+    emitScoped: jest.fn().mockResolvedValue(undefined),
+    emitScopedMulti: jest.fn().mockResolvedValue(undefined),
+  };
+  const mockModuleRef = { get: jest.fn().mockReturnValue(mockRealtimeService) };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -19,6 +26,7 @@ describe('PermissionsService', () => {
         PermissionsService,
         { provide: PermissionsRepository, useValue: repo },
         { provide: AuditService, useValue: mockAudit },
+        { provide: ModuleRef, useValue: mockModuleRef },
       ],
     }).compile();
     service = moduleRef.get(PermissionsService);
