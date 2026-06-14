@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Team } from '@prisma/client';
-import { AccessSummaryDto, TeamDto, TeamMemberDto, TeamPropertyDto } from '@nodescope/shared';
+import { AccessSummaryDto, MemberPropertyDto, TeamDto, TeamMemberDto, TeamPropertyDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { AuditService } from '../audit/audit.service';
@@ -207,6 +207,38 @@ export class PermissionsService {
     const existing = await this.repo.findTeamProperty(actor.organizationId, teamId, propertyId);
     await this.repo.removeTeamProperty(actor.organizationId, teamId, propertyId);
     if (existing) await this.audit.recordDelete(actor.organizationId, 'TeamProperty', existing);
+  }
+
+  async grantSiteToMember(actor: OrgMemberContext, memberId: string, propertyId: string): Promise<MemberPropertyDto> {
+    const target = await this.repo.findMemberById(actor.organizationId, memberId);
+    if (!target) throw new NodeScopeException('ORG_001', 'NOT_A_MEMBER', HttpStatus.NOT_FOUND);
+    this.assertCanManageMember(actor, target);                 // ADMIN → MEMBER only (PERM_003)
+    await this.assertWithinGrantorScope(actor, [propertyId]);  // site ⊆ actor scope (PERM_002)
+    const existing = await this.repo.findMemberProperty(actor.organizationId, memberId, propertyId);
+    if (existing) return { id: existing.id, memberId, propertyId }; // idempotent
+    const mp = await this.repo.addMemberProperty({ organizationId: actor.organizationId, memberId, propertyId });
+    await this.audit.recordCreate(actor.organizationId, 'MemberProperty', mp);
+    return { id: mp.id, memberId, propertyId };
+  }
+
+  async revokeSiteFromMember(actor: OrgMemberContext, memberId: string, propertyId: string): Promise<void> {
+    const target = await this.repo.findMemberById(actor.organizationId, memberId);
+    if (target) this.assertCanManageMember(actor, target);
+    await this.assertWithinGrantorScope(actor, [propertyId]); // can only revoke within own scope
+    const existing = await this.repo.findMemberProperty(actor.organizationId, memberId, propertyId);
+    await this.repo.removeMemberProperty(actor.organizationId, memberId, propertyId);
+    if (existing) await this.audit.recordDelete(actor.organizationId, 'MemberProperty', existing);
+  }
+
+  /** A target member's access AS SEEN BY the actor: OWNER sees all the target's roots; an ADMIN sees only the slice ⊆ their own scope. */
+  async memberAccessAsSeenBy(actor: OrgMemberContext, memberId: string): Promise<AccessSummaryDto> {
+    const target = await this.repo.findMemberById(actor.organizationId, memberId);
+    if (!target) throw new NodeScopeException('ORG_001', 'NOT_A_MEMBER', HttpStatus.NOT_FOUND);
+    this.assertCanManageMember(actor, target);
+    const roots = await this.repo.effectiveRootPropertyIds(actor.organizationId, memberId);
+    if (actor.role === 'OWNER') return { role: target.role, assignedRootPropertyIds: roots, unscoped: false };
+    const actorScope = new Set(await this.scopePropertyIds(actor.organizationId, actor.id));
+    return { role: target.role, assignedRootPropertyIds: roots.filter((r) => actorScope.has(r)), unscoped: false };
   }
 
   private async loadTeamOr404(organizationId: string, teamId: string): Promise<Team> {

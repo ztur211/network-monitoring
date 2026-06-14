@@ -103,4 +103,12 @@ export class PermissionsRepository {
   findTeamProperty(organizationId: string, teamId: string, propertyId: string): Promise<TeamProperty | null> {
     return this.prisma.teamProperty.findFirst({ where: { organizationId, teamId, propertyId } });
   }
+
+  removeMemberProperty(organizationId: string, memberId: string, propertyId: string) {
+    return this.prisma.memberProperty.deleteMany({ where: { organizationId, memberId, propertyId } });
+  }
+
+  findMemberProperty(organizationId: string, memberId: string, propertyId: string): Promise<MemberProperty | null> {
+    return this.prisma.memberProperty.findFirst({ where: { organizationId, memberId, propertyId } });
+  }
 }
