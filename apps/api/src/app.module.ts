@@ -32,6 +32,7 @@ import { OrgContextGuard } from './organizations/guards/org-context.guard';
 import { OrgRoleGuard } from './organizations/guards/org-role.guard';
 import { AuditModule } from './audit/audit.module';
 import { PropertiesModule } from './properties/properties.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -80,6 +81,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     OrganizationsModule,
     AuditModule,
     PropertiesModule,
+    PermissionsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
