@@ -29,6 +29,7 @@ import { NetworksModule } from './networks/networks.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { OrgContextGuard } from './organizations/guards/org-context.guard';
+import { OrgRoleGuard } from './organizations/guards/org-role.guard';
 import { AuditModule } from './audit/audit.module';
 import { PropertiesModule } from './properties/properties.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
@@ -84,6 +85,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: OrgContextGuard },
+    { provide: APP_GUARD, useClass: OrgRoleGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: TierGuard },
     { provide: APP_GUARD, useClass: RoleGuard },
