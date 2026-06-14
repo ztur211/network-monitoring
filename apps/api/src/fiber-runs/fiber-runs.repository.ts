@@ -13,6 +13,9 @@ type CreateFiberRunData = {
   notes?: string;
 };
 
+/** Non-null restricts reads to links where at least one endpoint device is in the given sites. */
+export type FiberRunScope = { propertyIdIn: string[] } | null;
+
 @Injectable()
 export class FiberRunsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -26,6 +29,38 @@ export class FiberRunsRepository {
         }),
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  listVisible(organizationId: string, scope: FiberRunScope, deviceId?: string): Promise<FiberRun[]> {
+    const and: Prisma.FiberRunWhereInput[] = [];
+    if (deviceId) and.push({ OR: [{ startDeviceId: deviceId }, { endDeviceId: deviceId }] });
+    if (scope) {
+      and.push({
+        OR: [
+          { startDevice: { propertyId: { in: scope.propertyIdIn } } },
+          { endDevice: { propertyId: { in: scope.propertyIdIn } } },
+        ],
+      });
+    }
+    return this.prisma.fiberRun.findMany({
+      where: { organizationId, ...(and.length ? { AND: and } : {}) },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findVisibleByIdAndOrgId(id: string, organizationId: string, scope: FiberRunScope): Promise<FiberRun | null> {
+    return this.prisma.fiberRun.findFirst({
+      where: {
+        id,
+        organizationId,
+        ...(scope ? {
+          OR: [
+            { startDevice: { propertyId: { in: scope.propertyIdIn } } },
+            { endDevice: { propertyId: { in: scope.propertyIdIn } } },
+          ],
+        } : {}),
+      },
     });
   }
 
