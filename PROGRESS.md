@@ -1670,6 +1670,41 @@ Third pivot feature (branch `feat/f2-sites-node-grouping`, on top of F1a and the
 
 **Architecture note (SAD-equivalent):** `Device` is now the **Network×Site junction** (`networkId` + `propertyId` both required). A network declares the sites it serves via `NetworkProperty` charters (the *declared* footprint); its devices realize that footprint (the *actual* placement); containment keeps the two consistent. To avoid a `devices↔properties` module cycle, the charter + containment code lives in **`PropertiesModule`** (which exports `ContainmentService`/`NetworkPropertyRepository` and reaches `Device`/`NetworkProperty` rows via Prisma directly) and `DevicesModule` imports `PropertiesModule` one-way. `Device.propertyId` is also the permission anchor F3 will grant against.
 
-**Still pending (F2 Phase C/D):** site-aware device naming (`GET /devices/name-suggestion`) and the member read-only surface — designed (`docs/superpowers/plans/`) but not yet built.
+**Still pending (F2 Phase D):** the member read-only surface — designed (`docs/superpowers/plans/`) but not yet built. Phase C (naming) is complete; see entry below.
 
-**Verification:** full api suite green — **unit 409 / integration 121 / e2e 149**, `tsc --noEmit` clean, and `prisma migrate reset --force` applies all migrations + the rewritten seed (SITE→BUILDING→FLOOR tree, network chartered to the HQ site, 5 placed devices) cleanly. The charter/containment e2e (`network-property.e2e.ts`) exercises `PROP_006`/`PROP_007`/`PROP_008` end-to-end; the device/map/connections/fiber-runs e2e suites were updated to set up network+property+charter so device creates pass `assertDevicePlacement`.
+**Verification (Phases A–B):** full api suite green — **unit 409 / integration 121 / e2e 149**, `tsc --noEmit` clean, and `prisma migrate reset --force` applies all migrations + the rewritten seed (SITE→BUILDING→FLOOR tree, network chartered to the HQ site, 5 placed devices) cleanly. The charter/containment e2e (`network-property.e2e.ts`) exercises `PROP_006`/`PROP_007`/`PROP_008` end-to-end; the device/map/connections/fiber-runs e2e suites were updated to set up network+property+charter so device creates pass `assertDevicePlacement`.
+
+---
+
+## Post-MVP Pivot — F2 Phase C: Site-Aware Device Naming (2026-06-14)
+
+F2 Phase C adds a read-only, advisory name-suggestion endpoint layered on top of the Phase A–B property tree. No new migrations or schema changes beyond the `Organization.namingTemplate` column added in the C1 step.
+
+- **C1 — schema + org field.** `Organization.namingTemplate String?` added (org-writable via `PATCH /v1/organizations/me`; included in `OrganizationDto`/`NameSuggestionDto`). Prisma migration applied; Prisma client regenerated.
+- **C2 — `roleCodeOf` pure helper.** Maps each `DeviceCategory` enum value to a short lowercase role code (e.g. `ROUTER → 'rtr'`, `SWITCH → 'sw'`, `ACCESS_POINT → 'ap'`), falling back to the lowercased category name for unmapped values. Fully unit-tested; no I/O.
+- **C3 — `naming-tokens` pure helper.** `renderTemplate(template, tokens)` substitutes the location/role tokens (`{site}`, `{building}`, `{floor}`, `{area}`, `{role}`) while preserving `{seq}`; it collapses empty tokens with their surrounding separators and trims edge separators, returning the rendered string. `hasSeqToken(rendered)` reports whether a `{seq}` placeholder remains (a collision-free sequence search is required); `fillSeq(rendered, seq)` substitutes that placeholder. All helpers unit-tested.
+- **C4 — `getAncestorChain` + `NameSuggestionService`.** `PropertiesRepository.getAncestorChain(organizationId, propertyId)` runs an org-scoped recursive CTE (`WITH RECURSIVE`) walking self → root, returns each ancestor's `{ type, code }` ordered self-first (nearest ancestor first). `NameSuggestionService.suggest(orgId, propertyId, category, roleCode?)` assembles the four ancestor tokens from the chain, calls `roleCodeOf` for the role token, renders the template, and when `{seq}` is present increments from 1 until `DevicesRepository.existsByNameCaseInsensitive` returns false — yielding a collision-free suggestion. Unit-tested end-to-end (mock repository, template rendering, seq scan, null path).
+- **C5 — endpoint + wiring.** `GET /v1/devices/name-suggestion?propertyId=&category=[&roleCode=]` added to `DevicesController`; `category` parsed via NestJS `ParseEnumPipe` (→ `400 GEN_001` on invalid value); `propertyId` validated as UUID by class-validator on the query DTO. Response: `{ success, data: { suggestedName: string | null }, timestamp }`. `NameSuggestionService` and `PropertiesRepository.getAncestorChain` wired into `DevicesModule`/`PropertiesModule`. Full e2e: valid suggestion, `null` when no template, `GEN_001` on bad category/propertyId, unauthenticated 401.
+
+**Verification:** full api suite green — **unit 416 / integration 121 / e2e 153**, `tsc --noEmit` clean. `GET /devices/name-suggestion` is the only new public surface; all existing suites continue to pass without modification.
+
+---
+
+## Post-MVP Pivot — F2 Phase D: MEMBER Read-Only Enforcement (2026-06-14)
+
+F2 Phase D makes every mutation in the network model OWNER/ADMIN-only. No schema changes, no new endpoints — this is a pure authorization hardening pass.
+
+- **D1 — global `OrgRoleGuard` registration.** `OrgRoleGuard` registered as an `APP_GUARD` in `app.module.ts` (after `AuthGuard`). The guard is a no-op when no `@OrgRoles(...)` metadata is present, so it has zero effect on existing non-decorated handlers; adding it globally means future mutations can't accidentally ship without a role gate.
+- **D2 — Device mutations gated.** `POST /v1/devices`, `PATCH /v1/devices/:id`, `DELETE /v1/devices/:id` decorated with `@OrgRoles('OWNER','ADMIN')`. `GET /v1/devices`, `GET /v1/devices/name-suggestion`, `GET /v1/devices/:id` left open. Per-module e2e: OWNER creates/patches/deletes (200/201/200), MEMBER attempts → 403 `ORG_003`, MEMBER GETs → 200.
+- **D3 — Networks, connections, fiber-runs, circuits gated.** Same pattern applied to all four modules:
+  - `NetworksController`: `POST`, `PATCH :id`, `POST :id/set-home-ip`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - `ConnectionsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET` open.
+  - `FiberRunsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - `CircuitsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - Properties and `NetworkProperty` controllers were already gated in Phase A–B and carry a class-level `@UseGuards(OrgRoleGuard)` (left in place — redundant but harmless).
+
+**Authorization posture (full sweep):** Every `@Post`/`@Patch`/`@Put`/`@Delete` handler across all seven entity controllers (`devices`, `networks`, `connections`, `fiber-runs`, `circuits`, `properties`, `network-property`) carries `@OrgRoles('OWNER','ADMIN')`. No `@Get` handler has `@OrgRoles` — reads are open to any org member. A MEMBER mutation returns 403 `ORG_003`. No gaps found in the cross-entity sweep.
+
+- **D5 — Final-review fix: onboarding network-write path gated.** A post-D3 review found that `POST /v1/onboarding/turn` (which calls `persistNetworkFields` to create/update the org Network's name/ISP/speeds/lat/lng) was missing `@OrgRoles('OWNER','ADMIN')`, letting a plain MEMBER bypass the network-model read-only rule. Added the decorator to `OnboardingController.turn` only; `POST /v1/onboarding/skip` writes only a per-user Redis dismissal key and intentionally remains open to all members. New e2e added: MEMBER turn → 403 `ORG_003`; MEMBER skip → 200. MEMBER read-only now covers the full network model including the onboarding wizard path.
+
+**Verification:** full api suite green — **unit 416 / integration 121 / e2e 177**, `tsc --noEmit` clean. Suite counts reflect D-phase MEMBER/GET e2e tests added across all seven controllers in D2–D3, plus 3 new onboarding e2e tests in D5.

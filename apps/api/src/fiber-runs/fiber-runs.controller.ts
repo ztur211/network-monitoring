@@ -14,6 +14,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { CreateFiberRunDto, PatchFiberRunDto } from './fiber-runs.dto';
 import { FiberRunsService } from './fiber-runs.service';
 
@@ -32,6 +33,7 @@ export class FiberRunsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @OrgRoles('OWNER', 'ADMIN')
   async createFiberRun(
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -51,6 +53,7 @@ export class FiberRunsController {
   }
 
   @Patch(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async updateFiberRun(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,6 +64,7 @@ export class FiberRunsController {
   }
 
   @Delete(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async deleteFiberRun(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

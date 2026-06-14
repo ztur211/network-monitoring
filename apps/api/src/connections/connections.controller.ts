@@ -14,6 +14,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { CreateConnectionDto, PatchConnectionDto } from './connections.dto';
 import { ConnectionsService } from './connections.service';
 
@@ -32,6 +33,7 @@ export class ConnectionsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @OrgRoles('OWNER', 'ADMIN')
   async createConnection(
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -42,6 +44,7 @@ export class ConnectionsController {
   }
 
   @Patch(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async updateConnection(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -52,6 +55,7 @@ export class ConnectionsController {
   }
 
   @Delete(':id')
+  @OrgRoles('OWNER', 'ADMIN')
   async deleteConnection(
     @OrgId() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
