@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
+import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import { OnboardingTurnDto } from './onboarding.dto';
 import { OnboardingService } from './onboarding.service';
 
@@ -12,6 +13,7 @@ export class OnboardingController {
 
   @Post('turn')
   @HttpCode(HttpStatus.OK)
+  @OrgRoles('OWNER', 'ADMIN')
   async turn(
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
