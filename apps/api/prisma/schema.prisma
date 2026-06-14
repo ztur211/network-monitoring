@@ -390,6 +390,10 @@ model Organization {
   joinRequests     JoinRequest[]
   properties       Property[]
   networkProperties NetworkProperty[]
+  teams            Team[]
+  teamMembers      TeamMember[]
+  teamProperties   TeamProperty[]
+  memberProperties MemberProperty[]
 }
 
 model OrganizationDomain {
@@ -414,6 +418,10 @@ model OrganizationMember {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  teamMemberships TeamMember[]
+  siteAssignments MemberProperty[]
+  createdTeams    Team[]           @relation("TeamCreator")
 
   @@index([organizationId])
 }
@@ -469,6 +477,8 @@ model Property {
   children      Property[]        @relation("PropertyTree")
   devices       Device[]
   networkLinks  NetworkProperty[]
+  teamAssignments   TeamProperty[]   @relation("TeamPropertyAssignment")
+  memberAssignments MemberProperty[] @relation("MemberPropertyAssignment")
 
   @@index([organizationId])
   @@index([organizationId, parentId])
@@ -489,6 +499,74 @@ model NetworkProperty {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([networkId, propertyId])
+  @@index([organizationId])
+  @@index([propertyId])
+}
+
+// ─── Team & Permission Models (F3) ───────────────────────────────────────────
+
+model Team {
+  id              String   @id @default(uuid())
+  organizationId  String
+  name            String
+  creatorMemberId String?  // OrganizationMember (owner or admin) who created it; null ⇒ owner-managed only
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      OrganizationMember? @relation("TeamCreator", fields: [creatorMemberId], references: [id], onDelete: SetNull)
+  members      TeamMember[]
+  properties   TeamProperty[]
+
+  @@index([organizationId])
+  @@index([creatorMemberId])
+}
+
+model TeamMember {
+  id             String   @id @default(uuid())
+  organizationId String
+  teamId         String
+  memberId       String
+  createdAt      DateTime @default(now())
+
+  team         Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, memberId])
+  @@index([organizationId])
+  @@index([memberId])
+}
+
+model TeamProperty {
+  id             String   @id @default(uuid())
+  organizationId String
+  teamId         String
+  propertyId     String
+  createdAt      DateTime @default(now())
+
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  property     Property     @relation("TeamPropertyAssignment", fields: [propertyId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, propertyId])
+  @@index([organizationId])
+  @@index([propertyId])
+}
+
+model MemberProperty {
+  id             String   @id @default(uuid())
+  organizationId String
+  memberId       String
+  propertyId     String
+  createdAt      DateTime @default(now())
+
+  member       OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  property     Property           @relation("MemberPropertyAssignment", fields: [propertyId], references: [id], onDelete: Restrict)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, propertyId])
   @@index([organizationId])
   @@index([propertyId])
 }
