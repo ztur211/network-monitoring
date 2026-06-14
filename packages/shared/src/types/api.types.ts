@@ -124,10 +124,13 @@ export interface OrganizationDto {
   name: string;
   namingPattern: string | null;
   namingMaxLen: number | null;
+  namingTemplate: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface NameSuggestionDto { suggestedName: string | null; }
 
 export interface OrganizationDomainDto {
   id: string;

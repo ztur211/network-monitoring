@@ -369,13 +369,14 @@ model ChangeLog {
 // ─── Organization Tenancy Models (F1a Phase A) ───────────────────────────────
 
 model Organization {
-  id            String   @id @default(uuid())
-  name          String
-  namingPattern String?
-  namingMaxLen  Int?     @default(63)
-  version       Int      @default(1)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String
+  namingPattern   String?
+  namingMaxLen    Int?     @default(63)
+  namingTemplate  String?
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   members          OrganizationMember[]
   domains          OrganizationDomain[]

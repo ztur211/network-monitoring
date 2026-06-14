@@ -32,7 +32,7 @@ export class DesignateOwnerDto {
   email: string;
 }
 
-export const ORG_WRITABLE_FIELDS = ['name', 'namingPattern', 'namingMaxLen'] as const;
+export const ORG_WRITABLE_FIELDS = ['name', 'namingPattern', 'namingMaxLen', 'namingTemplate'] as const;
 
 export class PatchOrganizationDto {
   @IsInt()
