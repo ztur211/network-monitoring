@@ -166,6 +166,22 @@ describe('Properties (e2e)', () => {
       .expect(200);
   });
 
+  it('cannot delete a site that is assigned to a team → 409 PERM_005; succeeds after unassigning', async () => {
+    // Create a standalone SITE with no children/devices/charters
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `Assigned ${Date.now()}` } });
+    const team = await prisma.team.create({ data: { organizationId: orgId, name: `AsgTeam ${Date.now()}`, creatorMemberId: null } });
+    const tp = await prisma.teamProperty.create({ data: { organizationId: orgId, teamId: team.id, propertyId: site.id } });
+
+    const denied = await request(app.getHttpServer())
+      .delete(`/api/v1/properties/${site.id}`).set('Cookie', ownerCookie).expect(409);
+    expect(denied.body.error.code).toBe('PERM_005');
+
+    await prisma.teamProperty.delete({ where: { id: tp.id } });
+    await request(app.getHttpServer())
+      .delete(`/api/v1/properties/${site.id}`).set('Cookie', ownerCookie).expect(200);
+    await prisma.team.delete({ where: { id: team.id } });
+  });
+
   describe('F3 scoped enforcement', () => {
     it('ADMIN (scoped to sA) GET /properties → sees sA, does NOT see sB', async () => {
       const res = await request(app.getHttpServer())

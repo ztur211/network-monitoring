@@ -130,4 +130,13 @@ export class PropertiesRepository {
     if (propertyIds.length === 0) return Promise.resolve(0);
     return this.prisma.networkProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } });
   }
+
+  async countAssignmentsUnder(organizationId: string, propertyIds: string[]): Promise<number> {
+    if (propertyIds.length === 0) return 0;
+    const [teams, members] = await Promise.all([
+      this.prisma.teamProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } }),
+      this.prisma.memberProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } }),
+    ]);
+    return teams + members;
+  }
 }
