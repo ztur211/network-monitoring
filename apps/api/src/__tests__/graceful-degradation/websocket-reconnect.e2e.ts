@@ -14,6 +14,8 @@ import { DevicesService } from '../../devices/devices.service';
 import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
+import { PermissionsService } from '../../permissions/permissions.service';
+import { PermissionsRepository } from '../../permissions/permissions.repository';
 import { Socket } from 'socket.io';
 import { auth } from '../../auth/better-auth.config';
 
@@ -44,6 +46,17 @@ const mockNetworksService = {
   checkOnHome: jest.fn().mockResolvedValue({ networkId: null, onHome: false }),
 };
 
+// Added in F3 Phase D: the gateway resolves/caches a socket's effective scope on
+// connect (and re-resolves on resync) via these two collaborators.
+const mockPermissionsService = {
+  effectiveRoots: jest.fn().mockResolvedValue([]),
+};
+
+const mockPermissionsRepository = {
+  findMember: jest.fn().mockResolvedValue(null),
+  ancestorPropertyIds: jest.fn().mockResolvedValue([]),
+};
+
 function makeSocket(overrides: Partial<Socket> = {}): Socket {
   return {
     id: 'test-socket-id',
@@ -69,6 +82,8 @@ describe('Graceful degradation — WebSocket reconnection', () => {
         { provide: NetworksService, useValue: mockNetworksService },
         { provide: AiService, useValue: mockAiService },
         { provide: OrganizationsRepository, useValue: mockOrganizationsRepository },
+        { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PermissionsRepository, useValue: mockPermissionsRepository },
       ],
     }).compile();
     gateway = module.get(RealtimeGateway);
