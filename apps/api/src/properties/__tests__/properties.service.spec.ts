@@ -13,6 +13,7 @@ const repoMock = () => ({
   updateWithVersion: jest.fn(), deleteByIdAndOrgId: jest.fn(),
   getSubtreeIds: jest.fn(), isAtOrUnder: jest.fn(),
   countDevicesUnder: jest.fn(), countChartersUnder: jest.fn(),
+  countAssignmentsUnder: jest.fn(),
 });
 const conflictMock = () => ({ emitEntityEvent: jest.fn(), buildUpdatePayload: jest.fn().mockReturnValue({}) });
 const auditMock = () => ({ recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() });
@@ -90,11 +91,21 @@ describe('PropertiesService', () => {
     await expect(service.deleteProperty(ownerMember, 'p1')).rejects.toMatchObject({ code: 'PROP_004' });
   });
 
-  it('allows deleting a leaf node with no devices or charters', async () => {
+  it('blocks deleting a node with team/member assignments (PERM_005)', async () => {
+    repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
+    repo.getSubtreeIds.mockResolvedValue(['p1']); // leaf node, no children
+    repo.countDevicesUnder.mockResolvedValue(0);
+    repo.countChartersUnder.mockResolvedValue(0);
+    repo.countAssignmentsUnder.mockResolvedValue(1);
+    await expect(service.deleteProperty(ownerMember, 'p1')).rejects.toMatchObject({ code: 'PERM_005' });
+  });
+
+  it('allows deleting a leaf node with no devices, charters, or assignments', async () => {
     repo.findByIdAndOrgId.mockResolvedValue({ id: 'p1', organizationId: 'o1' });
     repo.getSubtreeIds.mockResolvedValue(['p1']); // only self
     repo.countDevicesUnder.mockResolvedValue(0);
     repo.countChartersUnder.mockResolvedValue(0);
+    repo.countAssignmentsUnder.mockResolvedValue(0);
     repo.deleteByIdAndOrgId.mockResolvedValue(undefined);
     await expect(service.deleteProperty(ownerMember, 'p1')).resolves.toBeUndefined();
   });

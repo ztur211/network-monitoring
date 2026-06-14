@@ -118,6 +118,10 @@ export class PropertiesService {
     if (hasChildren || devices > 0 || charters > 0) {
       throw new NodeScopeException('PROP_004', 'PROPERTY_NOT_EMPTY', HttpStatus.CONFLICT);
     }
+    const assignments = await this.repo.countAssignmentsUnder(organizationId, subtreeIds);
+    if (assignments > 0) {
+      throw new NodeScopeException('PERM_005', 'PROPERTY_ASSIGNED', HttpStatus.CONFLICT);
+    }
     await this.repo.deleteByIdAndOrgId(id, organizationId);
     this.conflict.emitEntityEvent(WS_EVENTS.PROPERTY_DELETED, { id }, organizationId);
     await this.audit.recordDelete(organizationId, 'Property', p);
