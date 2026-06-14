@@ -241,4 +241,62 @@ describe('DevicesController (e2e)', () => {
       expect(logs[0].requestId.length).toBeGreaterThan(0);
     });
   });
+
+  describe('GET /api/v1/devices/name-suggestion', () => {
+    let codedPropertyId: string;
+
+    beforeAll(async () => {
+      const prisma = app.get(PrismaService);
+      const coded = await prisma.property.create({
+        data: { organizationId: orgId, parentId: null, type: 'SITE', name: `Coded ${Date.now()}`, code: 'hq' },
+      });
+      codedPropertyId = coded.id;
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/devices/name-suggestion?propertyId=${codedPropertyId}&category=ROUTER`);
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_002');
+    });
+
+    it('returns null when org has no namingTemplate', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/devices/name-suggestion?propertyId=${codedPropertyId}&category=ROUTER`)
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.suggestedName).toBeNull();
+    });
+
+    it('returns resolved name after namingTemplate is set on the org', async () => {
+      // First get the current org version so we can send the correct baseVersion
+      const orgRes = await request(app.getHttpServer())
+        .get('/api/v1/organizations/me')
+        .set('Cookie', sessionCookie)
+        .expect(200);
+      const currentVersion = orgRes.body.data.version as number;
+
+      // PATCH the org to set the namingTemplate
+      const patchRes = await request(app.getHttpServer())
+        .patch('/api/v1/organizations/me')
+        .set('Cookie', sessionCookie)
+        .send({
+          baseVersion: currentVersion,
+          changes: [{ field: 'namingTemplate', oldValue: null, newValue: '{site}-{role}-{seq}' }],
+        });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.data.namingTemplate).toBe('{site}-{role}-{seq}');
+
+      // Now get a name suggestion — site code 'hq', ROUTER → role 'rtr', no existing devices → seq '01'
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/devices/name-suggestion?propertyId=${codedPropertyId}&category=ROUTER`)
+        .set('Cookie', sessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.suggestedName).toBe('hq-rtr-01');
+    });
+  });
 });

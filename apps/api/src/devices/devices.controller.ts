@@ -9,18 +9,24 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseInterceptors,
 } from '@nestjs/common';
+import { DeviceCategory } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
 import { CreateDeviceDto, PatchDeviceDto } from './devices.dto';
 import { DevicesService } from './devices.service';
+import { NameSuggestionService } from './name-suggestion.service';
 
 @Controller('v1/devices')
 export class DevicesController {
-  constructor(private readonly devicesService: DevicesService) {}
+  constructor(
+    private readonly devicesService: DevicesService,
+    private readonly nameSuggestion: NameSuggestionService,
+  ) {}
 
   @Get()
   async listDevices(@OrgId() orgId: string) {
@@ -38,6 +44,17 @@ export class DevicesController {
   ) {
     const data = await this.devicesService.createDevice(orgId, user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
+  }
+
+  @Get('name-suggestion')
+  async getNameSuggestion(
+    @OrgId() orgId: string,
+    @Query('propertyId', ParseUUIDPipe) propertyId: string,
+    @Query('category') category: DeviceCategory,
+    @Query('roleCode') roleCode?: string,
+  ) {
+    const suggestedName = await this.nameSuggestion.suggest(orgId, propertyId, category, roleCode ?? null);
+    return { success: true, data: { suggestedName }, timestamp: new Date().toISOString() };
   }
 
   @Get(':id')
