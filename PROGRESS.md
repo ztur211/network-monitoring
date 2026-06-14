@@ -1687,3 +1687,22 @@ F2 Phase C adds a read-only, advisory name-suggestion endpoint layered on top of
 - **C5 — endpoint + wiring.** `GET /v1/devices/name-suggestion?propertyId=&category=[&roleCode=]` added to `DevicesController`; `category` parsed via NestJS `ParseEnumPipe` (→ `400 GEN_001` on invalid value); `propertyId` validated as UUID by class-validator on the query DTO. Response: `{ success, data: { suggestedName: string | null }, timestamp }`. `NameSuggestionService` and `PropertiesRepository.getAncestorChain` wired into `DevicesModule`/`PropertiesModule`. Full e2e: valid suggestion, `null` when no template, `GEN_001` on bad category/propertyId, unauthenticated 401.
 
 **Verification:** full api suite green — **unit 416 / integration 121 / e2e 153**, `tsc --noEmit` clean. `GET /devices/name-suggestion` is the only new public surface; all existing suites continue to pass without modification.
+
+---
+
+## Post-MVP Pivot — F2 Phase D: MEMBER Read-Only Enforcement (2026-06-14)
+
+F2 Phase D makes every mutation in the network model OWNER/ADMIN-only. No schema changes, no new endpoints — this is a pure authorization hardening pass.
+
+- **D1 — global `OrgRoleGuard` registration.** `OrgRoleGuard` registered as an `APP_GUARD` in `app.module.ts` (after `AuthGuard`). The guard is a no-op when no `@OrgRoles(...)` metadata is present, so it has zero effect on existing non-decorated handlers; adding it globally means future mutations can't accidentally ship without a role gate.
+- **D2 — Device mutations gated.** `POST /v1/devices`, `PATCH /v1/devices/:id`, `DELETE /v1/devices/:id` decorated with `@OrgRoles('OWNER','ADMIN')`. `GET /v1/devices`, `GET /v1/devices/name-suggestion`, `GET /v1/devices/:id` left open. Per-module e2e: OWNER creates/patches/deletes (200/201/200), MEMBER attempts → 403 `ORG_003`, MEMBER GETs → 200.
+- **D3 — Networks, connections, fiber-runs, circuits gated.** Same pattern applied to all four modules:
+  - `NetworksController`: `POST`, `PATCH :id`, `POST :id/set-home-ip`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - `ConnectionsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET` open.
+  - `FiberRunsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - `CircuitsController`: `POST`, `PATCH :id`, `DELETE :id` → `@OrgRoles('OWNER','ADMIN')`; `GET`, `GET :id` open.
+  - Properties and `NetworkProperty` controllers were already gated in Phase A–B and carry a class-level `@UseGuards(OrgRoleGuard)` (left in place — redundant but harmless).
+
+**Authorization posture (full sweep):** Every `@Post`/`@Patch`/`@Put`/`@Delete` handler across all seven entity controllers (`devices`, `networks`, `connections`, `fiber-runs`, `circuits`, `properties`, `network-property`) carries `@OrgRoles('OWNER','ADMIN')`. No `@Get` handler has `@OrgRoles` — reads are open to any org member. A MEMBER mutation returns 403 `ORG_003`. No gaps found in the cross-entity sweep.
+
+**Verification:** full api suite green — **unit 416 / integration 121 / e2e 174**, `tsc --noEmit` clean. Suite counts reflect D-phase MEMBER/GET e2e tests added across all seven controllers in D2–D3.
