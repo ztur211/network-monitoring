@@ -96,8 +96,11 @@ export class NetworksService {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
-    const charteredIds = await this.networksRepository.charteredPropertyIds(organizationId, networkId);
-    await this.permissions.assertNetworkFullCoverage(member, charteredIds);
+    const coverageSites = [...new Set([
+      ...(await this.networksRepository.charteredPropertyIds(organizationId, networkId)),
+      ...(await this.networksRepository.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
 
     const updatePayload = this.conflictService.buildUpdatePayload(
       patch,
@@ -163,8 +166,11 @@ export class NetworksService {
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    const charteredIds = await this.networksRepository.charteredPropertyIds(organizationId, networkId);
-    await this.permissions.assertNetworkFullCoverage(member, charteredIds);
+    const coverageSites = [...new Set([
+      ...(await this.networksRepository.charteredPropertyIds(organizationId, networkId)),
+      ...(await this.networksRepository.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
     await this.networksRepository.deleteByIdAndOrgId(networkId, organizationId);
     await this.audit.recordDelete(organizationId, 'Network', network);
   }

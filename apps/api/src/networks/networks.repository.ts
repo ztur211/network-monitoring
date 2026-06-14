@@ -74,6 +74,15 @@ export class NetworksRepository {
     return rows.map((r) => r.propertyId);
   }
 
+  async deviceFootprintPropertyIds(organizationId: string, networkId: string): Promise<string[]> {
+    const rows = await this.prisma.device.findMany({
+      where: { organizationId, networkId },
+      distinct: ['propertyId'],
+      select: { propertyId: true },
+    });
+    return rows.map((r) => r.propertyId);
+  }
+
   /**
    * Used only by checkOnHome (called from the realtime gateway with a userId).
    * Finds all networks belonging to the organization the user is a member of.
