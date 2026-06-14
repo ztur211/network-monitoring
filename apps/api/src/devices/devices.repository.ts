@@ -20,23 +20,30 @@ type CreateDeviceData = {
   notes?: string;
 };
 
+/** A non-null scope restricts reads to devices whose propertyId is in the given set. */
+export type DeviceScope = { propertyIdIn: string[] } | null;
+
 @Injectable()
 export class DevicesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAllByOrgId(organizationId: string): Promise<Device[]> {
+  findAllByOrgId(organizationId: string, scope?: DeviceScope): Promise<Device[]> {
     return this.prisma.device.findMany({
-      where: { organizationId },
+      where: { organizationId, ...(scope ? { propertyId: { in: scope.propertyIdIn } } : {}) },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  countByOrgId(organizationId: string): Promise<number> {
-    return this.prisma.device.count({ where: { organizationId } });
+  countByOrgId(organizationId: string, scope?: DeviceScope): Promise<number> {
+    return this.prisma.device.count({
+      where: { organizationId, ...(scope ? { propertyId: { in: scope.propertyIdIn } } : {}) },
+    });
   }
 
-  findByIdAndOrgId(deviceId: string, organizationId: string): Promise<Device | null> {
-    return this.prisma.device.findFirst({ where: { id: deviceId, organizationId } });
+  findByIdAndOrgId(deviceId: string, organizationId: string, scope?: DeviceScope): Promise<Device | null> {
+    return this.prisma.device.findFirst({
+      where: { id: deviceId, organizationId, ...(scope ? { propertyId: { in: scope.propertyIdIn } } : {}) },
+    });
   }
 
   create(data: CreateDeviceData): Promise<Device> {

@@ -12,11 +12,15 @@ describe('DevicesController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
   let memberCookie: string;
+  let adminCookie: string;
   let orgId: string;
   let networkId: string;
   let siteId: string;
+  let sBId: string;
+  let deviceUnderBId: string;
   const testEmail = `e2e-devices-${Date.now()}@example.com`;
   const memberEmail = `e2e-devices-member-${Date.now()}@example.com`;
+  const adminEmail = `e2e-devices-admin-${Date.now()}@example.com`;
 
   const pickCookie = (res: request.Response): string => {
     const c = res.headers['set-cookie'];
@@ -47,34 +51,62 @@ describe('DevicesController (e2e)', () => {
         .send({ email: memberEmail, password: 'Password123!', name: 'Devices Member User' }),
     );
 
+    adminCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: adminEmail, password: 'Password123!', name: 'Devices Admin User' }),
+    );
+
     const prisma = app.get(PrismaService);
     const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
-    const member = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
+    const memberUser = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
+    const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
     const org = await prisma.organization.create({ data: { name: `E2E Devices ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
-    await prisma.organizationMember.create({ data: { userId: member.id, organizationId: orgId, role: 'MEMBER' } });
+    const memberMembership = await prisma.organizationMember.create({ data: { userId: memberUser.id, organizationId: orgId, role: 'MEMBER' } });
+    const adminMembership = await prisma.organizationMember.create({ data: { userId: adminUser.id, organizationId: orgId, role: 'ADMIN' } });
 
     const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
     networkId = network.id;
+    // sA: the site MEMBER and ADMIN are assigned to
     const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `HQ ${Date.now()}` } });
     siteId = site.id;
+    // sB: a second site that MEMBER and ADMIN are NOT assigned to
+    const siteB = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `DC ${Date.now()}` } });
+    sBId = siteB.id;
     await prisma.networkProperty.create({ data: { organizationId: orgId, networkId: network.id, propertyId: site.id } });
+    await prisma.networkProperty.create({ data: { organizationId: orgId, networkId: network.id, propertyId: siteB.id } });
+
+    // Team scoped to sA — both MEMBER and ADMIN are members of this team
+    const team = await prisma.team.create({ data: { organizationId: orgId, name: 'Team A', creatorMemberId: null } });
+    await prisma.teamProperty.create({ data: { organizationId: orgId, teamId: team.id, propertyId: siteId } });
+    await prisma.teamMember.create({ data: { organizationId: orgId, teamId: team.id, memberId: memberMembership.id } });
+    await prisma.teamMember.create({ data: { organizationId: orgId, teamId: team.id, memberId: adminMembership.id } });
+
+    // Device under sB — outside scope of MEMBER and ADMIN
+    const devB = await prisma.device.create({
+      data: { organizationId: orgId, userId: u.id, networkId, propertyId: sBId, name: `Dev B ${Date.now()}`, category: 'ROUTER' },
+    });
+    deviceUnderBId = devB.id;
+
+    // Device under sA — in scope of MEMBER and ADMIN (used for F3 scoped write tests)
+    const devA = await prisma.device.create({
+      data: { organizationId: orgId, userId: u.id, networkId, propertyId: siteId, name: `Dev A ${Date.now()}`, category: 'SWITCH' },
+    });
+    deviceUnderAId = devA.id;
   });
 
   afterAll(async () => {
     const prisma = app.get(PrismaService);
-    await prisma.device.deleteMany({ where: { organizationId: orgId } });
-    await prisma.networkProperty.deleteMany({ where: { organizationId: orgId } });
-    await prisma.network.deleteMany({ where: { organizationId: orgId } });
-    await prisma.property.deleteMany({ where: { organizationId: orgId } });
-    await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
+    // org delete cascades teams, teamMembers, teamProperties, orgMembers, devices, etc.
     await prisma.organization.delete({ where: { id: orgId } });
-    await prisma.user.deleteMany({ where: { email: { in: [testEmail, memberEmail] } } });
+    await prisma.user.deleteMany({ where: { email: { in: [testEmail, memberEmail, adminEmail] } } });
     await app.close();
   });
 
   let deviceId: string;
+  let deviceUnderAId: string;
 
   describe('GET /api/v1/devices', () => {
     it('returns 401 AUTH_002 without auth', async () => {
@@ -83,15 +115,16 @@ describe('DevicesController (e2e)', () => {
       expect(res.body.error.code).toBe('AUTH_002');
     });
 
-    it('returns 200 with empty list for new user', async () => {
+    it('returns 200 with the seeded sB device visible to owner (no scope filter)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/devices')
         .set('Cookie', sessionCookie);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.items).toHaveLength(0);
-      expect(res.body.data.total).toBe(0);
+      // OWNER is unscoped — sees all devices including the sB device seeded in beforeAll
+      const ids = (res.body.data.items as Array<{ id: string }>).map((d) => d.id);
+      expect(ids).toContain(deviceUnderBId);
     });
   });
 
@@ -276,10 +309,11 @@ describe('DevicesController (e2e)', () => {
       expect(res.body.error.code).toBe('ORG_003');
     });
 
-    it('MEMBER PATCH /api/v1/devices/:id → 403 ORG_003', async () => {
-      // Guard check happens before any DB lookup — a non-existent id still yields 403
+    it('MEMBER PATCH /api/v1/devices/:id → 403 ORG_003 (service-level enforcement on real device)', async () => {
+      // Use deviceUnderBId (exists org-wide, under sB). Service: org-wide find succeeds, then
+      // assertCanConfigure(MEMBER, sBId) → ORG_003 regardless of which site the device is on.
       const res = await request(app.getHttpServer())
-        .patch('/api/v1/devices/00000000-0000-0000-0000-000000000001')
+        .patch(`/api/v1/devices/${deviceUnderBId}`)
         .set('Cookie', memberCookie)
         .send({ baseVersion: 1, changes: [{ field: 'notes', oldValue: null, newValue: 'blocked' }] });
 
@@ -287,13 +321,80 @@ describe('DevicesController (e2e)', () => {
       expect(res.body.error.code).toBe('ORG_003');
     });
 
-    it('MEMBER DELETE /api/v1/devices/:id → 403 ORG_003', async () => {
+    it('MEMBER DELETE /api/v1/devices/:id → 403 ORG_003 (service-level enforcement on real device)', async () => {
       const res = await request(app.getHttpServer())
-        .delete('/api/v1/devices/00000000-0000-0000-0000-000000000001')
+        .delete(`/api/v1/devices/${deviceUnderBId}`)
         .set('Cookie', memberCookie);
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('ORG_003');
+    });
+  });
+
+  describe('F3 scoped enforcement', () => {
+    it('MEMBER GET /api/v1/devices → sees sA device, does NOT see device under sB', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/devices')
+        .set('Cookie', memberCookie)
+        .expect(200);
+
+      const ids = (res.body.data.items as Array<{ id: string }>).map((d) => d.id);
+      expect(ids).toContain(deviceUnderAId);
+      expect(ids).not.toContain(deviceUnderBId);
+    });
+
+    it('MEMBER GET /api/v1/devices/:id for device under sB → 404 DEVICE_001', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/devices/${deviceUnderBId}`)
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('DEVICE_001');
+    });
+
+    it('ADMIN (scoped to sA) PATCH device under sA → 200 (in-scope write allowed)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${deviceUnderAId}`)
+        .set('Cookie', adminCookie)
+        .send({
+          baseVersion: 1,
+          changes: [{ field: 'notes', oldValue: null, newValue: 'admin in-scope edit' }],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.notes).toBe('admin in-scope edit');
+    });
+
+    it('ADMIN (scoped to sA) PATCH device under sB → 403 PERM_001', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${deviceUnderBId}`)
+        .set('Cookie', adminCookie)
+        .send({ baseVersion: 1, changes: [{ field: 'notes', oldValue: null, newValue: 'admin out-of-scope' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('PERM_001');
+    });
+
+    it('MEMBER PATCH sA device → 403 ORG_003', async () => {
+      // MEMBER is never allowed to write, regardless of scope
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${deviceUnderAId}`)
+        .set('Cookie', memberCookie)
+        .send({ baseVersion: 1, changes: [{ field: 'notes', oldValue: null, newValue: 'member write attempt' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('OWNER GET /api/v1/devices → sees both sA device and device under sB', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/devices')
+        .set('Cookie', sessionCookie)
+        .expect(200);
+
+      const ids = (res.body.data.items as Array<{ id: string }>).map((d) => d.id);
+      expect(ids).toContain(deviceUnderAId);
+      expect(ids).toContain(deviceUnderBId);
     });
   });
 
