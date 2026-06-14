@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Team } from '@prisma/client';
 import { PermissionsService } from '../permissions.service';
 import { PermissionsRepository } from '../permissions.repository';
+import { AuditService } from '../../audit/audit.service';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
 
 describe('PermissionsService delegation (spec §7)', () => {
@@ -10,6 +11,7 @@ describe('PermissionsService delegation (spec §7)', () => {
     effectiveRootPropertyIds: jest.fn(),
     subtreePropertyIds: jest.fn(),
   } as unknown as jest.Mocked<PermissionsRepository>;
+  const mockAudit = { recordCreate: jest.fn(), recordUpdate: jest.fn(), recordDelete: jest.fn() };
   const owner = { id: 'o', organizationId: 'org', role: 'OWNER' } as OrgMemberContext;
   const admin = { id: 'a', organizationId: 'org', role: 'ADMIN' } as OrgMemberContext;
   const member = { id: 'm', organizationId: 'org', role: 'MEMBER' } as OrgMemberContext;
@@ -17,7 +19,11 @@ describe('PermissionsService delegation (spec §7)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     const ref = await Test.createTestingModule({
-      providers: [PermissionsService, { provide: PermissionsRepository, useValue: repo }],
+      providers: [
+        PermissionsService,
+        { provide: PermissionsRepository, useValue: repo },
+        { provide: AuditService, useValue: mockAudit },
+      ],
     }).compile();
     service = ref.get(PermissionsService);
     // admin scope = subtree of rootA = {rootA, a1}

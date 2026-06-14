@@ -1,14 +1,33 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Team } from '@prisma/client';
-import { AccessSummaryDto } from '@nodescope/shared';
+import { AccessSummaryDto, TeamDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
+import { AuditService } from '../audit/audit.service';
 import { PermissionsRepository } from './permissions.repository';
+import { CreateTeamDto, UpdateTeamDto } from './permissions.dto';
+
+function toTeamDto(team: Team): TeamDto {
+  return {
+    id: team.id,
+    organizationId: team.organizationId,
+    name: team.name,
+    creatorMemberId: team.creatorMemberId,
+    version: team.version,
+    createdAt: team.createdAt.toISOString(),
+    updatedAt: team.updatedAt.toISOString(),
+  };
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  return (e as { code?: string })?.code === 'P2002';
+}
 
 @Injectable()
 export class PermissionsService {
   constructor(
     private readonly repo: PermissionsRepository,
+    private readonly audit: AuditService,
   ) {}
 
   effectiveRoots(organizationId: string, memberId: string): Promise<string[]> {
@@ -106,5 +125,51 @@ export class PermissionsService {
         : await this.repo.effectiveRootPropertyIds(member.organizationId, member.id),
       unscoped,
     };
+  }
+
+  async listTeams(member: OrgMemberContext): Promise<TeamDto[]> {
+    const scope = await this.scopeFilter(member);
+    return (await this.repo.listVisibleTeams(member.organizationId, scope)).map(toTeamDto);
+  }
+
+  async createTeamFor(actor: OrgMemberContext, dto: CreateTeamDto): Promise<TeamDto> {
+    if (actor.role === 'MEMBER') throw new NodeScopeException('ORG_003', 'FORBIDDEN_ROLE', HttpStatus.FORBIDDEN);
+    try {
+      const team = await this.repo.createTeam({ organizationId: actor.organizationId, name: dto.name, creatorMemberId: actor.id });
+      await this.audit.recordCreate(actor.organizationId, 'Team', team);
+      return toTeamDto(team);
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new NodeScopeException('TEAM_002', 'TEAM_NAME_TAKEN', HttpStatus.CONFLICT);
+      throw e;
+    }
+  }
+
+  async renameTeamFor(actor: OrgMemberContext, teamId: string, baseVersion: number, name: string): Promise<TeamDto> {
+    const team = await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    let result;
+    try {
+      result = await this.repo.renameTeam(actor.organizationId, teamId, name, baseVersion);
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new NodeScopeException('TEAM_002', 'TEAM_NAME_TAKEN', HttpStatus.CONFLICT);
+      throw e;
+    }
+    if (result.count === 0) throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
+    const updated = await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.audit.recordUpdate(actor.organizationId, 'Team', teamId, [{ field: 'name', oldValue: team.name, newValue: name }]);
+    return toTeamDto(updated);
+  }
+
+  async deleteTeamFor(actor: OrgMemberContext, teamId: string): Promise<void> {
+    const team = await this.loadTeamOr404(actor.organizationId, teamId);
+    await this.assertCanManageTeamStructure(actor, team, await this.repo.teamPropertyIds(actor.organizationId, teamId));
+    await this.repo.deleteTeam(actor.organizationId, teamId);
+    await this.audit.recordDelete(actor.organizationId, 'Team', team);
+  }
+
+  private async loadTeamOr404(organizationId: string, teamId: string): Promise<Team> {
+    const team = await this.repo.findTeam(organizationId, teamId);
+    if (!team) throw new NodeScopeException('TEAM_001', 'TEAM_NOT_FOUND', HttpStatus.NOT_FOUND);
+    return team;
   }
 }
