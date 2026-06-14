@@ -26,6 +26,21 @@ export class PermissionsRepository {
     return this.prisma.memberProperty.create({ data });
   }
 
+  /** The property + all descendants (org-scoped), via a recursive CTE.
+   *  Mirrors PropertiesRepository.getSubtreeIds — kept here to avoid a circular
+   *  module dependency between PermissionsModule and PropertiesModule. */
+  async subtreePropertyIds(organizationId: string, rootId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      WITH RECURSIVE subtree AS (
+        SELECT id FROM "Property" WHERE id = ${rootId} AND "organizationId" = ${organizationId}
+        UNION ALL
+        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id
+      )
+      SELECT id FROM subtree;
+    `;
+    return rows.map((r) => r.id);
+  }
+
   /** Union of (team assignments via membership) and (direct member assignments). Deduped. */
   async effectiveRootPropertyIds(organizationId: string, memberId: string): Promise<string[]> {
     const [teamRoots, directRoots] = await Promise.all([

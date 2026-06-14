@@ -2,12 +2,13 @@ import { Test } from '@nestjs/testing';
 import { OrganizationMember } from '@prisma/client';
 import { PermissionsService } from '../permissions.service';
 import { PermissionsRepository } from '../permissions.repository';
-import { PropertiesService } from '../../properties/properties.service';
 
 describe('PermissionsService', () => {
   let service: PermissionsService;
-  const repo = { effectiveRootPropertyIds: jest.fn() } as unknown as jest.Mocked<PermissionsRepository>;
-  const properties = { subtreePropertyIds: jest.fn() } as unknown as jest.Mocked<PropertiesService>;
+  const repo = {
+    effectiveRootPropertyIds: jest.fn(),
+    subtreePropertyIds: jest.fn(),
+  } as unknown as jest.Mocked<PermissionsRepository>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -15,7 +16,6 @@ describe('PermissionsService', () => {
       providers: [
         PermissionsService,
         { provide: PermissionsRepository, useValue: repo },
-        { provide: PropertiesService, useValue: properties },
       ],
     }).compile();
     service = moduleRef.get(PermissionsService);
@@ -24,7 +24,7 @@ describe('PermissionsService', () => {
   describe('scope resolution', () => {
     it('scopePropertyIds expands every root subtree and dedupes', async () => {
       repo.effectiveRootPropertyIds.mockResolvedValue(['rootA', 'rootB']);
-      properties.subtreePropertyIds.mockImplementation(async (_org, root) =>
+      repo.subtreePropertyIds.mockImplementation(async (_org, root) =>
         root === 'rootA' ? ['rootA', 'a1'] : ['rootB', 'a1'], // a1 shared
       );
       const ids = await service.scopePropertyIds('org', 'm1');
@@ -33,7 +33,7 @@ describe('PermissionsService', () => {
 
     it('inScope is true iff the property is within an expanded subtree', async () => {
       repo.effectiveRootPropertyIds.mockResolvedValue(['rootA']);
-      properties.subtreePropertyIds.mockResolvedValue(['rootA', 'a1', 'a2']);
+      repo.subtreePropertyIds.mockResolvedValue(['rootA', 'a1', 'a2']);
       expect(await service.inScope('org', 'm1', 'a2')).toBe(true);
       expect(await service.inScope('org', 'm1', 'zzz')).toBe(false);
     });
@@ -55,7 +55,7 @@ describe('PermissionsService', () => {
 
     it('ADMIN may configure in scope, not out of scope (PERM_001)', async () => {
       repo.effectiveRootPropertyIds.mockResolvedValue(['rootA']);
-      properties.subtreePropertyIds.mockResolvedValue(['rootA', 'a1']);
+      repo.subtreePropertyIds.mockResolvedValue(['rootA', 'a1']);
       await expect(service.assertCanConfigure(admin, 'a1')).resolves.toBeUndefined();
       await expect(service.assertCanConfigure(admin, 'b9')).rejects.toMatchObject({ code: 'PERM_001' });
     });

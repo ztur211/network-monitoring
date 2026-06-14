@@ -8,6 +8,8 @@ import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { assertValidNesting } from './property-nesting';
 import { CreatePropertyDto, PatchPropertyDto, PROPERTY_WRITABLE_FIELDS } from './properties.dto';
+import type { OrgMemberContext } from '../organizations/org-context.types';
+import { PermissionsService } from '../permissions/permissions.service';
 
 @Injectable()
 export class PropertiesService {
@@ -16,19 +18,30 @@ export class PropertiesService {
     private readonly conflict: ConflictResolutionService,
     private readonly audit: AuditService,
     private readonly containment: ContainmentService,
+    private readonly permissions: PermissionsService,
   ) {}
 
-  async listProperties(organizationId: string): Promise<PropertyDto[]> {
-    return (await this.repo.findAllByOrgId(organizationId)).map((p) => this.toDto(p));
+  async listProperties(member: OrgMemberContext): Promise<PropertyDto[]> {
+    const scope = await this.permissions.scopeFilter(member);
+    return (await this.repo.findAllByOrgId(member.organizationId, scope)).map((p) => this.toDto(p));
   }
 
-  async getProperty(organizationId: string, id: string): Promise<PropertyDto> {
-    const p = await this.repo.findByIdAndOrgId(id, organizationId);
+  async getProperty(member: OrgMemberContext, id: string): Promise<PropertyDto> {
+    const scope = await this.permissions.scopeFilter(member);
+    const p = await this.repo.findByIdAndOrgId(id, member.organizationId, scope);
     if (!p) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
     return this.toDto(p);
   }
 
-  async createProperty(organizationId: string, dto: CreatePropertyDto): Promise<PropertyDto> {
+  async createProperty(member: OrgMemberContext, dto: CreatePropertyDto): Promise<PropertyDto> {
+    const organizationId = member.organizationId;
+    // Top-level SITE: OWNER-only; sub-site: assertCanConfigure the parent
+    if (dto.parentId == null) {
+      await this.permissions.assertCanConfigure(member, '__root__');
+    } else {
+      await this.permissions.assertCanConfigure(member, dto.parentId);
+    }
+
     const parentType = await this.resolveParentType(organizationId, dto.parentId ?? null);
     assertValidNesting(parentType, dto.type);
     if (await this.repo.existsSiblingName(organizationId, dto.parentId ?? null, dto.name)) {
@@ -42,9 +55,12 @@ export class PropertiesService {
     return this.toDto(created);
   }
 
-  async updateProperty(organizationId: string, id: string, patch: PatchPropertyDto): Promise<PropertyDto> {
+  async updateProperty(member: OrgMemberContext, id: string, patch: PatchPropertyDto): Promise<PropertyDto> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup (no scope) so out-of-scope ADMIN → PERM_001 not 404
     const current = await this.repo.findByIdAndOrgId(id, organizationId);
     if (!current) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
+    await this.permissions.assertCanConfigure(member, current.id);
 
     const changedField = (f: string) => patch.changes.find((c) => c.field === f);
     const parentChange = changedField('parentId');
@@ -53,6 +69,14 @@ export class PropertiesService {
     const nextParentId = parentChange ? ((parentChange.newValue as string | null) ?? null) : current.parentId;
 
     if (parentChange) {
+      // If reparenting, also assert access to the destination
+      if (nextParentId == null) {
+        // Promoting to top-level is OWNER-only
+        await this.permissions.assertCanConfigure(member, '__root__');
+      } else {
+        await this.permissions.assertCanConfigure(member, nextParentId);
+      }
+
       // cycle: the new parent must not be the node itself or any of its descendants
       if (nextParentId) {
         if (nextParentId === id) throw new NodeScopeException('PROP_005', 'PROPERTY_CYCLE', HttpStatus.UNPROCESSABLE_ENTITY);
@@ -81,9 +105,12 @@ export class PropertiesService {
     return this.toDto(updated);
   }
 
-  async deleteProperty(organizationId: string, id: string): Promise<void> {
+  async deleteProperty(member: OrgMemberContext, id: string): Promise<void> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup (no scope) so out-of-scope ADMIN → PERM_001 not 404
     const p = await this.repo.findByIdAndOrgId(id, organizationId);
     if (!p) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
+    await this.permissions.assertCanConfigure(member, p.id);
     const subtreeIds = await this.repo.getSubtreeIds(organizationId, id);
     const hasChildren = subtreeIds.length > 1;
     const devices = await this.repo.countDevicesUnder(organizationId, subtreeIds);
@@ -106,6 +133,7 @@ export class PropertiesService {
 
   private async resolveParentType(organizationId: string, parentId: string | null): Promise<PropertyType | null> {
     if (!parentId) return null;
+    // Internal call: no scope — must see the full org tree for nesting validation
     const parent = await this.repo.findByIdAndOrgId(parentId, organizationId);
     if (!parent) throw new NodeScopeException('PROP_001', 'PROPERTY_NOT_FOUND', HttpStatus.NOT_FOUND);
     return parent.type;

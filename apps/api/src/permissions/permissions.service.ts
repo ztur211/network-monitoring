@@ -2,14 +2,12 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { AccessSummaryDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
-import { PropertiesService } from '../properties/properties.service';
 import { PermissionsRepository } from './permissions.repository';
 
 @Injectable()
 export class PermissionsService {
   constructor(
     private readonly repo: PermissionsRepository,
-    private readonly properties: PropertiesService,
   ) {}
 
   effectiveRoots(organizationId: string, memberId: string): Promise<string[]> {
@@ -20,7 +18,7 @@ export class PermissionsService {
   async scopePropertyIds(organizationId: string, memberId: string): Promise<string[]> {
     const roots = await this.repo.effectiveRootPropertyIds(organizationId, memberId);
     const subtrees = await Promise.all(
-      roots.map((root) => this.properties.subtreePropertyIds(organizationId, root)),
+      roots.map((root) => this.repo.subtreePropertyIds(organizationId, root)),
     );
     return [...new Set(subtrees.flat())];
   }
