@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('ConnectionsController (e2e)', () => {
   let app: INestApplication;
   let sessionCookie: string;
+  let memberCookie: string;
   let deviceAId: string;
   let deviceBId: string;
   let connectionId: string;
@@ -18,6 +19,12 @@ describe('ConnectionsController (e2e)', () => {
   let networkId: string;
   let siteId: string;
   const testEmail = `e2e-conn-${Date.now()}@example.com`;
+  const memberEmail = `e2e-conn-member-${Date.now()}@example.com`;
+
+  const pickCookie = (res: request.Response): string => {
+    const c = res.headers['set-cookie'];
+    return Array.isArray(c) ? c[0] : (c as unknown as string);
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -31,18 +38,25 @@ describe('ConnectionsController (e2e)', () => {
     );
     await app.init();
 
-    const signUp = await request(app.getHttpServer())
-      .post('/api/auth/sign-up/email')
-      .send({ email: testEmail, password: 'Password123!', name: 'Connections Test User' });
+    sessionCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: testEmail, password: 'Password123!', name: 'Connections Test User' }),
+    );
 
-    const setCookie = signUp.headers['set-cookie'];
-    sessionCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    memberCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: memberEmail, password: 'Password123!', name: 'Connections Member User' }),
+    );
 
     const prisma = app.get(PrismaService);
     const u = await prisma.user.findUniqueOrThrow({ where: { email: testEmail } });
+    const member = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
     const org = await prisma.organization.create({ data: { name: `E2E Connections ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({ data: { userId: u.id, organizationId: orgId, role: 'OWNER' } });
+    await prisma.organizationMember.create({ data: { userId: member.id, organizationId: orgId, role: 'MEMBER' } });
 
     const network = await prisma.network.create({ data: { organizationId: orgId, userId: u.id, name: `Net ${Date.now()}` } });
     networkId = network.id;
@@ -73,7 +87,7 @@ describe('ConnectionsController (e2e)', () => {
     await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
-    await prisma.user.deleteMany({ where: { email: testEmail } });
+    await prisma.user.deleteMany({ where: { email: { in: [testEmail, memberEmail] } } });
     await app.close();
   });
 
@@ -143,6 +157,46 @@ describe('ConnectionsController (e2e)', () => {
         .set('Cookie', sessionCookie);
 
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('MEMBER read-only on connections', () => {
+    it('MEMBER GET /api/v1/device-connections → 200 (read is allowed)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/device-connections')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('MEMBER POST /api/v1/device-connections → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/device-connections')
+        .set('Cookie', memberCookie)
+        .send({ sourceDeviceId: deviceAId, targetDeviceId: deviceBId, connectionType: 'ETHERNET' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER PATCH /api/v1/device-connections/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/device-connections/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie)
+        .send({ baseVersion: 1, changes: [{ field: 'notes', oldValue: null, newValue: 'blocked' }] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
+    });
+
+    it('MEMBER DELETE /api/v1/device-connections/:id → 403 ORG_003', async () => {
+      const res = await request(app.getHttpServer())
+        .delete('/api/v1/device-connections/00000000-0000-0000-0000-000000000001')
+        .set('Cookie', memberCookie);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ORG_003');
     });
   });
 });
