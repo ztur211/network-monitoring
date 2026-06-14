@@ -83,4 +83,24 @@ export class PermissionsRepository {
   deleteTeam(organizationId: string, teamId: string) {
     return this.prisma.team.deleteMany({ where: { id: teamId, organizationId } });
   }
+
+  removeTeamMember(organizationId: string, teamId: string, memberId: string) {
+    return this.prisma.teamMember.deleteMany({ where: { organizationId, teamId, memberId } });
+  }
+
+  findTeamMember(organizationId: string, teamId: string, memberId: string): Promise<TeamMember | null> {
+    return this.prisma.teamMember.findFirst({ where: { organizationId, teamId, memberId } });
+  }
+
+  findMemberById(organizationId: string, memberId: string): Promise<OrganizationMember | null> {
+    return this.prisma.organizationMember.findFirst({ where: { id: memberId, organizationId } });
+  }
+
+  removeTeamProperty(organizationId: string, teamId: string, propertyId: string) {
+    return this.prisma.teamProperty.deleteMany({ where: { organizationId, teamId, propertyId } });
+  }
+
+  findTeamProperty(organizationId: string, teamId: string, propertyId: string): Promise<TeamProperty | null> {
+    return this.prisma.teamProperty.findFirst({ where: { organizationId, teamId, propertyId } });
+  }
 }
