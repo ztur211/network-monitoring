@@ -64,6 +64,8 @@ const mockOrgsRepo: jest.Mocked<OrganizationsRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 const mockAudit = {
@@ -104,6 +106,8 @@ describe('DevicesService', () => {
     mockContainment.assertDevicePlacement.mockResolvedValue(undefined);
     mockPermissions.scopeFilter.mockResolvedValue(null);
     mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
+    mockConflict.emitScoped.mockResolvedValue(undefined);
+    mockConflict.emitScopedMulti.mockResolvedValue(undefined);
   });
 
   describe('listDevices', () => {
@@ -270,10 +274,11 @@ describe('DevicesService', () => {
 
       expect(result.name).toBe('Updated Router');
       expect(result.version).toBe(2);
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScoped).toHaveBeenCalledWith(
+        'org-1',
+        expect.any(String),
         'v1:device:updated',
         expect.objectContaining({ deviceId: 'dev-1' }),
-        expect.any(String),
       );
     });
 
@@ -359,10 +364,11 @@ describe('DevicesService', () => {
       await service.deleteDevice(member, 'dev-1');
 
       expect(mockRepo.deleteByIdAndOrgId).toHaveBeenCalledWith('dev-1', 'org-1');
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScoped).toHaveBeenCalledWith(
+        'org-1',
+        expect.any(String),
         'v1:device:deleted',
         expect.objectContaining({ deviceId: 'dev-1' }),
-        expect.any(String),
       );
     });
 

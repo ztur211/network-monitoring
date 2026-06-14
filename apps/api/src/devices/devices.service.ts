@@ -138,10 +138,11 @@ export class DevicesService {
 
     const dto = this.toDto(updated);
     await this.audit.recordUpdate(organizationId, 'Device', deviceId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScoped(
+      member.organizationId,
+      updated.propertyId,
       WS_EVENTS.DEVICE_UPDATED,
       { deviceId, device: dto, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
     return dto;
   }
@@ -156,10 +157,11 @@ export class DevicesService {
     await this.permissions.assertCanConfigure(member, device.propertyId);
     await this.devicesRepository.deleteByIdAndOrgId(deviceId, organizationId);
     await this.audit.recordDelete(organizationId, 'Device', device);
-    this.conflictService.emitEntityEvent(
+    await this.conflictService.emitScoped(
+      member.organizationId,
+      device.propertyId,
       WS_EVENTS.DEVICE_DELETED,
       { deviceId },
-      organizationId,
     );
   }
 

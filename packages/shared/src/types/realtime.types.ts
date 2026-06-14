@@ -45,6 +45,7 @@ export const WS_EVENTS = {
   TEAM_PROPERTY_UNASSIGNED: 'v1:team:property:unassigned',
   MEMBER_PROPERTY_ASSIGNED: 'v1:member:property:assigned',
   MEMBER_PROPERTY_UNASSIGNED: 'v1:member:property:unassigned',
+  ACCESS_CHANGED: 'v1:access:changed',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';

@@ -4,6 +4,7 @@ import { DataSourcesModule } from '../data-sources/data-sources.module';
 import { AiModule } from '../ai/ai.module';
 import { NetworksModule } from '../networks/networks.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 import { RealtimeGateway } from './realtime.gateway';
 import { REALTIME_SERVICE } from './realtime.types';
 
@@ -13,6 +14,7 @@ import { REALTIME_SERVICE } from './realtime.types';
     DataSourcesModule,
     AiModule,
     OrganizationsModule,
+    PermissionsModule,
     forwardRef(() => NetworksModule),
   ],
   providers: [
