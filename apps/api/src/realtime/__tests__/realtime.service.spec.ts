@@ -4,7 +4,6 @@ import { WS_EVENTS } from '@nodescope/shared';
 import { RealtimeGateway } from '../realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
-import { DevicesService } from '../../devices/devices.service';
 import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
@@ -37,8 +36,6 @@ type MockDataSources = {
 
 type MockAi = { sendMessageStream: jest.Mock };
 
-type MockDevices = { findDeviceIdByBrowserDeviceId: jest.Mock };
-
 type MockNetworks = { checkOnHome: jest.Mock };
 
 type MockOrgsRepo = { findMemberByUserId: jest.Mock };
@@ -47,7 +44,6 @@ describe('RealtimeGateway — service interface', () => {
   let gateway: RealtimeGateway;
   let mockDataSources: MockDataSources;
   let mockAiService: MockAi;
-  let mockDevices: MockDevices;
   let mockNetworks: MockNetworks;
   let mockOrgsRepo: MockOrgsRepo;
 
@@ -63,10 +59,6 @@ describe('RealtimeGateway — service interface', () => {
       sendMessageStream: jest.fn(),
     };
 
-    mockDevices = {
-      findDeviceIdByBrowserDeviceId: jest.fn().mockResolvedValue(null),
-    };
-
     mockNetworks = {
       checkOnHome: jest.fn().mockResolvedValue({ networkId: null, onHome: false }),
     };
@@ -80,7 +72,6 @@ describe('RealtimeGateway — service interface', () => {
         RealtimeGateway,
         { provide: RedisService, useValue: mockRedis },
         { provide: DataSourcesService, useValue: mockDataSources },
-        { provide: DevicesService, useValue: mockDevices },
         { provide: NetworksService, useValue: mockNetworks },
         { provide: AiService, useValue: mockAiService },
         { provide: OrganizationsRepository, useValue: mockOrgsRepo },
@@ -316,47 +307,16 @@ describe('RealtimeGateway — service interface', () => {
       expect(mockDataSources.ingest).not.toHaveBeenCalled();
     });
 
-    it('resolves browserDeviceId to deviceId via DevicesService before ingesting', async () => {
-      mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce('device-uuid-7');
-      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
-
-      await gateway.handleMetricsSubmit(socket, {
-        browserDeviceId: 'browser-uuid-1',
-        bandwidthDown: 100,
-      } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
-
-      expect(mockDevices.findDeviceIdByBrowserDeviceId).toHaveBeenCalledWith(
-        'user-1',
-        'browser-uuid-1',
-      );
-      expect(mockDataSources.ingest).toHaveBeenCalledWith(
-        'org-abc',
-        'user-1',
-        expect.objectContaining({ deviceId: 'device-uuid-7', bandwidthDown: 100 }),
-      );
-    });
-
-    it('ingests with deviceId undefined when browserDeviceId does not match a device', async () => {
-      mockDevices.findDeviceIdByBrowserDeviceId.mockResolvedValueOnce(null);
-      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
-
-      await gateway.handleMetricsSubmit(socket, {
-        browserDeviceId: 'unknown-browser',
-        bandwidthDown: 100,
-      } as unknown as Parameters<RealtimeGateway['handleMetricsSubmit']>[1]);
-
-      const callPayload = mockDataSources.ingest.mock.calls[0][2] as Record<string, unknown>;
-      expect(callPayload.deviceId).toBeUndefined();
-      expect(callPayload.bandwidthDown).toBe(100);
-    });
-
-    it('does not call DevicesService when browserDeviceId is absent', async () => {
+    it('ingests metrics payload directly (browser device resolution removed in F2B)', async () => {
       const socket = buildSocket({ id: 'user-1' }, 'org-abc');
 
       await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
 
-      expect(mockDevices.findDeviceIdByBrowserDeviceId).not.toHaveBeenCalled();
-      expect(mockDataSources.ingest).toHaveBeenCalled();
+      expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'org-abc',
+        'user-1',
+        expect.objectContaining({ bandwidthDown: 100 }),
+      );
     });
 
     it('passes tag from payload through to ingest', async () => {

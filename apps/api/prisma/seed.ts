@@ -1,4 +1,4 @@
-import { PrismaClient, DeviceCategory, ConnectionType } from '@prisma/client';
+import { PrismaClient, DeviceCategory, ConnectionType, PropertyType } from '@prisma/client';
 import { auth } from '../src/auth/better-auth.config';
 
 const prisma = new PrismaClient();
@@ -33,8 +33,6 @@ async function main() {
   console.log('Super-admin ready:', superAdmin.email);
 
   // ── Owner (org-scoped dev user) ───────────────────────────────────────────
-  // Try the Better Auth sign-up first (so a password hash is stored); fall back
-  // to a prisma upsert when the account already exists.
   let ownerId: string;
   const existingOwner = await prisma.user.findUnique({ where: { email: 'owner@acme.test' } });
   if (existingOwner) {
@@ -60,21 +58,84 @@ async function main() {
   }
 
   // ── Sample network data ───────────────────────────────────────────────────
-  await seedDevices(org.id, ownerId);
+  await seedNetworkData(org.id, ownerId);
 }
 
-async function seedDevices(organizationId: string, creatorUserId: string) {
+async function seedNetworkData(organizationId: string, creatorUserId: string) {
   const existing = await prisma.device.count({ where: { organizationId } });
   if (existing > 0) {
     console.log('Devices already seeded — skipping');
     return;
   }
 
+  // ── Property tree: SITE → BUILDING → FLOOR ───────────────────────────────
+  const site = await prisma.property.create({
+    data: {
+      organizationId,
+      name: 'Acme HQ',
+      type: PropertyType.SITE,
+    },
+  });
+
+  const building = await prisma.property.create({
+    data: {
+      organizationId,
+      name: 'Main Building',
+      type: PropertyType.BUILDING,
+      parentId: site.id,
+    },
+  });
+
+  const floor1 = await prisma.property.create({
+    data: {
+      organizationId,
+      name: 'Ground Floor',
+      type: PropertyType.FLOOR,
+      parentId: building.id,
+    },
+  });
+
+  const floor2 = await prisma.property.create({
+    data: {
+      organizationId,
+      name: 'Server Room',
+      type: PropertyType.FLOOR,
+      parentId: building.id,
+    },
+  });
+
+  console.log('Created property tree: HQ Site → Main Building → Ground Floor / Server Room');
+
+  // ── Network ───────────────────────────────────────────────────────────────
+  const network = await prisma.network.create({
+    data: {
+      organizationId,
+      userId: creatorUserId,
+      name: 'Acme Corporate LAN',
+      homeAddress: '123 Corporate Blvd, New York, NY',
+    },
+  });
+
+  // ── Charter: network → HQ SITE ───────────────────────────────────────────
+  await prisma.networkProperty.create({
+    data: {
+      organizationId,
+      networkId: network.id,
+      propertyId: site.id,
+    },
+  });
+
+  console.log('Chartered network to HQ site');
+
+  // ── Devices (placed under charter) ───────────────────────────────────────
   const [router, switch1, ap, server, firewall] = await Promise.all([
     prisma.device.create({
       data: {
         organizationId,
         userId: creatorUserId,
+        networkId: network.id,
+        propertyId: floor1.id,
+        roleCode: 'CORE_ROUTER',
         name: 'Core Router',
         category: DeviceCategory.ROUTER,
         latitude: 40.7128,
@@ -87,6 +148,8 @@ async function seedDevices(organizationId: string, creatorUserId: string) {
       data: {
         organizationId,
         userId: creatorUserId,
+        networkId: network.id,
+        propertyId: floor1.id,
         name: 'Core Switch',
         category: DeviceCategory.SWITCH,
         latitude: 40.7129,
@@ -100,6 +163,8 @@ async function seedDevices(organizationId: string, creatorUserId: string) {
       data: {
         organizationId,
         userId: creatorUserId,
+        networkId: network.id,
+        propertyId: floor1.id,
         name: 'Office AP',
         category: DeviceCategory.ACCESS_POINT,
         latitude: 40.713,
@@ -113,6 +178,9 @@ async function seedDevices(organizationId: string, creatorUserId: string) {
       data: {
         organizationId,
         userId: creatorUserId,
+        networkId: network.id,
+        propertyId: floor2.id,
+        roleCode: 'PRIMARY_STORAGE',
         name: 'File Server',
         category: DeviceCategory.SERVER_RACK,
         latitude: 40.7131,
@@ -126,6 +194,8 @@ async function seedDevices(organizationId: string, creatorUserId: string) {
       data: {
         organizationId,
         userId: creatorUserId,
+        networkId: network.id,
+        propertyId: floor1.id,
         name: 'Firewall',
         category: DeviceCategory.FIREWALL,
         latitude: 40.7127,
@@ -187,7 +257,7 @@ async function seedDevices(organizationId: string, creatorUserId: string) {
   void ap;
   void firewall;
 
-  console.log('Seeded: 5 devices, 2 connections, 1 fiber run, 1 circuit for org:', organizationId);
+  console.log('Seeded: site tree, 1 network, charter, 5 devices, 2 connections, 1 fiber run, 1 circuit for org:', organizationId);
 }
 
 main()

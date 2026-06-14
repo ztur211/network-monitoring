@@ -67,18 +67,25 @@ describe('MapRepository (integration)', () => {
   });
 
   describe('findDevicesInBbox', () => {
-    it('returns Phase-13 columns (organizationId, networkId, mobility, browserDeviceId) — guards DEVICE_COLUMNS drift', async () => {
+    it('returns F2B columns (organizationId, networkId, propertyId, roleCode, mobility) — guards DEVICE_COLUMNS drift', async () => {
       // latitude/longitude trigger device_location_sync, which populates the
       // geometry column so the device passes the `location IS NOT NULL` filter.
+      const property = await prisma.property.create({
+        data: { organizationId: testOrgId, name: 'HQ Site', type: 'SITE' },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: testOrgId, networkId: testNetworkId, propertyId: property.id },
+      });
       await prisma.device.create({
         data: {
           organizationId: testOrgId,
           userId: testUserId,
           networkId: testNetworkId,
-          name: 'Browser Session',
-          category: DeviceCategory.BROWSER_CLIENT,
+          propertyId: property.id,
+          roleCode: 'EDGE',
+          name: 'Router Session',
+          category: DeviceCategory.ROUTER,
           mobility: DeviceMobility.ROAMS,
-          browserDeviceId: 'browser-abc-123',
           latitude: 40.7128,
           longitude: -74.006,
         },
@@ -89,21 +96,33 @@ describe('MapRepository (integration)', () => {
       expect(devices).toHaveLength(1);
       const device = devices[0];
       expect(device.organizationId).toBe(testOrgId);
-      expect(device.browserDeviceId).toBe('browser-abc-123');
+      expect(device.propertyId).toBe(property.id);
+      expect(device.roleCode).toBe('EDGE');
       expect(device.networkId).toBe(testNetworkId);
       expect(device.mobility).toBe(DeviceMobility.ROAMS);
+
+      // cleanup
+      await prisma.device.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.networkProperty.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.property.deleteMany({ where: { organizationId: testOrgId } });
     });
 
-    it('filters by floor while still returning Phase-13 columns', async () => {
+    it('filters by floor while still returning F2B columns', async () => {
+      const property = await prisma.property.create({
+        data: { organizationId: testOrgId, name: 'HQ Site', type: 'SITE' },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: testOrgId, networkId: testNetworkId, propertyId: property.id },
+      });
       await prisma.device.create({
         data: {
           organizationId: testOrgId,
           userId: testUserId,
           networkId: testNetworkId,
+          propertyId: property.id,
           name: 'Floor 2 AP',
           category: DeviceCategory.ACCESS_POINT,
           mobility: DeviceMobility.HOME_ONLY,
-          browserDeviceId: null,
           floor: 2,
           latitude: 40.7128,
           longitude: -74.006,
@@ -117,6 +136,11 @@ describe('MapRepository (integration)', () => {
 
       const otherFloor = await repository.findDevicesInBbox(testOrgId, BBOX, 1);
       expect(otherFloor).toHaveLength(0);
+
+      // cleanup
+      await prisma.device.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.networkProperty.deleteMany({ where: { organizationId: testOrgId } });
+      await prisma.property.deleteMany({ where: { organizationId: testOrgId } });
     });
 
     it('does NOT return devices belonging to a different org (org isolation)', async () => {
@@ -130,10 +154,21 @@ describe('MapRepository (integration)', () => {
       await prisma.organizationMember.create({
         data: { userId: otherUser.id, organizationId: otherOrg.id, role: 'MEMBER' },
       });
+      const otherNetwork = await prisma.network.create({
+        data: { organizationId: otherOrg.id, userId: otherUser.id, name: 'Other Network' },
+      });
+      const otherProperty = await prisma.property.create({
+        data: { organizationId: otherOrg.id, name: 'Other Site', type: 'SITE' },
+      });
+      await prisma.networkProperty.create({
+        data: { organizationId: otherOrg.id, networkId: otherNetwork.id, propertyId: otherProperty.id },
+      });
       await prisma.device.create({
         data: {
           organizationId: otherOrg.id,
           userId: otherUser.id,
+          networkId: otherNetwork.id,
+          propertyId: otherProperty.id,
           name: 'Other Org Device',
           category: DeviceCategory.ROUTER,
           latitude: 40.7128,
@@ -147,6 +182,9 @@ describe('MapRepository (integration)', () => {
 
       // Cleanup
       await prisma.device.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.networkProperty.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.network.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.property.deleteMany({ where: { organizationId: otherOrg.id } });
       await prisma.organizationMember.deleteMany({ where: { userId: otherUser.id } });
       await prisma.user.deleteMany({ where: { id: otherUser.id } });
       await prisma.organization.deleteMany({ where: { id: otherOrg.id } });

@@ -12,6 +12,8 @@ describe('ConnectionsRepository (integration)', () => {
   let testUserId: string;
   let testOrgId: string;
   let testOrgBId: string;
+  let testNetworkId: string;
+  let testPropertyId: string;
   let deviceAId: string;
   let deviceBId: string;
 
@@ -41,12 +43,26 @@ describe('ConnectionsRepository (integration)', () => {
     const orgB = await prisma.organization.create({ data: { name: `ConnRepoOrgB-${Date.now()}` } });
     testOrgBId = orgB.id;
 
+    const network = await prisma.network.create({
+      data: { organizationId: testOrgId, userId: testUserId, name: 'Test Network' },
+    });
+    testNetworkId = network.id;
+
+    const property = await prisma.property.create({
+      data: { organizationId: testOrgId, name: 'HQ Site', type: 'SITE' },
+    });
+    testPropertyId = property.id;
+
+    await prisma.networkProperty.create({
+      data: { organizationId: testOrgId, networkId: testNetworkId, propertyId: testPropertyId },
+    });
+
     const [devA, devB] = await Promise.all([
       prisma.device.create({
-        data: { organizationId: testOrgId, userId: testUserId, name: 'Dev A', category: DeviceCategory.ROUTER },
+        data: { organizationId: testOrgId, userId: testUserId, networkId: testNetworkId, propertyId: testPropertyId, name: 'Dev A', category: DeviceCategory.ROUTER },
       }),
       prisma.device.create({
-        data: { organizationId: testOrgId, userId: testUserId, name: 'Dev B', category: DeviceCategory.SWITCH },
+        data: { organizationId: testOrgId, userId: testUserId, networkId: testNetworkId, propertyId: testPropertyId, name: 'Dev B', category: DeviceCategory.SWITCH },
       }),
     ]);
     deviceAId = devA.id;
@@ -56,6 +72,9 @@ describe('ConnectionsRepository (integration)', () => {
   afterEach(async () => {
     await prisma.deviceConnection.deleteMany({ where: { organizationId: { in: [testOrgId, testOrgBId] } } });
     await prisma.device.deleteMany({ where: { organizationId: { in: [testOrgId, testOrgBId] } } });
+    await prisma.networkProperty.deleteMany({ where: { organizationId: { in: [testOrgId, testOrgBId] } } });
+    await prisma.network.deleteMany({ where: { organizationId: { in: [testOrgId, testOrgBId] } } });
+    await prisma.property.deleteMany({ where: { organizationId: { in: [testOrgId, testOrgBId] } } });
     await prisma.organization.deleteMany({ where: { id: { in: [testOrgId, testOrgBId] } } });
     await prisma.user.deleteMany({ where: { id: testUserId } });
   });
