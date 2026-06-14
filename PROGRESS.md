@@ -1773,3 +1773,16 @@ F3 Phase D stops broadcasting every entity event to the whole org room: a socket
 - **Regression fix.** D2's two new gateway constructor deps broke the hand-rolled `RootTestModule` in `websocket-reconnect.e2e.ts` (a `Nest can't resolve … PermissionsService` DI error) — fixed by providing mocked `PermissionsService`/`PermissionsRepository` to that test module.
 
 **Verification:** full api suite green — **unit 450 / integration 125 / e2e 275**, `tsc --noEmit` clean. Phase D added the upward CTE (1 integration), the scoped fan-out + access-changed e2e proofs, and the per-mutation lifecycle/access-changed wiring. **F3 is code-complete (Phases A–D).**
+
+---
+
+## Post-MVP Pivot — F3 Final Review (2026-06-14)
+
+A whole-feature security/architecture review of the 29-commit F3 range was run after Phase D. No Critical/auth-bypass/cross-org-leak issues; cross-org isolation, delegation escalation-safety, the reads-invisible/writes-forbidden split, and the realtime per-socket filter all verified sound. Two fixes were applied:
+
+- **Network write coverage now includes the device footprint.** `assertNetworkFullCoverage` was driven from charter rows only, so a network with **no charters but devices under another admin's site** was renamable/deletable by any ADMIN (the visibility read already checks charters **and** devices — the write path didn't). Both `NetworksService` (update/delete) and `NetworkPropertyService` (charter add/remove) now pass the **deduped union of chartered + device-footprint sites** to the coverage check (new `deviceFootprintPropertyIds` repo method). New e2e: an ADMIN scoped to `sA` gets `PERM_004` renaming a charter-less network whose device sits under `sB`.
+- **Assignment use-cases are race-idempotent.** `addMemberToTeam`/`assignSiteToTeam`/`grantSiteToMember` now catch a `P2002` from a concurrent duplicate insert and return the existing row (audit/realtime fire only on a genuine insert) instead of 500.
+
+**Known follow-ups (out of F3's enumerated scope — read-scope leaks the plan did not cover):** the **map** bbox endpoints (`map.service`/`map.repository`) and the **AI assistant context** (`ai/context/network-context.repository`) read device/link/circuit rows filtered by `organizationId` only — so a site-scoped member can see out-of-scope device data (incl. IP/MAC/notes) on the map and via assistant answers, contradicting the spec §6 "every read scopes" intent. These surfaces were never in the F3 phase plans; closing them (thread `scopeFilter`/`scopePropertyIds` into those queries) is a tracked follow-up.
+
+**Verification:** full api suite green — **unit 450 / integration 125 / e2e 277**, `tsc --noEmit` clean.
