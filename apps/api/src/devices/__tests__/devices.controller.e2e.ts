@@ -281,7 +281,7 @@ describe('DevicesController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch('/api/v1/devices/00000000-0000-0000-0000-000000000001')
         .set('Cookie', memberCookie)
-        .send({ baseVersion: 1, changes: [] });
+        .send({ baseVersion: 1, changes: [{ field: 'notes', oldValue: null, newValue: 'blocked' }] });
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('ORG_003');
