@@ -5,10 +5,19 @@ import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DevicesRepository } from '../devices/devices.repository';
+import type { OrgMemberContext } from '../organizations/org-context.types';
+import { PermissionsService } from '../permissions/permissions.service';
 import { CIRCUIT_WRITABLE_FIELDS, CreateCircuitDto, ListCircuitsQueryDto, PatchCircuitDto } from './circuits.dto';
 import { CircuitsRepository } from './circuits.repository';
 
 const DEFAULT_LIMIT = 50;
+
+/**
+ * Sentinel value for device-less circuits. A circuit without a linked device has no governing
+ * site, so we assign it the sentinel '__nosite__' — which is never in any member's subtree.
+ * This means device-less circuits are OWNER-only for both reads and writes.
+ */
+const NO_SITE = '__nosite__';
 
 @Injectable()
 export class CircuitsService {
@@ -17,13 +26,15 @@ export class CircuitsService {
     private readonly devicesRepository: DevicesRepository,
     private readonly conflictService: ConflictResolutionService,
     private readonly audit: AuditService,
+    private readonly permissions: PermissionsService,
   ) {}
 
-  async listCircuits(organizationId: string, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
+  async listCircuits(member: OrgMemberContext, query: ListCircuitsQueryDto): Promise<CursorPaginatedResponse<CircuitDto>> {
+    const scope = await this.permissions.scopeFilter(member);
     const limit = query.limit ?? DEFAULT_LIMIT;
     const [items, total] = await Promise.all([
-      this.circuitsRepository.findWithCursor(organizationId, limit + 1, query.cursor),
-      this.circuitsRepository.countByOrgId(organizationId),
+      this.circuitsRepository.findWithCursor(member.organizationId, limit + 1, query.cursor, scope ?? undefined),
+      this.circuitsRepository.countByOrgId(member.organizationId, scope ?? undefined),
     ]);
 
     const hasMore = items.length > limit;
@@ -42,28 +53,26 @@ export class CircuitsService {
   }
 
   async createCircuit(
-    organizationId: string,
+    member: OrgMemberContext,
     creatorUserId: string,
     dto: CreateCircuitDto,
   ): Promise<CircuitDto> {
-    if (dto.deviceId) {
-      const device = await this.devicesRepository.findByIdAndOrgId(dto.deviceId, organizationId);
-      if (!device) {
-        throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
-      }
-    }
+    // circuitGoverningSite also performs the device-exists check when deviceId is set.
+    const governingSite = await this.circuitGoverningSite(member.organizationId, dto.deviceId ?? null);
+    await this.permissions.assertCanConfigure(member, governingSite);
 
     const circuit = await this.circuitsRepository.create({
-      organizationId,
+      organizationId: member.organizationId,
       userId: creatorUserId,
       ...dto,
     });
-    await this.audit.recordCreate(organizationId, 'Circuit', circuit);
+    await this.audit.recordCreate(member.organizationId, 'Circuit', circuit);
     return this.toDto(circuit);
   }
 
-  async getCircuit(organizationId: string, circuitId: string): Promise<CircuitDto> {
-    const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
+  async getCircuit(member: OrgMemberContext, circuitId: string): Promise<CircuitDto> {
+    const scope = await this.permissions.scopeFilter(member);
+    const circuit = await this.circuitsRepository.findVisibleByIdAndOrgId(circuitId, member.organizationId, scope);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -71,14 +80,22 @@ export class CircuitsService {
   }
 
   async updateCircuit(
-    organizationId: string,
+    member: OrgMemberContext,
     circuitId: string,
     patch: PatchCircuitDto,
   ): Promise<CircuitDto> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup (no scope) so out-of-scope ADMIN → PERM_001 not 404
     const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
+
+    // Authorize against the circuit's current governing site
+    await this.permissions.assertCanConfigure(
+      member,
+      await this.circuitGoverningSite(organizationId, circuit.deviceId),
+    );
 
     const updatePayload = this.conflictService.buildUpdatePayload(
       patch,
@@ -87,13 +104,14 @@ export class CircuitsService {
       CreateCircuitDto,
     );
 
+    // If patch changes deviceId to a new non-null device, also authorize against the new governing site
     if (updatePayload.deviceId !== undefined && updatePayload.deviceId !== null) {
-      const device = await this.devicesRepository.findByIdAndOrgId(
-        updatePayload.deviceId as string,
-        organizationId,
-      );
-      if (!device) {
-        throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+      const newDeviceId = updatePayload.deviceId as string;
+      if (newDeviceId !== circuit.deviceId) {
+        await this.permissions.assertCanConfigure(
+          member,
+          await this.circuitGoverningSite(organizationId, newDeviceId),
+        );
       }
     }
 
@@ -117,11 +135,17 @@ export class CircuitsService {
     return dto;
   }
 
-  async deleteCircuit(organizationId: string, circuitId: string): Promise<void> {
+  async deleteCircuit(member: OrgMemberContext, circuitId: string): Promise<void> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup (no scope) so out-of-scope ADMIN → PERM_001 not 404
     const circuit = await this.circuitsRepository.findByIdAndOrgId(circuitId, organizationId);
     if (!circuit) {
       throw new NodeScopeException('CIRCUIT_001', 'CIRCUIT_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
+    await this.permissions.assertCanConfigure(
+      member,
+      await this.circuitGoverningSite(organizationId, circuit.deviceId),
+    );
     await this.circuitsRepository.deleteByIdAndOrgId(circuitId, organizationId);
     await this.audit.recordDelete(organizationId, 'Circuit', circuit);
     this.conflictService.emitEntityEvent(
@@ -129,6 +153,21 @@ export class CircuitsService {
       { circuitId },
       organizationId,
     );
+  }
+
+  /**
+   * Resolves the governing site for a circuit based on its linked device.
+   * Returns `NO_SITE` ('__nosite__') when `deviceId` is null — device-less circuits
+   * are OWNER-only (the sentinel is never in any member's subtree).
+   * Also performs the device-exists check when `deviceId` is set.
+   */
+  private async circuitGoverningSite(organizationId: string, deviceId: string | null | undefined): Promise<string> {
+    if (!deviceId) return NO_SITE;
+    const device = await this.devicesRepository.findByIdAndOrgId(deviceId, organizationId);
+    if (!device) {
+      throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    return device.propertyId;
   }
 
   private toDto(circuit: Circuit): CircuitDto {
