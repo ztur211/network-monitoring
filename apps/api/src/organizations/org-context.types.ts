@@ -1,6 +1,7 @@
 import type { OrgRole } from '@prisma/client';
 
 export interface OrgMemberContext {
+  id: string;
   organizationId: string;
   role: OrgRole;
 }

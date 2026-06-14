@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { OrganizationMember } from '@prisma/client';
 import { AccessSummaryDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
+import { OrgMemberContext } from '../organizations/org-context.types';
 import { PropertiesService } from '../properties/properties.service';
 import { PermissionsRepository } from './permissions.repository';
 
@@ -31,7 +31,7 @@ export class PermissionsService {
   }
 
   /** Spec §5 write decision. OWNER: always. MEMBER: never (ORG_003). ADMIN: only in scope (PERM_001). */
-  async assertCanConfigure(member: OrganizationMember, governingSiteId: string): Promise<void> {
+  async assertCanConfigure(member: OrgMemberContext, governingSiteId: string): Promise<void> {
     if (member.role === 'OWNER') return;
     if (member.role === 'MEMBER') {
       throw new NodeScopeException('ORG_003', 'FORBIDDEN_ROLE', HttpStatus.FORBIDDEN);
@@ -43,12 +43,12 @@ export class PermissionsService {
   }
 
   /** For repositories to AND into site-bound reads. `null` => unscoped (OWNER): no filter. */
-  async scopeFilter(member: OrganizationMember): Promise<{ propertyIdIn: string[] } | null> {
+  async scopeFilter(member: OrgMemberContext): Promise<{ propertyIdIn: string[] } | null> {
     if (member.role === 'OWNER') return null;
     return { propertyIdIn: await this.scopePropertyIds(member.organizationId, member.id) };
   }
 
-  async accessSummary(member: OrganizationMember): Promise<AccessSummaryDto> {
+  async accessSummary(member: OrgMemberContext): Promise<AccessSummaryDto> {
     const unscoped = member.role === 'OWNER';
     return {
       role: member.role,

@@ -13,7 +13,9 @@ export class OrgContextGuard implements CanActivate {
       return true;
     }
     const member = await this.repo.findMemberByUserId(userId);
-    request.orgMember = member ? { organizationId: member.organizationId, role: member.role } : null;
+    request.orgMember = member
+      ? { id: member.id, organizationId: member.organizationId, role: member.role }
+      : null;
     return true;
   }
 }
