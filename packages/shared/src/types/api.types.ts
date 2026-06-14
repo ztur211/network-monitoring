@@ -182,6 +182,27 @@ export interface PropertyDto {
   updatedAt: string;
 }
 
+export interface TeamDto {
+  id: string;
+  organizationId: string;
+  name: string;
+  creatorMemberId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMemberDto { id: string; teamId: string; memberId: string; }
+export interface TeamPropertyDto { id: string; teamId: string; propertyId: string; }
+export interface MemberPropertyDto { id: string; memberId: string; propertyId: string; }
+
+// The caller's effective scope, for the client to scope its own UI.
+export interface AccessSummaryDto {
+  role: OrgRole;
+  assignedRootPropertyIds: string[];
+  unscoped: boolean; // true for OWNER (sees everything)
+}
+
 export type FloorDisplayMode = 'single' | 'all' | 'connection';
 
 export interface MapPreferences {
