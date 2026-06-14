@@ -128,4 +128,12 @@ export class PermissionsRepository {
   findMemberProperty(organizationId: string, memberId: string, propertyId: string): Promise<MemberProperty | null> {
     return this.prisma.memberProperty.findFirst({ where: { organizationId, memberId, propertyId } });
   }
+
+  async teamMemberUserIds(organizationId: string, teamId: string): Promise<string[]> {
+    const rows = await this.prisma.teamMember.findMany({
+      where: { organizationId, teamId },
+      select: { member: { select: { userId: true } } },
+    });
+    return rows.map((r) => r.member.userId);
+  }
 }
