@@ -7,6 +7,8 @@ import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { NetworksService } from '../../networks/networks.service';
 import { AiService } from '../../ai/ai.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
+import { PermissionsService } from '../../permissions/permissions.service';
+import { PermissionsRepository } from '../../permissions/permissions.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { auth } from '../../auth/better-auth.config';
 
@@ -39,6 +41,8 @@ type MockAi = { sendMessageStream: jest.Mock };
 type MockNetworks = { checkOnHome: jest.Mock };
 
 type MockOrgsRepo = { findMemberByUserId: jest.Mock };
+type MockPermissionsService = { effectiveRoots: jest.Mock };
+type MockPermissionsRepo = { findMember: jest.Mock; ancestorPropertyIds: jest.Mock };
 
 describe('RealtimeGateway — service interface', () => {
   let gateway: RealtimeGateway;
@@ -46,6 +50,8 @@ describe('RealtimeGateway — service interface', () => {
   let mockAiService: MockAi;
   let mockNetworks: MockNetworks;
   let mockOrgsRepo: MockOrgsRepo;
+  let mockPermissionsService: MockPermissionsService;
+  let mockPermissionsRepo: MockPermissionsRepo;
 
   beforeEach(async () => {
     mockDataSources = {
@@ -67,6 +73,15 @@ describe('RealtimeGateway — service interface', () => {
       findMemberByUserId: jest.fn().mockResolvedValue(null),
     };
 
+    mockPermissionsService = {
+      effectiveRoots: jest.fn().mockResolvedValue([]),
+    };
+
+    mockPermissionsRepo = {
+      findMember: jest.fn().mockResolvedValue(null),
+      ancestorPropertyIds: jest.fn().mockResolvedValue([]),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
@@ -75,6 +90,8 @@ describe('RealtimeGateway — service interface', () => {
         { provide: NetworksService, useValue: mockNetworks },
         { provide: AiService, useValue: mockAiService },
         { provide: OrganizationsRepository, useValue: mockOrgsRepo },
+        { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PermissionsRepository, useValue: mockPermissionsRepo },
       ],
     }).compile();
 
@@ -234,6 +251,9 @@ describe('RealtimeGateway — service interface', () => {
         session: { id: 's-1', token: 'tok' },
       } as never);
       mockOrgsRepo.findMemberByUserId.mockResolvedValue({ organizationId: 'org-abc' });
+      // permissionsRepo.findMember called after joining org room to cache effective roots
+      mockPermissionsRepo.findMember.mockResolvedValue({ id: 'mem-1', role: 'MEMBER' });
+      mockPermissionsService.effectiveRoots.mockResolvedValue(['prop-1']);
 
       const client = makeClientSocket();
       await gateway.handleConnection(client);
@@ -250,6 +270,7 @@ describe('RealtimeGateway — service interface', () => {
         session: { id: 's-2', token: 'tok2' },
       } as never);
       mockOrgsRepo.findMemberByUserId.mockResolvedValue(null);
+      mockPermissionsRepo.findMember.mockResolvedValue(null);
 
       const client = makeClientSocket();
       await gateway.handleConnection(client);
