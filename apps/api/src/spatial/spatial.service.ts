@@ -30,6 +30,8 @@ export class SpatialService {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
 
+    // Loose `== null` is intentional: a field absent from the request body arrives as undefined,
+    // and both undefined and null must count as "unset".
     const allNull = pos.x == null && pos.y == null && pos.z == null;
     const allSet = pos.x != null && pos.y != null && pos.z != null;
     if (!allNull && !allSet) {
@@ -41,12 +43,12 @@ export class SpatialService {
     }
 
     if (allSet) {
-      const buildingId = await this.repo.resolveGoverningBuildingId(
+      const buildingPropertyId = await this.repo.resolveGoverningBuildingId(
         member.organizationId,
         device.propertyId,
       );
-      const model = buildingId
-        ? await this.models.findByProperty(member.organizationId, buildingId)
+      const model = buildingPropertyId
+        ? await this.models.findByProperty(member.organizationId, buildingPropertyId)
         : null;
       if (!model) {
         throw new NodeScopeException(
