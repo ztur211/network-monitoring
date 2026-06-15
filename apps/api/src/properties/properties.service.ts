@@ -21,6 +21,11 @@ export class PropertiesService {
     private readonly permissions: PermissionsService,
   ) {}
 
+  /** Org-scoped row lookup for cross-module callers (Spec 1 building-models). No permission-scope filter. */
+  findInOrg(organizationId: string, id: string): Promise<Property | null> {
+    return this.repo.findByIdAndOrgId(id, organizationId);
+  }
+
   async listProperties(member: OrgMemberContext): Promise<PropertyDto[]> {
     const scope = await this.permissions.scopeFilter(member);
     return (await this.repo.findAllByOrgId(member.organizationId, scope)).map((p) => this.toDto(p));
