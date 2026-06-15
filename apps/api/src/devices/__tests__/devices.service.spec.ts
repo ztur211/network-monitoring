@@ -6,6 +6,7 @@ import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContainmentService } from '../../properties/containment.service';
 import { PermissionsService } from '../../permissions/permissions.service';
+import { SpatialRepository } from '../../spatial/spatial.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
 
@@ -26,6 +27,9 @@ const makeDevice = (overrides = {}) => ({
   longitude: null,
   floor: null,
   floorLabel: null,
+  x: null,
+  y: null,
+  z: null,
   ipAddress: null,
   macAddress: null,
   notes: null,
@@ -85,6 +89,10 @@ const mockPermissions = {
   assertCanConfigure: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockSpatial: jest.Mocked<Pick<SpatialRepository, 'resolveGoverningBuildingId'>> = {
+  resolveGoverningBuildingId: jest.fn().mockResolvedValue(null),
+};
+
 describe('DevicesService', () => {
   let service: DevicesService;
 
@@ -98,6 +106,7 @@ describe('DevicesService', () => {
         { provide: AuditService, useValue: mockAudit },
         { provide: ContainmentService, useValue: mockContainment },
         { provide: PermissionsService, useValue: mockPermissions },
+        { provide: SpatialRepository, useValue: mockSpatial },
       ],
     }).compile();
 
@@ -108,6 +117,8 @@ describe('DevicesService', () => {
     mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
     mockConflict.emitScoped.mockResolvedValue(undefined);
     mockConflict.emitScopedMulti.mockResolvedValue(undefined);
+    // Default: same building for both old + new property → coords preserved (safe default for non-move tests)
+    mockSpatial.resolveGoverningBuildingId.mockResolvedValue('bldg-1');
   });
 
   describe('listDevices', () => {
@@ -353,6 +364,32 @@ describe('DevicesService', () => {
       });
 
       expect(mockContainment.assertDevicePlacement).toHaveBeenCalledWith('org-1', 'net-1', 'new-prop');
+    });
+
+    it('clears x/y/z when a move crosses a building boundary', async () => {
+      // Device starts on prop-1 which resolves to building-A; we move it to prop-2
+      // which resolves to building-B — the clear branch must fire.
+      const device = makeDevice({ x: 1.5, y: 2, z: 3, propertyId: 'prop-1' });
+      const updated = makeDevice({ propertyId: 'prop-2', x: null, y: null, z: null, version: 2 });
+      mockRepo.findByIdAndOrgId.mockResolvedValue(device);
+      mockConflict.buildUpdatePayload.mockReturnValue({ propertyId: 'prop-2' });
+      mockRepo.updateWithVersion.mockResolvedValue(updated);
+      // Key the spatial mock on the propertyId so it's robust against call order
+      mockSpatial.resolveGoverningBuildingId.mockImplementation(
+        async (_org: string, propertyId: string) =>
+          propertyId === 'prop-1' ? 'building-A' : 'building-B',
+      );
+
+      await service.updateDevice(member, 'dev-1', {
+        baseVersion: 1,
+        changes: [{ field: 'propertyId', oldValue: 'prop-1', newValue: 'prop-2' }],
+      });
+
+      // The payload passed to updateWithVersion must have coords nulled out
+      const payload = mockRepo.updateWithVersion.mock.calls[0][2];
+      expect(payload.x).toBeNull();
+      expect(payload.y).toBeNull();
+      expect(payload.z).toBeNull();
     });
   });
 

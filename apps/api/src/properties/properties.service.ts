@@ -21,6 +21,11 @@ export class PropertiesService {
     private readonly permissions: PermissionsService,
   ) {}
 
+  /** Org-scoped row lookup for cross-module callers (Spec 1 building-models). No permission-scope filter. */
+  findInOrg(organizationId: string, id: string): Promise<Property | null> {
+    return this.repo.findByIdAndOrgId(id, organizationId);
+  }
+
   async listProperties(member: OrgMemberContext): Promise<PropertyDto[]> {
     const scope = await this.permissions.scopeFilter(member);
     return (await this.repo.findAllByOrgId(member.organizationId, scope)).map((p) => this.toDto(p));
@@ -126,6 +131,10 @@ export class PropertiesService {
     const charters = await this.repo.countChartersUnder(organizationId, subtreeIds);
     if (hasChildren || devices > 0 || charters > 0) {
       throw new NodeScopeException('PROP_004', 'PROPERTY_NOT_EMPTY', HttpStatus.CONFLICT);
+    }
+    const buildingModels = await this.repo.countBuildingModelsUnder(organizationId, subtreeIds);
+    if (buildingModels > 0) {
+      throw new NodeScopeException('MODEL_008', 'BUILDING_HAS_MODEL', HttpStatus.CONFLICT);
     }
     const assignments = await this.repo.countAssignmentsUnder(organizationId, subtreeIds);
     if (assignments > 0) {

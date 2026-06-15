@@ -31,3 +31,7 @@ process.env.FRONTEND_URL ??= 'http://localhost:8081';
 process.env.REDIS_URL ??= 'redis://localhost:6380';
 process.env.ANTHROPIC_API_KEY ??= 'test-dummy-key';
 process.env.NODE_ENV ??= 'test';
+process.env.STORAGE_ENDPOINT ??= 'http://localhost:9100';
+process.env.STORAGE_BUCKET ??= 'nodescope-test';
+process.env.STORAGE_ACCESS_KEY ??= 'minioadmin';
+process.env.STORAGE_SECRET_KEY ??= 'minioadmin';
