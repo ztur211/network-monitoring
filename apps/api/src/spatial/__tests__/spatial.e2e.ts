@@ -195,8 +195,7 @@ describe('SpatialController (e2e)', () => {
         .send({ x: 1, y: 2, z: 3 });
 
       expect(res.status).toBe(403);
-      // Log the code so we know what OrgRoleGuard returns (ORG_003 expected)
-      console.log('MEMBER 403 code:', res.body.error?.code);
+      expect(res.body.error.code).toBe('ORG_003');
     });
   });
 });
