@@ -131,6 +131,13 @@ export class PropertiesRepository {
     return this.prisma.networkProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } });
   }
 
+  // Spec 1 §4.4: a BUILDING with a model can't be deleted (MODEL_008). Read here (not
+  // via BuildingModelsRepository) to avoid a PropertiesModule ↔ BuildingModelsModule cycle.
+  countBuildingModelsUnder(organizationId: string, propertyIds: string[]): Promise<number> {
+    if (propertyIds.length === 0) return Promise.resolve(0);
+    return this.prisma.buildingModel.count({ where: { organizationId, propertyId: { in: propertyIds } } });
+  }
+
   async countAssignmentsUnder(organizationId: string, propertyIds: string[]): Promise<number> {
     if (propertyIds.length === 0) return 0;
     const [teams, members] = await Promise.all([
