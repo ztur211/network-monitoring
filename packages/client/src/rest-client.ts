@@ -39,7 +39,7 @@ export function createRestClient(opts: RestClientOptions) {
       const res = await fetch(`${opts.baseUrl}/v1/buildings/${propertyId}/model/active/file`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new ApiError('MODEL_FETCH_FAILED', res.statusText, res.status);
+      if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
       return res.arrayBuffer();
     },
   };
