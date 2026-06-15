@@ -16,7 +16,6 @@ describe('BuildingModelsController (e2e, real MinIO)', () => {
   let memberCookie: string;
   let prisma: PrismaService;
   let orgId: string;
-  let siteId: string;
   let buildingId: string;
   let v1Id: string;
   const ownerEmail = `e2e-bm-owner-${Date.now()}@example.com`;
@@ -50,7 +49,6 @@ describe('BuildingModelsController (e2e, real MinIO)', () => {
     await prisma.organizationMember.create({ data: { userId: memberUser.id, organizationId: orgId, role: 'MEMBER' } });
 
     const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'HQ' } });
-    siteId = site.id;
     const building = await prisma.property.create({ data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'Tower A' } });
     buildingId = building.id;
   });

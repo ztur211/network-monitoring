@@ -20,7 +20,6 @@ describe('SpatialController (e2e)', () => {
   let deviceInModeledId: string;
   let deviceUnmodeledId: string;
   // Property IDs reused in the clear-coords describe block
-  let b1Id: string;
   let b2Id: string;
   let f1Id: string;
   let f1bId: string;
@@ -81,7 +80,6 @@ describe('SpatialController (e2e)', () => {
     const b1 = await prisma.property.create({
       data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'Tower A' },
     });
-    b1Id = b1.id;
     const f1 = await prisma.property.create({
       data: { organizationId: orgId, parentId: b1.id, type: 'FLOOR', name: 'Level 1' },
     });
