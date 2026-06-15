@@ -9,6 +9,6 @@ import { SpatialRepository } from './spatial.repository';
   imports: [PrismaModule, BuildingModelsModule], // BuildingModelsModule exports BuildingModelsRepository
   controllers: [SpatialController],
   providers: [SpatialService, SpatialRepository],
-  exports: [SpatialRepository], // Task 4's DevicesService hook will inject this
+  exports: [SpatialRepository], // exported for the DevicesService coordinate-clear-on-move hook
 })
 export class SpatialModule {}

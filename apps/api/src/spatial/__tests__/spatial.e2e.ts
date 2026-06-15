@@ -139,7 +139,7 @@ describe('SpatialController (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Cascade via org delete (members, devices, properties, models all cascade)
+    // Explicit FK-ordered cleanup: model versions → models → devices → networkProperty → network → properties → members → org, then users.
     if (orgId) {
       // Delete model versions + models first (FK to property)
       await prisma.buildingModelVersion.deleteMany({ where: { organizationId: orgId } });
