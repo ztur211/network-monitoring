@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { OrgMember } from '../organizations/decorators/org-member.decorator';
@@ -69,5 +70,30 @@ export class BuildingModelsController {
     @Param('versionId', ParseUUIDPipe) versionId: string,
   ) {
     await this.service.deleteVersion(member, propertyId, versionId);
+  }
+
+  @Get('active/file')
+  async downloadActive(
+    @OrgMember() member: OrgMemberContext,
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+  ): Promise<StreamableFile> {
+    const { stream, fileName } = await this.service.getActiveFile(member, propertyId);
+    return new StreamableFile(stream, {
+      type: 'application/octet-stream',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  @Get('versions/:versionId/file')
+  async downloadVersion(
+    @OrgMember() member: OrgMemberContext,
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ): Promise<StreamableFile> {
+    const { stream, fileName } = await this.service.getVersionFile(member, propertyId, versionId);
+    return new StreamableFile(stream, {
+      type: 'application/octet-stream',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 }
