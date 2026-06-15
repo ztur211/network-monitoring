@@ -46,6 +46,9 @@ export const WS_EVENTS = {
   MEMBER_PROPERTY_ASSIGNED: 'v1:member:property:assigned',
   MEMBER_PROPERTY_UNASSIGNED: 'v1:member:property:unassigned',
   ACCESS_CHANGED: 'v1:access:changed',
+  BUILDING_MODEL_VERSION_UPLOADED: 'v1:buildingModel:versionUploaded',
+  BUILDING_MODEL_ACTIVATED: 'v1:buildingModel:activated',
+  BUILDING_MODEL_DELETED: 'v1:buildingModel:deleted',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';

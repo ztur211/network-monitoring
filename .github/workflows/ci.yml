@@ -109,6 +109,12 @@ jobs:
       FRONTEND_URL: http://localhost:8081
       NODE_ENV: test
       PORT: 3000
+      # StorageService (Spec 1) connects to MinIO at app boot via ensureBucket().
+      # Mirrors jest.e2e.setup.ts defaults and the docker-compose.test.yml minio-test service.
+      STORAGE_ENDPOINT: http://localhost:9100
+      STORAGE_BUCKET: nodescope-test
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -116,6 +122,20 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      # MinIO can't run as a GitHub service container (the minio/minio image needs the
+      # `server /data` command, which service containers can't supply), so start it as a step.
+      - name: Start MinIO (object storage; StorageService.ensureBucket runs at AppModule boot)
+        run: |
+          docker run -d --name minio -p 9100:9000 \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9100/minio/health/live > /dev/null; then
+              echo "MinIO ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO did not become ready in time" >&2; exit 1
       - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test

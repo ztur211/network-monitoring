@@ -27,12 +27,44 @@ export interface DeviceDto {
   longitude: number | null;
   floor: number | null;
   floorLabel: string | null;
+  x: number | null;
+  y: number | null;
+  z: number | null;
   ipAddress: string | null;
   macAddress: string | null;
   notes: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DevicePositionDto {
+  x: number | null;
+  y: number | null;
+  z: number | null;
+}
+
+export interface BuildingModelDto {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  name: string;
+  activeVersionId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BuildingModelVersionDto {
+  id: string;
+  buildingModelId: string;
+  versionNumber: number;
+  fileName: string;
+  contentHash: string;
+  sizeBytes: number;
+  units: string | null;
+  uploadedByMemberId: string | null;
+  createdAt: string;
 }
 
 export interface NetworkPropertyDto {

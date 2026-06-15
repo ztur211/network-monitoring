@@ -13,6 +13,7 @@ const repoMock = () => ({
   updateWithVersion: jest.fn(), deleteByIdAndOrgId: jest.fn(),
   getSubtreeIds: jest.fn(), isAtOrUnder: jest.fn(),
   countDevicesUnder: jest.fn(), countChartersUnder: jest.fn(),
+  countBuildingModelsUnder: jest.fn().mockResolvedValue(0),
   countAssignmentsUnder: jest.fn(),
 });
 const conflictMock = () => ({

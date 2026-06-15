@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Device } from '@prisma/client';
 import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { toDeviceDto } from './device.mapper';
 import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
@@ -9,6 +9,7 @@ import { OrganizationsRepository } from '../organizations/organizations.reposito
 import { assertNameMatchesPolicy } from '../organizations/naming-policy';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ContainmentService } from '../properties/containment.service';
+import { SpatialRepository } from '../spatial/spatial.repository';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS, PatchDeviceDto } from './devices.dto';
 import { DevicesRepository } from './devices.repository';
 
@@ -21,6 +22,7 @@ export class DevicesService {
     private readonly audit: AuditService,
     private readonly containment: ContainmentService,
     private readonly permissions: PermissionsService,
+    private readonly spatial: SpatialRepository,
   ) {}
 
   async listDevices(member: OrgMemberContext): Promise<PaginatedResponse<DeviceDto>> {
@@ -29,7 +31,7 @@ export class DevicesService {
       this.devicesRepository.findAllByOrgId(member.organizationId, scope),
       this.devicesRepository.countByOrgId(member.organizationId, scope),
     ]);
-    return { items: items.map((d) => this.toDto(d)), total };
+    return { items: items.map((d) => toDeviceDto(d)), total };
   }
 
   async createDevice(
@@ -63,7 +65,7 @@ export class DevicesService {
       ...dto,
     });
     await this.audit.recordCreate(organizationId, 'Device', device);
-    return this.toDto(device);
+    return toDeviceDto(device);
   }
 
   async getDevice(member: OrgMemberContext, deviceId: string): Promise<DeviceDto> {
@@ -72,7 +74,7 @@ export class DevicesService {
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    return this.toDto(device);
+    return toDeviceDto(device);
   }
 
   async updateDevice(
@@ -126,6 +128,20 @@ export class DevicesService {
       await this.containment.assertDevicePlacement(organizationId, nextNetworkId, nextPropertyId);
     }
 
+    // Spec 1 §6: model-local coords are tied to the device's governing building.
+    // If a move changes the governing BUILDING, the old x/y/z no longer mean anything — clear them.
+    if (nextPropertyId !== device.propertyId) {
+      const [oldBuildingId, newBuildingId] = await Promise.all([
+        this.spatial.resolveGoverningBuildingId(organizationId, device.propertyId),
+        this.spatial.resolveGoverningBuildingId(organizationId, nextPropertyId),
+      ]);
+      if (oldBuildingId !== newBuildingId) {
+        updatePayload.x = null;
+        updatePayload.y = null;
+        updatePayload.z = null;
+      }
+    }
+
     const updated = await this.devicesRepository.updateWithVersion(
       deviceId,
       organizationId,
@@ -136,7 +152,7 @@ export class DevicesService {
       throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     }
 
-    const dto = this.toDto(updated);
+    const dto = toDeviceDto(updated);
     await this.audit.recordUpdate(organizationId, 'Device', deviceId, patch.changes);
     await this.conflictService.emitScoped(
       member.organizationId,
@@ -165,25 +181,4 @@ export class DevicesService {
     );
   }
 
-  private toDto(device: Device): DeviceDto {
-    return {
-      id: device.id,
-      networkId: device.networkId,
-      propertyId: device.propertyId,
-      roleCode: device.roleCode,
-      userId: device.userId,
-      name: device.name,
-      category: device.category,
-      latitude: device.latitude,
-      longitude: device.longitude,
-      floor: device.floor,
-      floorLabel: device.floorLabel,
-      ipAddress: device.ipAddress,
-      macAddress: device.macAddress,
-      notes: device.notes,
-      version: device.version,
-      createdAt: device.createdAt.toISOString(),
-      updatedAt: device.updatedAt.toISOString(),
-    };
-  }
 }

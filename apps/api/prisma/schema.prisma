@@ -90,17 +90,17 @@ enum ChangeAction {
 // ─── Better Auth Models ───────────────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  emailVerified Boolean  @default(false)
+  id            String  @id @default(uuid())
+  email         String  @unique
+  emailVerified Boolean @default(false)
   name          String?
   image         String?
 
-  tier          AccountTier @default(PERSONAL_FREE)
-  isSuperAdmin  Boolean     @default(false)
-  homeLatitude  Float?
-  homeLongitude Float?
-  mapPreferences Json    @default("{}")
+  tier                  AccountTier @default(PERSONAL_FREE)
+  isSuperAdmin          Boolean     @default(false)
+  homeLatitude          Float?
+  homeLongitude         Float?
+  mapPreferences        Json        @default("{}")
   // Set once the first-run onboarding wizard completes. Durable source of truth
   // for "has this user finished onboarding?" — survives a full Redis flush (the
   // short-lived Redis wizard state cannot be relied on for this).
@@ -109,14 +109,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts   Account[]
-  sessions   Session[]
-  devices    Device[]
-  circuits   Circuit[]
-  fiberRuns  FiberRun[]
+  accounts    Account[]
+  sessions    Session[]
+  devices     Device[]
+  circuits    Circuit[]
+  fiberRuns   FiberRun[]
   connections DeviceConnection[]
-  changeLogs ChangeLog[]
-  networks   Network[]
+  changeLogs  ChangeLog[]
+  networks    Network[]
 
   orgMember    OrganizationMember?
   joinRequests JoinRequest[]
@@ -175,7 +175,7 @@ model Verification {
 // ─── Device & Network Models ──────────────────────────────────────────────────
 
 model Device {
-  id             String         @id @default(uuid())
+  id             String                                @id @default(uuid())
   organizationId String
   userId         String?
   networkId      String
@@ -183,16 +183,19 @@ model Device {
   roleCode       String?
   name           String
   category       DeviceCategory
-  mobility       DeviceMobility @default(UNKNOWN)
+  mobility       DeviceMobility                        @default(UNKNOWN)
   latitude       Float?
   longitude      Float?
   location       Unsupported("geometry(Point, 4326)")?
   floor          Int?
   floorLabel     String?
+  x              Float? // model-local 3D coords (m) in the device's BUILDING active model — Spec 1
+  y              Float?
+  z              Float?
   ipAddress      String?
   macAddress     String?
   notes          String?
-  version        Int            @default(1)
+  version        Int                                   @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -232,8 +235,8 @@ model Network {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   devices      Device[]
   networkLinks NetworkProperty[]
 
@@ -369,31 +372,33 @@ model ChangeLog {
 // ─── Organization Tenancy Models (F1a Phase A) ───────────────────────────────
 
 model Organization {
-  id              String   @id @default(uuid())
-  name            String
-  namingPattern   String?
-  namingMaxLen    Int?     @default(63)
-  namingTemplate  String?
-  version         Int      @default(1)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  namingPattern  String?
+  namingMaxLen   Int?     @default(63)
+  namingTemplate String?
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  members          OrganizationMember[]
-  domains          OrganizationDomain[]
-  changeLogs       ChangeLog[]
-  devices          Device[]
-  networks         Network[]
-  connections      DeviceConnection[]
-  fiberRuns        FiberRun[]
-  circuits         Circuit[]
-  invitations      Invitation[]
-  joinRequests     JoinRequest[]
-  properties       Property[]
-  networkProperties NetworkProperty[]
-  teams            Team[]
-  teamMembers      TeamMember[]
-  teamProperties   TeamProperty[]
-  memberProperties MemberProperty[]
+  members               OrganizationMember[]
+  domains               OrganizationDomain[]
+  changeLogs            ChangeLog[]
+  devices               Device[]
+  networks              Network[]
+  connections           DeviceConnection[]
+  fiberRuns             FiberRun[]
+  circuits              Circuit[]
+  invitations           Invitation[]
+  joinRequests          JoinRequest[]
+  properties            Property[]
+  networkProperties     NetworkProperty[]
+  teams                 Team[]
+  teamMembers           TeamMember[]
+  teamProperties        TeamProperty[]
+  memberProperties      MemberProperty[]
+  buildingModels        BuildingModel[]
+  buildingModelVersions BuildingModelVersion[]
 }
 
 model OrganizationDomain {
@@ -472,13 +477,14 @@ model Property {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent        Property?         @relation("PropertyTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children      Property[]        @relation("PropertyTree")
-  devices       Device[]
-  networkLinks  NetworkProperty[]
-  teamAssignments   TeamProperty[]   @relation("TeamPropertyAssignment")
-  memberAssignments MemberProperty[] @relation("MemberPropertyAssignment")
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent            Property?         @relation("PropertyTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children          Property[]        @relation("PropertyTree")
+  devices           Device[]
+  networkLinks      NetworkProperty[]
+  teamAssignments   TeamProperty[]    @relation("TeamPropertyAssignment")
+  memberAssignments MemberProperty[]  @relation("MemberPropertyAssignment")
+  buildingModel     BuildingModel?
 
   @@index([organizationId])
   @@index([organizationId, parentId])
@@ -509,7 +515,7 @@ model Team {
   id              String   @id @default(uuid())
   organizationId  String
   name            String
-  creatorMemberId String?  // OrganizationMember (owner or admin) who created it; null ⇒ owner-managed only
+  creatorMemberId String? // OrganizationMember (owner or admin) who created it; null ⇒ owner-managed only
   version         Int      @default(1)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -569,6 +575,48 @@ model MemberProperty {
   @@unique([memberId, propertyId])
   @@index([organizationId])
   @@index([propertyId])
+}
+
+// ─── Spatial / Building Model Models (Spec 1) ────────────────────────────────
+
+model BuildingModel {
+  id              String   @id @default(uuid())
+  organizationId  String
+  propertyId      String   @unique // one model per BUILDING (propertyId is globally unique)
+  name            String
+  activeVersionId String?  @unique // 1:1 — a version is the active one of at most one model
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property      Property               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  activeVersion BuildingModelVersion?  @relation("ActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
+  versions      BuildingModelVersion[] @relation("ModelVersions")
+
+  @@index([organizationId])
+}
+
+model BuildingModelVersion {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  buildingModelId    String
+  versionNumber      Int
+  storageKey         String
+  fileName           String
+  contentHash        String
+  sizeBytes          Int
+  units              String?
+  uploadedByMemberId String?
+  createdAt          DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  buildingModel  BuildingModel  @relation("ModelVersions", fields: [buildingModelId], references: [id], onDelete: Cascade)
+  activeForModel BuildingModel? @relation("ActiveVersion")
+
+  @@unique([buildingModelId, versionNumber])
+  @@index([organizationId])
+  @@index([buildingModelId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───

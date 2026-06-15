@@ -1,10 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Device, FiberRun, Circuit } from '@prisma/client';
+import { FiberRun, Circuit } from '@prisma/client';
 import { DeviceDto, FiberRunDto, CircuitDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { PermissionsService } from '../permissions/permissions.service';
 import { MapRepository } from './map.repository';
+import { toDeviceDto } from '../devices/device.mapper';
 
 type BboxCoords = { west: number; south: number; east: number; north: number };
 
@@ -24,7 +25,7 @@ export class MapService {
     const scope = await this.permissions.scopeFilter(member);
     const scopeIds = scope ? scope.propertyIdIn : null;
     const devices = await this.mapRepository.findDevicesInBbox(member.organizationId, coords, floor, scopeIds);
-    return { items: devices.map((d) => this.deviceToDto(d)) };
+    return { items: devices.map((d) => toDeviceDto(d)) };
   }
 
   async getFiberRunsInBbox(member: OrgMemberContext, bbox: string): Promise<{ items: FiberRunDto[] }> {
@@ -56,28 +57,6 @@ export class MapService {
       throw new NodeScopeException('GEN_001', 'Latitude out of range', HttpStatus.BAD_REQUEST);
     }
     return { west, south, east, north };
-  }
-
-  private deviceToDto(device: Device): DeviceDto {
-    return {
-      id: device.id,
-      networkId: device.networkId,
-      propertyId: device.propertyId,
-      roleCode: device.roleCode,
-      userId: device.userId,
-      name: device.name,
-      category: device.category,
-      latitude: device.latitude,
-      longitude: device.longitude,
-      floor: device.floor,
-      floorLabel: device.floorLabel,
-      ipAddress: device.ipAddress,
-      macAddress: device.macAddress,
-      notes: device.notes,
-      version: device.version,
-      createdAt: device.createdAt.toISOString(),
-      updatedAt: device.updatedAt.toISOString(),
-    };
   }
 
   private fiberRunToDto(run: FiberRun): FiberRunDto {
