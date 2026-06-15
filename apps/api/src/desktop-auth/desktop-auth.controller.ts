@@ -45,7 +45,8 @@ export class DesktopAuthController {
 
     const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     if (!session) {
-      const back = encodeURIComponent(req.originalUrl);
+      const apiBase = process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+      const back = encodeURIComponent(`${apiBase}${req.originalUrl}`);
       const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:8081';
       return res.redirect(`${frontendUrl}/login?returnTo=${back}`);
     }
