@@ -19,6 +19,12 @@ describe('SpatialController (e2e)', () => {
   let networkId: string;
   let deviceInModeledId: string;
   let deviceUnmodeledId: string;
+  // Property IDs reused in the clear-coords describe block
+  let b1Id: string;
+  let b2Id: string;
+  let f1Id: string;
+  let f1bId: string;
+  let ownerUserId: string;
 
   const ownerEmail = `e2e-spatial-owner-${Date.now()}@example.com`;
   const memberEmail = `e2e-spatial-member-${Date.now()}@example.com`;
@@ -53,6 +59,7 @@ describe('SpatialController (e2e)', () => {
 
     // Seed org, members, network
     const ownerUser = await prisma.user.findUniqueOrThrow({ where: { email: ownerEmail } });
+    ownerUserId = ownerUser.id;
     const memberUser = await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } });
     const org = await prisma.organization.create({ data: { name: `E2E Spatial ${Date.now()}` } });
     orgId = org.id;
@@ -66,6 +73,7 @@ describe('SpatialController (e2e)', () => {
 
     // Property tree:
     //   SITE → B1 (BUILDING with model) → F1 (FLOOR)
+    //                                    → F1b (FLOOR) — second floor for same-building case
     //   SITE → B2 (BUILDING without model)
     const site = await prisma.property.create({
       data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'HQ' },
@@ -73,12 +81,19 @@ describe('SpatialController (e2e)', () => {
     const b1 = await prisma.property.create({
       data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'Tower A' },
     });
+    b1Id = b1.id;
     const f1 = await prisma.property.create({
       data: { organizationId: orgId, parentId: b1.id, type: 'FLOOR', name: 'Level 1' },
     });
+    f1Id = f1.id;
+    const f1b = await prisma.property.create({
+      data: { organizationId: orgId, parentId: b1.id, type: 'FLOOR', name: 'Level 2' },
+    });
+    f1bId = f1b.id;
     const b2 = await prisma.property.create({
       data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'Tower B (no model)' },
     });
+    b2Id = b2.id;
 
     // Charter the network to the site so ContainmentService accepts device placement
     await prisma.networkProperty.create({
@@ -196,6 +211,102 @@ describe('SpatialController (e2e)', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('ORG_003');
+    });
+  });
+
+  describe('clear x/y/z on building change (Spec 1 §6)', () => {
+    it('moving to a DIFFERENT building clears model-local coordinates', async () => {
+      // Create a device on F1 (under modeled B1)
+      const dev = await prisma.device.create({
+        data: {
+          organizationId: orgId,
+          userId: ownerUserId,
+          networkId,
+          propertyId: f1Id,
+          name: `Dev ClearCoords ${Date.now()}`,
+          category: 'ROUTER',
+        },
+      });
+
+      // Place it at a 3D position
+      const posRes = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${dev.id}/position`)
+        .set('Cookie', ownerCookie)
+        .send({ x: 1.5, y: 2, z: 3 });
+      expect(posRes.status).toBe(200);
+
+      // Read current version (position write increments it)
+      const getRes = await request(app.getHttpServer())
+        .get(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie);
+      expect(getRes.status).toBe(200);
+      const currentVersion: number = getRes.body.data.version;
+
+      // Move the device to B2 (a DIFFERENT governing building)
+      const moveRes = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie)
+        .send({
+          baseVersion: currentVersion,
+          changes: [{ field: 'propertyId', newValue: b2Id }],
+        });
+      expect(moveRes.status).toBe(200);
+
+      // Coordinates must be cleared
+      const afterRes = await request(app.getHttpServer())
+        .get(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie);
+      expect(afterRes.status).toBe(200);
+      expect(afterRes.body.data.x).toBeNull();
+      expect(afterRes.body.data.y).toBeNull();
+      expect(afterRes.body.data.z).toBeNull();
+    });
+
+    it('moving within the SAME building preserves model-local coordinates', async () => {
+      // Create a device on F1 (under B1)
+      const dev = await prisma.device.create({
+        data: {
+          organizationId: orgId,
+          userId: ownerUserId,
+          networkId,
+          propertyId: f1Id,
+          name: `Dev KeepCoords ${Date.now()}`,
+          category: 'SWITCH',
+        },
+      });
+
+      // Place it at a 3D position
+      const posRes = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${dev.id}/position`)
+        .set('Cookie', ownerCookie)
+        .send({ x: 4, y: 5, z: 6 });
+      expect(posRes.status).toBe(200);
+
+      // Read current version
+      const getRes = await request(app.getHttpServer())
+        .get(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie);
+      expect(getRes.status).toBe(200);
+      const currentVersion: number = getRes.body.data.version;
+
+      // Move to F1b (also under B1 — same governing building)
+      const moveRes = await request(app.getHttpServer())
+        .patch(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie)
+        .send({
+          baseVersion: currentVersion,
+          changes: [{ field: 'propertyId', newValue: f1bId }],
+        });
+      expect(moveRes.status).toBe(200);
+
+      // Coordinates must be unchanged
+      const afterRes = await request(app.getHttpServer())
+        .get(`/api/v1/devices/${dev.id}`)
+        .set('Cookie', ownerCookie);
+      expect(afterRes.status).toBe(200);
+      expect(afterRes.body.data.x).toBe(4);
+      expect(afterRes.body.data.y).toBe(5);
+      expect(afterRes.body.data.z).toBe(6);
     });
   });
 });
