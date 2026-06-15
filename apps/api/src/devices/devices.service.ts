@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Device } from '@prisma/client';
 import { DeviceDto, PaginatedResponse, WS_EVENTS } from '@nodescope/shared';
+import { toDeviceDto } from './device.mapper';
 import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
@@ -29,7 +29,7 @@ export class DevicesService {
       this.devicesRepository.findAllByOrgId(member.organizationId, scope),
       this.devicesRepository.countByOrgId(member.organizationId, scope),
     ]);
-    return { items: items.map((d) => this.toDto(d)), total };
+    return { items: items.map((d) => toDeviceDto(d)), total };
   }
 
   async createDevice(
@@ -63,7 +63,7 @@ export class DevicesService {
       ...dto,
     });
     await this.audit.recordCreate(organizationId, 'Device', device);
-    return this.toDto(device);
+    return toDeviceDto(device);
   }
 
   async getDevice(member: OrgMemberContext, deviceId: string): Promise<DeviceDto> {
@@ -72,7 +72,7 @@ export class DevicesService {
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    return this.toDto(device);
+    return toDeviceDto(device);
   }
 
   async updateDevice(
@@ -136,7 +136,7 @@ export class DevicesService {
       throw new NodeScopeException('SYNC_001', 'EDIT_CONFLICT', HttpStatus.CONFLICT);
     }
 
-    const dto = this.toDto(updated);
+    const dto = toDeviceDto(updated);
     await this.audit.recordUpdate(organizationId, 'Device', deviceId, patch.changes);
     await this.conflictService.emitScoped(
       member.organizationId,
@@ -165,28 +165,4 @@ export class DevicesService {
     );
   }
 
-  private toDto(device: Device): DeviceDto {
-    return {
-      id: device.id,
-      networkId: device.networkId,
-      propertyId: device.propertyId,
-      roleCode: device.roleCode,
-      userId: device.userId,
-      name: device.name,
-      category: device.category,
-      latitude: device.latitude,
-      longitude: device.longitude,
-      floor: device.floor,
-      floorLabel: device.floorLabel,
-      x: device.x,
-      y: device.y,
-      z: device.z,
-      ipAddress: device.ipAddress,
-      macAddress: device.macAddress,
-      notes: device.notes,
-      version: device.version,
-      createdAt: device.createdAt.toISOString(),
-      updatedAt: device.updatedAt.toISOString(),
-    };
-  }
 }
