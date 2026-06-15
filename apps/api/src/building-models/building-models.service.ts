@@ -70,6 +70,29 @@ export class BuildingModelsService {
     this.realtime.pushToOrg(member.organizationId, WS_EVENTS.BUILDING_MODEL_DELETED, { versionId });
   }
 
+  async getActiveFile(member: OrgMemberContext, propertyId: string): Promise<{ stream: Readable; fileName: string }> {
+    const model = await this.loadModelOr404(member, propertyId);
+    if (!model.activeVersionId) {
+      throw new NodeScopeException('MODEL_004', 'MODEL_VERSION_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    const version = await this.repo.findVersion(member.organizationId, model.activeVersionId);
+    if (!version) throw new NodeScopeException('MODEL_004', 'MODEL_VERSION_NOT_FOUND', HttpStatus.NOT_FOUND);
+    return { stream: await this.storage.getObjectStream(version.storageKey), fileName: version.fileName };
+  }
+
+  async getVersionFile(
+    member: OrgMemberContext,
+    propertyId: string,
+    versionId: string,
+  ): Promise<{ stream: Readable; fileName: string }> {
+    const model = await this.loadModelOr404(member, propertyId);
+    const version = await this.repo.findVersion(member.organizationId, versionId);
+    if (!version || version.buildingModelId !== model.id) {
+      throw new NodeScopeException('MODEL_004', 'MODEL_VERSION_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    return { stream: await this.storage.getObjectStream(version.storageKey), fileName: version.fileName };
+  }
+
   /**
    * Proxied streaming upload: pipe the raw request body through the metered/hashing
    * transform into the bucket, then (only after the object lands — §11 orphan

@@ -18,6 +18,7 @@ describe('BuildingModelsController (e2e, real MinIO)', () => {
   let orgId: string;
   let siteId: string;
   let buildingId: string;
+  let v1Id: string;
   const ownerEmail = `e2e-bm-owner-${Date.now()}@example.com`;
   const memberEmail = `e2e-bm-member-${Date.now()}@example.com`;
 
@@ -108,18 +109,61 @@ describe('BuildingModelsController (e2e, real MinIO)', () => {
     expect(up.body.data.versionNumber).toBe(1);
     expect(up.body.data.fileName).toBe('test.ifc');
     expect(up.body.data).not.toHaveProperty('storageKey');
-    const versionId = up.body.data.id;
+    v1Id = up.body.data.id;
 
     const model = await request(app.getHttpServer())
       .get(`/api/v1/buildings/${buildingId}/model`)
       .set('Cookie', ownerCookie);
     expect(model.status).toBe(200);
-    expect(model.body.data.activeVersionId).toBe(versionId);
+    expect(model.body.data.activeVersionId).toBe(v1Id);
 
     const versions = await request(app.getHttpServer())
       .get(`/api/v1/buildings/${buildingId}/model/versions`)
       .set('Cookie', ownerCookie);
     expect(versions.status).toBe(200);
-    expect(versions.body.data.map((v: { id: string }) => v.id)).toContain(versionId);
+    expect(versions.body.data.map((v: { id: string }) => v.id)).toContain(v1Id);
+  });
+
+  it('downloads the active file with byte-identical content', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/buildings/${buildingId}/model/active/file`)
+      .set('Cookie', ownerCookie)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (c: Buffer) => chunks.push(c));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    expect(Buffer.compare(res.body as Buffer, VALID_IFC)).toBe(0);
+  });
+
+  it('upload v2, rollback active to v1, delete non-active (204), delete active (409 MODEL_005)', async () => {
+    const up2 = await request(app.getHttpServer())
+      .post(`/api/v1/buildings/${buildingId}/model/versions?fileName=v2.ifc`)
+      .set('Cookie', ownerCookie)
+      .set('Content-Type', 'application/octet-stream')
+      .send(VALID_IFC);
+    expect(up2.status).toBe(201);
+    expect(up2.body.data.versionNumber).toBe(2);
+    const v2Id = up2.body.data.id;
+
+    const roll = await request(app.getHttpServer())
+      .put(`/api/v1/buildings/${buildingId}/model/active`)
+      .set('Cookie', ownerCookie)
+      .send({ versionId: v1Id });
+    expect(roll.status).toBe(200);
+    expect(roll.body.data.activeVersionId).toBe(v1Id);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/buildings/${buildingId}/model/versions/${v2Id}`)
+      .set('Cookie', ownerCookie)
+      .expect(204);
+
+    const delActive = await request(app.getHttpServer())
+      .delete(`/api/v1/buildings/${buildingId}/model/versions/${v1Id}`)
+      .set('Cookie', ownerCookie);
+    expect(delActive.status).toBe(409);
+    expect(delActive.body.error.code).toBe('MODEL_005');
   });
 });
