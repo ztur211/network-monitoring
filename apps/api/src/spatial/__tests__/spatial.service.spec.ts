@@ -75,6 +75,12 @@ describe('SpatialService.setPosition (unit)', () => {
     ).rejects.toMatchObject({ code: 'SPATIAL_002' });
   });
 
+  it('rejects a different partial shape (one set, two null) with SPATIAL_002', async () => {
+    await expect(
+      service.setPosition(owner, 'd', { x: 1, y: null, z: null }),
+    ).rejects.toMatchObject({ code: 'SPATIAL_002' });
+  });
+
   it('rejects when the device is not under a modeled building (SPATIAL_001)', async () => {
     repo.resolveGoverningBuildingId.mockResolvedValue('b1');
     models.findByProperty.mockResolvedValue(null); // building has no model
