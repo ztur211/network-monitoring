@@ -10,17 +10,28 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class NetworkContextRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getNetworkEntities(organizationId: string) {
+  async getNetworkEntities(organizationId: string, scopeIds: string[] | null) {
     const [devices, connections, fiberRuns, circuits] = await Promise.all([
       this.prisma.device.findMany({
-        where: { organizationId },
+        where: {
+          organizationId,
+          ...(scopeIds ? { propertyId: { in: scopeIds } } : {}),
+        },
         select: {
           name: true, category: true, ipAddress: true, floor: true, floorLabel: true, notes: true,
         },
         orderBy: { name: 'asc' },
       }),
       this.prisma.deviceConnection.findMany({
-        where: { organizationId },
+        where: {
+          organizationId,
+          ...(scopeIds ? {
+            OR: [
+              { sourceDevice: { propertyId: { in: scopeIds } } },
+              { targetDevice: { propertyId: { in: scopeIds } } },
+            ],
+          } : {}),
+        },
         select: {
           connectionType: true, notes: true,
           sourceDevice: { select: { name: true } },
@@ -28,7 +39,15 @@ export class NetworkContextRepository {
         },
       }),
       this.prisma.fiberRun.findMany({
-        where: { organizationId },
+        where: {
+          organizationId,
+          ...(scopeIds ? {
+            OR: [
+              { startDevice: { propertyId: { in: scopeIds } } },
+              { endDevice: { propertyId: { in: scopeIds } } },
+            ],
+          } : {}),
+        },
         select: {
           name: true, cableType: true, lengthMeters: true, notes: true,
           startDevice: { select: { name: true } },
@@ -36,7 +55,10 @@ export class NetworkContextRepository {
         },
       }),
       this.prisma.circuit.findMany({
-        where: { organizationId },
+        where: {
+          organizationId,
+          ...(scopeIds ? { device: { propertyId: { in: scopeIds } } } : {}),
+        },
         select: {
           ispName: true, circuitId: true, serviceType: true, bandwidth: true, notes: true,
           device: { select: { name: true } },

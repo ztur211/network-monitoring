@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { DataSourcesModule } from '../data-sources/data-sources.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 import { AI_PROVIDER_TOKEN } from './adapters/ai-provider.interface';
 import { ClaudeAdapter } from './adapters/claude.adapter';
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible.adapter';
@@ -23,7 +24,7 @@ import { AiService } from './ai.service';
 import { AiController } from './ai.controller';
 
 @Module({
-  imports: [PrismaModule, RedisModule, DataSourcesModule],
+  imports: [PrismaModule, RedisModule, DataSourcesModule, PermissionsModule],
   controllers: [AiController],
   providers: [
     {
