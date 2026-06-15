@@ -124,4 +124,31 @@ describe('Auth (e2e)', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe('Bearer plugin', () => {
+    it('accepts a session token as a Bearer header (bearer plugin)', async () => {
+      const signup = await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({
+          email: `bearer-${Date.now()}@x.io`,
+          password: 'Password123!',
+          name: 'B',
+        })
+        .expect(200);
+
+      // The bearer plugin adds a set-auth-token response header to sign-up/sign-in
+      // responses containing the raw session token.
+      const token = signup.headers['set-auth-token'];
+      expect(token).toBeTruthy();
+
+      // A protected route must accept Authorization: Bearer <token> and NOT return 401.
+      // GET /api/v1/organizations/me returns 200 if org provisioned, 404 if not — either
+      // is acceptable; what matters is the request is authenticated (not 401).
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/organizations/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).not.toBe(401);
+    });
+  });
 });
