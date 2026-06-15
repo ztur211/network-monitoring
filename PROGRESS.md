@@ -1811,3 +1811,19 @@ First task of the 3D/spatial track (Spec 1 → 2 → 3 → 4, converges with the
 - **BuildingModelsRepository (`104f52c`).** Org-scoped model+version access (create/find/`nextVersionNumber`/listVersions/findVersion/`setActiveVersion`[optimistic]/deleteVersion). 3 integration tests against the test DB — incl. dup-building rejection (proves `propertyId @unique`) + cross-org isolation.
 
 **Phase gate:** full api suite green — **unit 460 / integration 129**, `tsc --noEmit` clean. No new e2e in Phase A; the real MinIO round-trip + the proxied upload/download endpoints land in **Phase B**.
+
+---
+
+## Post-MVP Pivot — Spec 1 (Spatial Foundation) Phase B — Building-Model API & Proxied Transfer (2026-06-15)
+
+The HTTP surface for building models + the proxied IFC transfer, on `feat/spec1-spatial-foundation`. All org-scoped, OWNER/ADMIN-gated, audited, with `v1:buildingModel:*` org-room events.
+
+- **Metered/hashing upload stream (`dca1133`).** A pass-through `Transform` enforcing `MODEL_MAX_BYTES` + the `ISO-10303-21;` IFC magic prefix while computing sha256 + size, never buffering the whole file. `UploadTooLargeError`/`InvalidIfcError`. 4 unit tests.
+- **BuildingModelsService read/activate/delete (`d430202`).** getModel/listVersions (`MODEL_001`), activateVersion (`MODEL_004` + optimistic `SYNC_001`), deleteVersion (`MODEL_005` blocks the active one; else row + object + audit + event). Wired to the **real** `AuditService` (`recordDelete(org, type, entity)`, actor resolved from `AsyncLocalStorage`) and `REALTIME_SERVICE.pushToOrg` — *not* the plan's placeholder tokens (the plan predated F1a/F3, so its audit signature + emitter name were stale). 6 unit tests.
+- **Proxied upload + endpoints (`38e4927`).** `uploadVersion`: validate the in-org `BUILDING` (`MODEL_001`/`MODEL_002`), pipe the raw `@Req()` octet-stream → metered transform → MinIO (`MODEL_006`/`MODEL_007`, delete partial on failure), then write the immutable version + flip active + audit + `v1:buildingModel:versionUploaded`. Controller `/v1/buildings/:propertyId/model`: GET model/versions, POST versions (`@OrgRoles('OWNER','ADMIN')`, raw stream), PUT active, DELETE versions/:id. `BuildingModelsModule` → `AppModule`; added `PropertiesService.findInOrg`. **Deviation:** the model is created only AFTER the object lands (not before streaming) so a failed upload leaves no empty model. Default Express body parsers are content-type-gated, so octet-stream reaches the handler as the unconsumed `req` stream (no `main.ts` change).
+- **Download (`5d9ec9f`).** `getActiveFile`/`getVersionFile` stream the IFC back through the API (private bucket) as a `StreamableFile`; GET active/file + versions/:id/file.
+- **`MODEL_008` (`31bed3a`).** `deleteProperty` rejects if any property in the subtree has a model — via a new `PropertiesRepository.countBuildingModelsUnder` (a repository may query `buildingModel` directly) rather than injecting `BuildingModelsRepository` into `PropertiesService`, **avoiding the `PropertiesModule` ↔ `BuildingModelsModule` forwardRef cycle that has deadlocked NestJS boot in this codebase**.
+
+**e2e (real MinIO :9100):** 7 cases — pre-upload `MODEL_001`; MEMBER upload `403 ORG_003`; garbage `422 MODEL_007` (no empty model left); valid IFC → version 1 active; byte-identical download; upload-v2 → rollback active to v1 → delete-non-active (204) → delete-active (`409 MODEL_005`); delete-building-with-model (`409 MODEL_008`).
+
+**Phase gate:** full api suite green — **unit 470 / integration 129 / e2e 285**, `tsc --noEmit` clean. (The `MODEL_008` change rippled to the `properties.service` unit mock — `countBuildingModelsUnder` added there.) `MODEL_*`/`SPATIAL_*` codes + `v1:buildingModel:*` events are enumerated in the Spec 1 design §10; `API_Design.md` registration stays deferred (not materialized in this worktree). **Next: Spec 1 Phase C** (`PATCH /v1/devices/:id/position` — device 3D coords + building-resolution + clear-on-move).
