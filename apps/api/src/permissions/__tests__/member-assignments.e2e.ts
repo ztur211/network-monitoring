@@ -10,10 +10,10 @@ describe('MemberAssignments (direct site grants + in-scope-slice access view) (e
 
   let ownerCookie: string;
   let adminCookie: string;
-  let memberCookie: string;
+  let _memberCookie: string;
 
   let orgId: string;
-  let ownerMemberId: string;
+  let _ownerMemberId: string;
   let adminMemberId: string;
   let memberMemberId: string;
 
@@ -46,7 +46,7 @@ describe('MemberAssignments (direct site grants + in-scope-slice access view) (e
     adminCookie = pickCookie(
       await request(app.getHttpServer()).post('/api/auth/sign-up/email').send({ email: adminEmail, password, name: 'Admin' }),
     );
-    memberCookie = pickCookie(
+    _memberCookie = pickCookie(
       await request(app.getHttpServer()).post('/api/auth/sign-up/email').send({ email: memberEmail, password, name: 'Member' }),
     );
 
@@ -58,7 +58,7 @@ describe('MemberAssignments (direct site grants + in-scope-slice access view) (e
     orgId = org.id;
 
     const ownerMember = await prisma.organizationMember.create({ data: { userId: ownerUser.id, organizationId: orgId, role: 'OWNER' } });
-    ownerMemberId = ownerMember.id;
+    _ownerMemberId = ownerMember.id;
     const adminMember = await prisma.organizationMember.create({ data: { userId: adminUser.id, organizationId: orgId, role: 'ADMIN' } });
     adminMemberId = adminMember.id;
     const memberMember = await prisma.organizationMember.create({ data: { userId: memberUser.id, organizationId: orgId, role: 'MEMBER' } });
