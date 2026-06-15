@@ -5,6 +5,9 @@ export class TokenVault {
   constructor(private readonly file: string) {}
 
   async save(token: string): Promise<void> {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('VAULT_ENCRYPTION_UNAVAILABLE');
+    }
     await fs.writeFile(this.file, safeStorage.encryptString(token));
   }
 
