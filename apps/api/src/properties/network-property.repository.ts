@@ -31,4 +31,13 @@ export class NetworkPropertyRepository {
     const res = await this.prisma.networkProperty.deleteMany({ where: { organizationId, networkId, propertyId } });
     return res.count;
   }
+
+  async deviceFootprintPropertyIds(organizationId: string, networkId: string): Promise<string[]> {
+    const rows = await this.prisma.device.findMany({
+      where: { organizationId, networkId },
+      distinct: ['propertyId'],
+      select: { propertyId: true },
+    });
+    return rows.map((r) => r.propertyId);
+  }
 }

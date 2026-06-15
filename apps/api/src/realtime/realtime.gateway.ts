@@ -18,6 +18,8 @@ import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { NetworksService } from '../networks/networks.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
+import { PermissionsService } from '../permissions/permissions.service';
+import { PermissionsRepository } from '../permissions/permissions.repository';
 import { AiService } from '../ai/ai.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
@@ -70,6 +72,8 @@ export class RealtimeGateway
     private readonly dataSourcesService: DataSourcesService,
     private readonly aiService: AiService,
     private readonly organizationsRepository: OrganizationsRepository,
+    private readonly permissionsService: PermissionsService,
+    private readonly permissionsRepo: PermissionsRepository,
     @Inject(forwardRef(() => NetworksService))
     private readonly networksService: NetworksService,
   ) {}
@@ -109,14 +113,28 @@ export class RealtimeGateway
     // Metrics ingest guards against null orgId (see handleMetricsSubmit) to avoid
     // violating the NOT NULL constraint on DeviceMetric.organizationId.
     // The no-org gap is resolved in the F1a convergence task (B5).
-    const member = await this.organizationsRepository.findMemberByUserId(userId);
-    client.data.orgId = member?.organizationId ?? null;
+    const orgMember = await this.organizationsRepository.findMemberByUserId(userId);
+    client.data.orgId = orgMember?.organizationId ?? null;
 
     await client.join(`user:${userId}`);
     await client.join(`tier:${tier}`);
     if (client.data.orgId) {
       await client.join(`org:${client.data.orgId as string}`);
     }
+
+    // Cache effective roots for scoped fan-out (F3 Phase D).
+    // null  = OWNER/unscoped (receives all org events)
+    // []    = no access / no org membership
+    // [...] = scoped to these root property ids
+    const permMember = client.data.orgId
+      ? await this.permissionsRepo.findMember(client.data.orgId as string, userId)
+      : null;
+    client.data.memberId = permMember?.id ?? null;
+    client.data.effectiveRoots = permMember
+      ? (permMember.role === 'OWNER'
+          ? null
+          : await this.permissionsService.effectiveRoots(client.data.orgId as string, permMember.id))
+      : [];
 
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
 
@@ -192,6 +210,55 @@ export class RealtimeGateway
       socket.data.onHome = result.onHome;
       socket.emit(WS_EVENTS.NETWORK_ON_HOME_CHANGED, result);
     }
+  }
+
+  /**
+   * Returns true iff the socket's cached effective roots overlap with the
+   * ancestor set for the event's governing site.
+   * null roots = OWNER (unscoped) → always true.
+   * [] roots = no org membership / no access → always false.
+   */
+  private socketSeesSite(roots: unknown, ancestorSet: Set<string>): boolean {
+    if (roots === null) return true; // OWNER unscoped
+    return Array.isArray(roots) && roots.some((r) => ancestorSet.has(r as string));
+  }
+
+  async emitScoped(orgId: string, governingSiteId: string, event: string, payload: unknown): Promise<void> {
+    const ancestorSet = new Set(await this.permissionsRepo.ancestorPropertyIds(orgId, governingSiteId));
+    const sockets = await this.server.in(`org:${orgId}`).fetchSockets();
+    for (const s of sockets) {
+      if (this.socketSeesSite(s.data.effectiveRoots, ancestorSet)) s.emit(event, payload);
+    }
+  }
+
+  async emitScopedMulti(orgId: string, governingSiteIds: string[], event: string, payload: unknown): Promise<void> {
+    const lists = await Promise.all(governingSiteIds.map((id) => this.permissionsRepo.ancestorPropertyIds(orgId, id)));
+    const ancestorSet = new Set(lists.flat());
+    const sockets = await this.server.in(`org:${orgId}`).fetchSockets();
+    for (const s of sockets) {
+      if (this.socketSeesSite(s.data.effectiveRoots, ancestorSet)) s.emit(event, payload);
+    }
+  }
+
+  notifyAccessChanged(orgId: string, userId: string): void {
+    this.server.to(`user:${userId}`).emit(WS_EVENTS.ACCESS_CHANGED, { organizationId: orgId });
+  }
+
+  /**
+   * Resync handler: client fires 'resync' after receiving ACCESS_CHANGED so the
+   * gateway re-caches their effective roots without a full reconnect cycle.
+   */
+  @SubscribeMessage('resync')
+  async onResync(@ConnectedSocket() client: Socket): Promise<void> {
+    const orgId = client.data.orgId as string | null | undefined;
+    const userId = (client.data.user as { id: string } | undefined)?.id;
+    if (!orgId || !userId) return;
+    const member = await this.permissionsRepo.findMember(orgId, userId);
+    client.data.effectiveRoots = member
+      ? (member.role === 'OWNER'
+          ? null
+          : await this.permissionsService.effectiveRoots(orgId, member.id))
+      : [];
   }
 
   private async runPushScheduler(): Promise<void> {

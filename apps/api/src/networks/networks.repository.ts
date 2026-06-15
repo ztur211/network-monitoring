@@ -34,6 +34,55 @@ export class NetworksRepository {
     return this.prisma.network.findFirst({ where: { id: networkId, organizationId } });
   }
 
+  listVisible(organizationId: string, scope: { propertyIdIn: string[] } | null): Promise<Network[]> {
+    if (!scope) return this.findAllByOrgId(organizationId);
+    return this.prisma.network.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { networkLinks: { some: { propertyId: { in: scope.propertyIdIn } } } },
+          { devices: { some: { propertyId: { in: scope.propertyIdIn } } } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findVisibleByIdAndOrgId(
+    networkId: string,
+    organizationId: string,
+    scope: { propertyIdIn: string[] } | null,
+  ): Promise<Network | null> {
+    if (!scope) return this.findByIdAndOrgId(networkId, organizationId);
+    return this.prisma.network.findFirst({
+      where: {
+        id: networkId,
+        organizationId,
+        OR: [
+          { networkLinks: { some: { propertyId: { in: scope.propertyIdIn } } } },
+          { devices: { some: { propertyId: { in: scope.propertyIdIn } } } },
+        ],
+      },
+    });
+  }
+
+  async charteredPropertyIds(organizationId: string, networkId: string): Promise<string[]> {
+    const rows = await this.prisma.networkProperty.findMany({
+      where: { organizationId, networkId },
+      select: { propertyId: true },
+    });
+    return rows.map((r) => r.propertyId);
+  }
+
+  async deviceFootprintPropertyIds(organizationId: string, networkId: string): Promise<string[]> {
+    const rows = await this.prisma.device.findMany({
+      where: { organizationId, networkId },
+      distinct: ['propertyId'],
+      select: { propertyId: true },
+    });
+    return rows.map((r) => r.propertyId);
+  }
+
   /**
    * Used only by checkOnHome (called from the realtime gateway with a userId).
    * Finds all networks belonging to the organization the user is a member of.

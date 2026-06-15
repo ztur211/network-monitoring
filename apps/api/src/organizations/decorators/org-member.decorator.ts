@@ -1,0 +1,11 @@
+import { createParamDecorator, ExecutionContext, HttpStatus } from '@nestjs/common';
+import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import type { OrgMemberContext } from '../org-context.types';
+
+export const OrgMember = createParamDecorator((_data: unknown, ctx: ExecutionContext): OrgMemberContext => {
+  const request = ctx.switchToHttp().getRequest();
+  if (!request.orgMember) {
+    throw new NodeScopeException('ORG_002', 'NOT_AN_ORG_MEMBER', HttpStatus.FORBIDDEN);
+  }
+  return request.orgMember;
+});

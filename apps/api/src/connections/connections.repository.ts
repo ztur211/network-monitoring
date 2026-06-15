@@ -11,6 +11,9 @@ type CreateConnectionData = {
   notes?: string;
 };
 
+/** Non-null restricts reads to links where at least one endpoint device is in the given sites. */
+export type LinkScope = { propertyIdIn: string[] } | null;
+
 @Injectable()
 export class ConnectionsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,6 +27,38 @@ export class ConnectionsRepository {
         }),
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  listVisible(organizationId: string, scope: LinkScope, deviceId?: string): Promise<DeviceConnection[]> {
+    const and: Prisma.DeviceConnectionWhereInput[] = [];
+    if (deviceId) and.push({ OR: [{ sourceDeviceId: deviceId }, { targetDeviceId: deviceId }] });
+    if (scope) {
+      and.push({
+        OR: [
+          { sourceDevice: { propertyId: { in: scope.propertyIdIn } } },
+          { targetDevice: { propertyId: { in: scope.propertyIdIn } } },
+        ],
+      });
+    }
+    return this.prisma.deviceConnection.findMany({
+      where: { organizationId, ...(and.length ? { AND: and } : {}) },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findVisibleByIdAndOrgId(id: string, organizationId: string, scope: LinkScope): Promise<DeviceConnection | null> {
+    return this.prisma.deviceConnection.findFirst({
+      where: {
+        id,
+        organizationId,
+        ...(scope ? {
+          OR: [
+            { sourceDevice: { propertyId: { in: scope.propertyIdIn } } },
+            { targetDevice: { propertyId: { in: scope.propertyIdIn } } },
+          ],
+        } : {}),
+      },
     });
   }
 

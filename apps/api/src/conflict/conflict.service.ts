@@ -74,4 +74,28 @@ export class ConflictResolutionService {
       timestamp: new Date().toISOString(),
     });
   }
+
+  async emitScoped(
+    orgId: string,
+    governingSiteId: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.realtimeService.emitScoped(orgId, governingSiteId, event, {
+      ...payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async emitScopedMulti(
+    orgId: string,
+    governingSiteIds: string[],
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.realtimeService.emitScopedMulti(orgId, governingSiteIds, event, {
+      ...payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
