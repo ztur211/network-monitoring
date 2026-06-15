@@ -106,6 +106,15 @@ describe('DesktopAuth (e2e)', () => {
     // The returnTo value must encode the original /authorize path so the browser
     // completes the flow after login.
     expect(location).toContain('desktop-auth%2Fauthorize');
+
+    // returnTo must be the FULL API authorize URL (not a bare path) so the web
+    // app (different origin in prod) can navigate to the right host.
+    const locationUrl = new URL(location);
+    const rawReturnTo = locationUrl.searchParams.get('returnTo');
+    expect(rawReturnTo).toBeTruthy();
+    const returnTo = decodeURIComponent(rawReturnTo!);
+    const apiBase = process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+    expect(returnTo).toMatch(new RegExp(`^${apiBase}/api/v1/desktop-auth/authorize`));
   });
 
   // ──────────────────────────────────────────────────────────────────────────
