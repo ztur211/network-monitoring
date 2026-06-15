@@ -30,8 +30,10 @@ describe('DesktopAuthService', () => {
     await expect(service.exchange(code, verifier)).rejects.toMatchObject({ code: 'DAUTH_002' }); // one-time: gone
   });
 
-  it('rejects a bad verifier (DAUTH_003)', async () => {
+  it('rejects a bad verifier (DAUTH_003) and burns the one-time code even on that failure', async () => {
     const code = await service.issueCode({ sessionToken: 'SESS', challenge: challengeFor('right') });
     await expect(service.exchange(code, 'wrong')).rejects.toMatchObject({ code: 'DAUTH_003' });
+    // del-before-verify: the failed attempt consumed the code, so even the correct verifier now fails closed
+    await expect(service.exchange(code, 'right')).rejects.toMatchObject({ code: 'DAUTH_002' });
   });
 });
