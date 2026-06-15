@@ -132,6 +132,10 @@ export class PropertiesService {
     if (hasChildren || devices > 0 || charters > 0) {
       throw new NodeScopeException('PROP_004', 'PROPERTY_NOT_EMPTY', HttpStatus.CONFLICT);
     }
+    const buildingModels = await this.repo.countBuildingModelsUnder(organizationId, subtreeIds);
+    if (buildingModels > 0) {
+      throw new NodeScopeException('MODEL_008', 'BUILDING_HAS_MODEL', HttpStatus.CONFLICT);
+    }
     const assignments = await this.repo.countAssignmentsUnder(organizationId, subtreeIds);
     if (assignments > 0) {
       throw new NodeScopeException('PERM_005', 'PROPERTY_ASSIGNED', HttpStatus.CONFLICT);

@@ -166,4 +166,12 @@ describe('BuildingModelsController (e2e, real MinIO)', () => {
     expect(delActive.status).toBe(409);
     expect(delActive.body.error.code).toBe('MODEL_005');
   });
+
+  it('a BUILDING that has a model cannot be deleted (409 MODEL_008)', async () => {
+    const res = await request(app.getHttpServer())
+      .delete(`/api/v1/properties/${buildingId}`)
+      .set('Cookie', ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('MODEL_008');
+  });
 });
