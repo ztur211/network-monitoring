@@ -1,13 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { PermissionsRepository } from '../../permissions/permissions.repository';
+import { PermissionsService } from '../../permissions/permissions.service';
 import { NetworkContextRepository } from './network-context.repository';
 
 @Injectable()
 export class NetworkContextProvider {
-  constructor(private readonly repository: NetworkContextRepository) {}
+  constructor(
+    private readonly repository: NetworkContextRepository,
+    private readonly permissionsRepo: PermissionsRepository,
+    private readonly permissions: PermissionsService,
+  ) {}
 
-  async getContext(organizationId: string): Promise<string> {
+  async getContext(organizationId: string, userId: string): Promise<string> {
+    const member = await this.permissionsRepo.findMember(organizationId, userId);
+    const scope = member
+      ? await this.permissions.scopeFilter(member)
+      : { propertyIdIn: [] as string[] };
+    // scope === null means OWNER: no filter. scope.propertyIdIn === [] means no
+    // assignments yet: sees nothing. Non-member (member === null): empty list.
+    const scopeIds = scope ? scope.propertyIdIn : null;
+
     const { devices, connections, fiberRuns, circuits } =
-      await this.repository.getNetworkEntities(organizationId);
+      await this.repository.getNetworkEntities(organizationId, scopeIds);
 
     const lines: string[] = ['## Documented Network'];
 
