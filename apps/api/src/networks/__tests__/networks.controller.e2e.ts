@@ -13,7 +13,6 @@ describe('NetworksController (e2e)', () => {
   let sessionCookie: string;
   let memberCookie: string;
   let adminCookie: string;
-  let networkId: string;
   /** A network seeded in beforeAll — used for MEMBER-write and ADMIN-scope tests. */
   let scopeTestNetworkId: string;
   let orgId: string;
@@ -154,7 +153,6 @@ describe('NetworksController (e2e)', () => {
       expect(res.body.data.name).toBe('Home');
       expect(res.body.data.homePublicIp).toBe('203.0.113.1');
       expect(res.body.data.version).toBe(1);
-      networkId = res.body.data.id;
 
       // cleanup — delete created network first, then org
       await prisma.network.deleteMany({ where: { organizationId: otherOrg.id } });

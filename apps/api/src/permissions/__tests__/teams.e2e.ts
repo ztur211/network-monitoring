@@ -13,9 +13,9 @@ describe('Teams CRUD (e2e)', () => {
   let memberCookie: string;
 
   let orgId: string;
-  let ownerMemberId: string;
+  let _ownerMemberId: string;
   let adminMemberId: string;
-  let memberMemberId: string;
+  let _memberMemberId: string;
   let sAId: string;
 
   const ts = Date.now();
@@ -55,11 +55,11 @@ describe('Teams CRUD (e2e)', () => {
     orgId = org.id;
 
     const ownerMember = await prisma.organizationMember.create({ data: { userId: ownerUser.id, organizationId: orgId, role: 'OWNER' } });
-    ownerMemberId = ownerMember.id;
+    _ownerMemberId = ownerMember.id;
     const adminMember = await prisma.organizationMember.create({ data: { userId: adminUser.id, organizationId: orgId, role: 'ADMIN' } });
     adminMemberId = adminMember.id;
     const memberMember = await prisma.organizationMember.create({ data: { userId: memberUser.id, organizationId: orgId, role: 'MEMBER' } });
-    memberMemberId = memberMember.id;
+    _memberMemberId = memberMember.id;
 
     // Site sA: the ADMIN is scoped to (via team assignment)
     const sA = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: `Site A ${ts}` } });
@@ -210,7 +210,7 @@ describe('Team membership + site-assignment delegation (e2e)', () => {
   let ownerCookie: string;
   let adminCookie: string;
   let admin2Cookie: string;
-  let memberCookie: string;
+  let _memberCookie: string;
 
   let orgId: string;
   let ownerMemberId: string;
@@ -259,7 +259,7 @@ describe('Team membership + site-assignment delegation (e2e)', () => {
     admin2Cookie = pickCookie(
       await request(app.getHttpServer()).post('/api/auth/sign-up/email').send({ email: admin2Email, password, name: 'Admin2' }),
     );
-    memberCookie = pickCookie(
+    _memberCookie = pickCookie(
       await request(app.getHttpServer()).post('/api/auth/sign-up/email').send({ email: memberEmail, password, name: 'Member' }),
     );
     await request(app.getHttpServer()).post('/api/auth/sign-up/email').send({ email: member2Email, password, name: 'Member2' });
