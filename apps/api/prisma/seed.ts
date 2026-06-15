@@ -1,5 +1,9 @@
 import { PrismaClient, DeviceCategory, ConnectionType, PropertyType } from '@prisma/client';
 import { auth } from '../src/auth/better-auth.config';
+import { S3Client, CreateBucketCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { Readable } from 'node:stream';
+import { createHash, randomUUID } from 'node:crypto';
 
 const prisma = new PrismaClient();
 
@@ -59,6 +63,9 @@ async function main() {
 
   // ── Sample network data ───────────────────────────────────────────────────
   await seedNetworkData(org.id, ownerId);
+
+  // ── Sample building model + device 3D coords (Spec 1 Phase C) ────────────
+  await seedBuildingModel(org.id);
 }
 
 async function seedNetworkData(organizationId: string, creatorUserId: string) {
@@ -258,6 +265,118 @@ async function seedNetworkData(organizationId: string, creatorUserId: string) {
   void firewall;
 
   console.log('Seeded: site tree, 1 network, charter, 5 devices, 2 connections, 1 fiber run, 1 circuit for org:', organizationId);
+}
+
+/**
+ * Idempotent — skips if a BuildingModel already exists for the "Main Building" property.
+ * Looks up the BUILDING property and Core Switch device by name so it is safe to call
+ * whether seedNetworkData ran in this session or in a prior one.
+ */
+async function seedBuildingModel(organizationId: string) {
+  // Look up the BUILDING property by name and org
+  const building = await prisma.property.findFirst({
+    where: { organizationId, name: 'Main Building', type: PropertyType.BUILDING },
+  });
+  if (!building) {
+    console.log('Main Building property not found — skipping building model seed');
+    return;
+  }
+
+  // Idempotency guard: skip if the model already exists
+  const existingModel = await prisma.buildingModel.findFirst({
+    where: { organizationId, propertyId: building.id },
+  });
+  if (existingModel) {
+    console.log('Building model already seeded — skipping');
+    return;
+  }
+
+  // A minimal valid IFC file (the magic prefix satisfies the Phase B metered-hashing validator)
+  const VALID_IFC = Buffer.from(
+    'ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n',
+  );
+  const contentHash = createHash('sha256').update(VALID_IFC).digest('hex');
+  const sizeBytes = VALID_IFC.byteLength;
+
+  // Construct the S3 client using the same defaults as storageConfig()
+  const storageEndpoint = process.env.STORAGE_ENDPOINT ?? 'http://localhost:9000';
+  const storageRegion = process.env.STORAGE_REGION ?? 'us-east-1';
+  const storageBucket = process.env.STORAGE_BUCKET ?? 'nodescope';
+  const s3 = new S3Client({
+    endpoint: storageEndpoint,
+    region: storageRegion,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: process.env.STORAGE_ACCESS_KEY ?? 'minioadmin',
+      secretAccessKey: process.env.STORAGE_SECRET_KEY ?? 'minioadmin',
+    },
+  });
+
+  // Ensure the bucket exists (idempotent — same logic as StorageService.ensureBucket)
+  try {
+    await s3.send(new CreateBucketCommand({ Bucket: storageBucket }));
+  } catch (e: unknown) {
+    const name = (e as { name?: string })?.name;
+    if (name !== 'BucketAlreadyOwnedByYou' && name !== 'BucketAlreadyExists') throw e;
+  }
+
+  // Build the storage key using the same path convention as StorageService.buildVersionKey
+  const versionId = randomUUID();
+  const storageKey = `org/${organizationId}/building/${building.id}/${versionId}.ifc`;
+
+  // Upload the minimal IFC object to the dev MinIO bucket
+  await new Upload({
+    client: s3,
+    params: {
+      Bucket: storageBucket,
+      Key: storageKey,
+      Body: Readable.from(VALID_IFC),
+      ContentType: 'application/octet-stream',
+    },
+  }).done();
+
+  // Create the BuildingModel row (mirrors BuildingModelsRepository.createModel)
+  const buildingModel = await prisma.buildingModel.create({
+    data: {
+      organizationId,
+      propertyId: building.id,
+      name: 'Main Building',
+    },
+  });
+
+  // Create the immutable version row (mirrors BuildingModelsRepository.createVersion)
+  const buildingModelVersion = await prisma.buildingModelVersion.create({
+    data: {
+      organizationId,
+      buildingModelId: buildingModel.id,
+      versionNumber: 1,
+      storageKey,
+      fileName: 'model.ifc',
+      contentHash,
+      sizeBytes,
+      units: null,
+      uploadedByMemberId: null,
+    },
+  });
+
+  // Activate the version (mirrors BuildingModelsRepository.setActiveVersion)
+  await prisma.buildingModel.update({
+    where: { id: buildingModel.id },
+    data: { activeVersionId: buildingModelVersion.id, version: { increment: 1 } },
+  });
+
+  // Set 3D coords on the Core Switch (on floor1 under the modeled Main Building)
+  const switch1 = await prisma.device.findFirst({
+    where: { organizationId, name: 'Core Switch' },
+  });
+  if (switch1) {
+    await prisma.device.update({
+      where: { id: switch1.id },
+      data: { x: 5.0, y: 3.2, z: 1.5 },
+    });
+  }
+
+  console.log('Seeded: building model (Main Building v1, active) + 3D coords on Core Switch');
 }
 
 main()
