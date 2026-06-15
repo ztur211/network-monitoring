@@ -6,6 +6,7 @@ import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContainmentService } from '../../properties/containment.service';
 import { PermissionsService } from '../../permissions/permissions.service';
+import { SpatialRepository } from '../../spatial/spatial.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
 
@@ -88,6 +89,10 @@ const mockPermissions = {
   assertCanConfigure: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockSpatial: jest.Mocked<Pick<SpatialRepository, 'resolveGoverningBuildingId'>> = {
+  resolveGoverningBuildingId: jest.fn().mockResolvedValue(null),
+};
+
 describe('DevicesService', () => {
   let service: DevicesService;
 
@@ -101,6 +106,7 @@ describe('DevicesService', () => {
         { provide: AuditService, useValue: mockAudit },
         { provide: ContainmentService, useValue: mockContainment },
         { provide: PermissionsService, useValue: mockPermissions },
+        { provide: SpatialRepository, useValue: mockSpatial },
       ],
     }).compile();
 
@@ -111,6 +117,8 @@ describe('DevicesService', () => {
     mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
     mockConflict.emitScoped.mockResolvedValue(undefined);
     mockConflict.emitScopedMulti.mockResolvedValue(undefined);
+    // Default: same building for both old + new property → coords preserved (safe default for non-move tests)
+    mockSpatial.resolveGoverningBuildingId.mockResolvedValue('bldg-1');
   });
 
   describe('listDevices', () => {

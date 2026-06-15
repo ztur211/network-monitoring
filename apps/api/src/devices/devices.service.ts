@@ -9,6 +9,7 @@ import { OrganizationsRepository } from '../organizations/organizations.reposito
 import { assertNameMatchesPolicy } from '../organizations/naming-policy';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ContainmentService } from '../properties/containment.service';
+import { SpatialRepository } from '../spatial/spatial.repository';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS, PatchDeviceDto } from './devices.dto';
 import { DevicesRepository } from './devices.repository';
 
@@ -21,6 +22,7 @@ export class DevicesService {
     private readonly audit: AuditService,
     private readonly containment: ContainmentService,
     private readonly permissions: PermissionsService,
+    private readonly spatial: SpatialRepository,
   ) {}
 
   async listDevices(member: OrgMemberContext): Promise<PaginatedResponse<DeviceDto>> {
@@ -124,6 +126,20 @@ export class DevicesService {
     if (patch.changes.some((c) => c.field === 'propertyId' || c.field === 'networkId')) {
       const nextNetworkId = (patch.changes.find((c) => c.field === 'networkId')?.newValue as string) ?? device.networkId;
       await this.containment.assertDevicePlacement(organizationId, nextNetworkId, nextPropertyId);
+    }
+
+    // Spec 1 §6: model-local coords are tied to the device's governing building.
+    // If a move changes the governing BUILDING, the old x/y/z no longer mean anything — clear them.
+    if (nextPropertyId !== device.propertyId) {
+      const [oldBuildingId, newBuildingId] = await Promise.all([
+        this.spatial.resolveGoverningBuildingId(organizationId, device.propertyId),
+        this.spatial.resolveGoverningBuildingId(organizationId, nextPropertyId),
+      ]);
+      if (oldBuildingId !== newBuildingId) {
+        updatePayload.x = null;
+        updatePayload.y = null;
+        updatePayload.z = null;
+      }
     }
 
     const updated = await this.devicesRepository.updateWithVersion(
