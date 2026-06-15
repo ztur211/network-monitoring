@@ -39,11 +39,14 @@ export class SpatialRepository {
     x: number | null,
     y: number | null,
     z: number | null,
-  ): Promise<Device> {
-    await this.prisma.device.updateMany({
+  ): Promise<Device | null> {
+    // updateMany + re-read is non-atomic (mirrors DevicesRepository.updateWithVersion);
+    // acceptable for non-critical coordinate writes.
+    const result = await this.prisma.device.updateMany({
       where: { id: deviceId, organizationId },
       data: { x, y, z, version: { increment: 1 } },
     });
+    if (result.count === 0) return null;
     return this.prisma.device.findFirstOrThrow({ where: { id: deviceId, organizationId } });
   }
 }
