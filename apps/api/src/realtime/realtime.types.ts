@@ -11,4 +11,7 @@ export interface IRealtimeService {
   pushToOrg(orgId: string, event: string, payload: unknown): void;
   getConnectionStatus(userId: string): Promise<ConnectionStatus>;
   recomputeOnHomeForUser(userId: string): Promise<void>;
+  emitScoped(orgId: string, governingSiteId: string, event: string, payload: unknown): Promise<void>;
+  emitScopedMulti(orgId: string, governingSiteIds: string[], event: string, payload: unknown): Promise<void>;
+  notifyAccessChanged(orgId: string, userId: string): void;
 }

@@ -36,6 +36,16 @@ export const WS_EVENTS = {
   PROPERTY_MOVED:   'v1:property:moved',
   NETWORK_CHARTER_ADDED:   'v1:network:charter:added',
   NETWORK_CHARTER_REMOVED: 'v1:network:charter:removed',
+  TEAM_CREATED: 'v1:team:created',
+  TEAM_UPDATED: 'v1:team:updated',
+  TEAM_DELETED: 'v1:team:deleted',
+  TEAM_MEMBER_ADDED: 'v1:team:member:added',
+  TEAM_MEMBER_REMOVED: 'v1:team:member:removed',
+  TEAM_PROPERTY_ASSIGNED: 'v1:team:property:assigned',
+  TEAM_PROPERTY_UNASSIGNED: 'v1:team:property:unassigned',
+  MEMBER_PROPERTY_ASSIGNED: 'v1:member:property:assigned',
+  MEMBER_PROPERTY_UNASSIGNED: 'v1:member:property:unassigned',
+  ACCESS_CHANGED: 'v1:access:changed',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';

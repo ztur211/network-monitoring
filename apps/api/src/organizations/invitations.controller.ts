@@ -16,9 +16,10 @@ import type { AuthenticatedUser, InvitationDto } from '@nodescope/shared';
 import { OrgRoleGuard } from './guards/org-role.guard';
 import { OrgRoles } from './decorators/org-roles.decorator';
 import { OrgId } from './decorators/org-id.decorator';
+import { OrgMemberRole } from './decorators/org-member-role.decorator';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationDto } from './membership.dto';
-import type { Invitation } from '@prisma/client';
+import type { Invitation, OrgRole } from '@prisma/client';
 
 function toInvitationDto(inv: Invitation): InvitationDto {
   return {
@@ -46,8 +47,9 @@ export class InvitationsController {
     @OrgId() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateInvitationDto,
+    @OrgMemberRole() actorRole: OrgRole,
   ) {
-    const { invitation, token } = await this.service.create(orgId, dto.email, dto.role, user.id);
+    const { invitation, token } = await this.service.create(orgId, dto.email, dto.role, user.id, actorRole);
     const url = `${this.config.get('FRONTEND_URL')}/invite/${token}`;
     return {
       success: true,

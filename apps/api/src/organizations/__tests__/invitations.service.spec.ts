@@ -70,6 +70,44 @@ describe('InvitationsService', () => {
     realtime = module.get(ConflictResolutionService) as jest.Mocked<ConflictResolutionService>;
   });
 
+  describe('create', () => {
+    it('happy-path: OWNER may invite any role', async () => {
+      invitationsRepo.deletePendingByOrgAndEmail.mockResolvedValue({ count: 0 });
+      invitationsRepo.create.mockResolvedValue(makeInvitation());
+
+      await service.create('org-1', 'invitee@example.com', OrgRole.ADMIN, 'user-owner', OrgRole.OWNER);
+
+      expect(invitationsRepo.create).toHaveBeenCalled();
+    });
+
+    it('ADMIN may invite MEMBER', async () => {
+      invitationsRepo.deletePendingByOrgAndEmail.mockResolvedValue({ count: 0 });
+      invitationsRepo.create.mockResolvedValue(makeInvitation());
+
+      await service.create('org-1', 'invitee@example.com', OrgRole.MEMBER, 'user-admin', OrgRole.ADMIN);
+
+      expect(invitationsRepo.create).toHaveBeenCalled();
+    });
+
+    it('throws PERM_003 when ADMIN attempts to invite ADMIN', async () => {
+      await expect(
+        service.create('org-1', 'boss@example.com', OrgRole.ADMIN, 'user-admin', OrgRole.ADMIN),
+      ).rejects.toMatchObject({ code: 'PERM_003' } as Partial<NodeScopeException>);
+    });
+
+    it('throws PERM_003 when ADMIN attempts to invite OWNER', async () => {
+      await expect(
+        service.create('org-1', 'boss@example.com', OrgRole.OWNER, 'user-admin', OrgRole.ADMIN),
+      ).rejects.toMatchObject({ code: 'PERM_003' } as Partial<NodeScopeException>);
+    });
+
+    it('throws ORG_003 when MEMBER attempts to invite (defensive check)', async () => {
+      await expect(
+        service.create('org-1', 'anyone@example.com', OrgRole.MEMBER, 'user-member', OrgRole.MEMBER),
+      ).rejects.toMatchObject({ code: 'ORG_003' } as Partial<NodeScopeException>);
+    });
+  });
+
   describe('accept', () => {
     it('throws ORG_009 when token is not found', async () => {
       invitationsRepo.findByToken.mockResolvedValue(null);

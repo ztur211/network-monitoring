@@ -4,7 +4,9 @@ import { NetworksRepository } from '../networks.repository';
 import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
+import { PermissionsService } from '../../permissions/permissions.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import type { OrgMemberContext } from '../../organizations/org-context.types';
 
 const makeNetwork = (overrides = {}) => ({
   id: 'net-1',
@@ -25,10 +27,29 @@ const makeNetwork = (overrides = {}) => ({
   ...overrides,
 });
 
-const mockRepo: jest.Mocked<NetworksRepository> = {
+const OWNER: OrgMemberContext = { id: 'member-1', organizationId: 'org-1', role: 'OWNER' };
+
+const mockRepo: jest.Mocked<Pick<
+  NetworksRepository,
+  | 'findAllByOrgId'
+  | 'countByOrgId'
+  | 'findByIdAndOrgId'
+  | 'listVisible'
+  | 'findVisibleByIdAndOrgId'
+  | 'charteredPropertyIds'
+  | 'deviceFootprintPropertyIds'
+  | 'findAllByMemberUserId'
+  | 'create'
+  | 'updateWithVersion'
+  | 'deleteByIdAndOrgId'
+>> = {
   findAllByOrgId: jest.fn(),
   countByOrgId: jest.fn(),
   findByIdAndOrgId: jest.fn(),
+  listVisible: jest.fn(),
+  findVisibleByIdAndOrgId: jest.fn(),
+  charteredPropertyIds: jest.fn(),
+  deviceFootprintPropertyIds: jest.fn(),
   findAllByMemberUserId: jest.fn(),
   create: jest.fn(),
   updateWithVersion: jest.fn(),
@@ -38,6 +59,8 @@ const mockRepo: jest.Mocked<NetworksRepository> = {
 const mockConflict: jest.Mocked<ConflictResolutionService> = {
   buildUpdatePayload: jest.fn(),
   emitEntityEvent: jest.fn(),
+  emitScoped: jest.fn().mockResolvedValue(undefined),
+  emitScopedMulti: jest.fn().mockResolvedValue(undefined),
 } as unknown as jest.Mocked<ConflictResolutionService>;
 
 const mockRealtime = {
@@ -54,6 +77,12 @@ const mockAudit = {
   recordDelete: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockPermissions = {
+  scopeFilter: jest.fn().mockResolvedValue(null), // OWNER → null (unscoped)
+  assertNetworkFullCoverage: jest.fn().mockResolvedValue(undefined),
+  assertCanConfigure: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('NetworksService', () => {
   let service: NetworksService;
 
@@ -65,29 +94,35 @@ describe('NetworksService', () => {
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: REALTIME_SERVICE, useValue: mockRealtime },
         { provide: AuditService, useValue: mockAudit },
+        { provide: PermissionsService, useValue: mockPermissions },
       ],
     }).compile();
 
     service = module.get<NetworksService>(NetworksService);
     jest.clearAllMocks();
+    // Re-apply default mocks after clearAllMocks
+    mockPermissions.scopeFilter.mockResolvedValue(null);
+    mockPermissions.assertNetworkFullCoverage.mockResolvedValue(undefined);
+    mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
+    mockRepo.deviceFootprintPropertyIds.mockResolvedValue([]);
   });
 
   describe('listNetworks', () => {
     it('returns NetworkSummary list without homePublicIp scoped to org', async () => {
-      mockRepo.findAllByOrgId.mockResolvedValue([
+      mockRepo.listVisible.mockResolvedValue([
         makeNetwork({ homePublicIp: '203.0.113.1' }),
       ]);
 
-      const result = await service.listNetworks('org-1');
+      const result = await service.listNetworks(OWNER);
       expect(result).toHaveLength(1);
       expect(result[0]).not.toHaveProperty('homePublicIp');
       expect(result[0].id).toBe('net-1');
-      expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1');
+      expect(mockRepo.listVisible).toHaveBeenCalledWith('org-1', null);
     });
 
     it('returns empty array when org has no networks', async () => {
-      mockRepo.findAllByOrgId.mockResolvedValue([]);
-      const result = await service.listNetworks('org-1');
+      mockRepo.listVisible.mockResolvedValue([]);
+      const result = await service.listNetworks(OWNER);
       expect(result).toEqual([]);
     });
   });
@@ -97,7 +132,7 @@ describe('NetworksService', () => {
       mockRepo.countByOrgId.mockResolvedValue(0);
       mockRepo.create.mockResolvedValue(makeNetwork());
 
-      const result = await service.createNetwork('org-1', 'user-1', { name: 'Home' });
+      const result = await service.createNetwork(OWNER, 'user-1', { name: 'Home' });
       expect(result.id).toBe('net-1');
       expect(result).toHaveProperty('homePublicIp');
       expect(mockRepo.create).toHaveBeenCalledWith(
@@ -113,51 +148,65 @@ describe('NetworksService', () => {
     it('throws NETWORK_001 NETWORK_LIMIT_EXCEEDED when org already has 1 network', async () => {
       mockRepo.countByOrgId.mockResolvedValue(1);
 
-      await expect(service.createNetwork('org-1', 'user-1', { name: 'B' })).rejects.toThrow(
+      await expect(service.createNetwork(OWNER, 'user-1', { name: 'B' })).rejects.toThrow(
         NodeScopeException,
       );
       expect(mockRepo.create).not.toHaveBeenCalled();
     });
 
-    it('emits v1:network:updated on successful create', async () => {
+    it('throws ORG_003 when MEMBER tries to create', async () => {
+      const member: OrgMemberContext = { id: 'member-2', organizationId: 'org-1', role: 'MEMBER' };
+      mockPermissions.assertNetworkFullCoverage.mockRejectedValue(
+        new NodeScopeException('ORG_003', 'FORBIDDEN_ROLE', 403),
+      );
+
+      await expect(service.createNetwork(member, 'user-2', { name: 'X' })).rejects.toThrow(
+        NodeScopeException,
+      );
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('emits v1:network:updated on successful create (OWNER-only, no charters yet)', async () => {
       mockRepo.countByOrgId.mockResolvedValue(0);
       mockRepo.create.mockResolvedValue(makeNetwork());
 
-      await service.createNetwork('org-1', 'user-1', { name: 'Home' });
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      await service.createNetwork(OWNER, 'user-1', { name: 'Home' });
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        [],
         'v1:network:updated',
         expect.objectContaining({ network: expect.objectContaining({ id: 'net-1' }) }),
-        expect.any(String),
       );
     });
   });
 
   describe('getNetwork', () => {
     it('returns NetworkDetail including homePublicIp', async () => {
-      mockRepo.findByIdAndOrgId.mockResolvedValue(
+      mockRepo.findVisibleByIdAndOrgId.mockResolvedValue(
         makeNetwork({ homePublicIp: '203.0.113.1' }),
       );
 
-      const result = await service.getNetwork('org-1', 'net-1');
+      const result = await service.getNetwork(OWNER, 'net-1');
       expect(result.homePublicIp).toBe('203.0.113.1');
-      expect(mockRepo.findByIdAndOrgId).toHaveBeenCalledWith('net-1', 'org-1');
+      expect(mockRepo.findVisibleByIdAndOrgId).toHaveBeenCalledWith('net-1', 'org-1', null);
     });
 
     it('throws NETWORK_002 NETWORK_NOT_FOUND when not found', async () => {
-      mockRepo.findByIdAndOrgId.mockResolvedValue(null);
-      await expect(service.getNetwork('org-1', 'missing')).rejects.toThrow(NodeScopeException);
+      mockRepo.findVisibleByIdAndOrgId.mockResolvedValue(null);
+      await expect(service.getNetwork(OWNER, 'missing')).rejects.toThrow(NodeScopeException);
     });
   });
 
   describe('updateNetwork', () => {
     it('applies changeset and returns NetworkDetail', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
       mockRepo.updateWithVersion.mockResolvedValue(
         makeNetwork({ name: 'Renamed', version: 2 }),
       );
 
-      const result = await service.updateNetwork('org-1', 'net-1', {
+      const result = await service.updateNetwork(OWNER, 'net-1', {
         baseVersion: 1,
         changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
       });
@@ -169,52 +218,73 @@ describe('NetworksService', () => {
     it('throws NETWORK_002 when target network not found before applying changeset', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(null);
       await expect(
-        service.updateNetwork('org-1', 'missing', { baseVersion: 1, changes: [] }),
+        service.updateNetwork(OWNER, 'missing', { baseVersion: 1, changes: [] }),
       ).rejects.toThrow(NodeScopeException);
     });
 
     it('throws SYNC_001 when optimistic-concurrency check fails at write', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'X' });
       mockRepo.updateWithVersion.mockResolvedValue(null);
 
       await expect(
-        service.updateNetwork('org-1', 'net-1', {
+        service.updateNetwork(OWNER, 'net-1', {
           baseVersion: 1,
           changes: [{ field: 'name', oldValue: 'A', newValue: 'X' }],
         }),
       ).rejects.toThrow(NodeScopeException);
     });
 
-    it('emits v1:network:updated with the updated dto and changes', async () => {
+    it('throws PERM_004 when ADMIN does not fully cover all chartered sites', async () => {
+      const admin: OrgMemberContext = { id: 'member-3', organizationId: 'org-1', role: 'ADMIN' };
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue(['site-a', 'site-b']);
+      mockPermissions.assertNetworkFullCoverage.mockRejectedValue(
+        new NodeScopeException('PERM_004', 'NETWORK_PARTIAL_SCOPE', 403),
+      );
+
+      await expect(
+        service.updateNetwork(admin, 'net-1', {
+          baseVersion: 1,
+          changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
+        }),
+      ).rejects.toThrow(NodeScopeException);
+      expect(mockRepo.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('emits v1:network:updated with the updated dto and changes (scoped to charter sites)', async () => {
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue(['site-a']);
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
       const updated = makeNetwork({ name: 'Renamed', version: 2 });
       mockRepo.updateWithVersion.mockResolvedValue(updated);
 
-      await service.updateNetwork('org-1', 'net-1', {
+      await service.updateNetwork(OWNER, 'net-1', {
         baseVersion: 1,
         changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
       });
 
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        ['site-a'],
         'v1:network:updated',
         expect.objectContaining({
           networkId: 'net-1',
           network: expect.objectContaining({ name: 'Renamed', version: 2 }),
         }),
-        expect.any(String),
       );
     });
 
     it('triggers RealtimeService.recomputeOnHomeForUser when homePublicIp is in changes', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.5' });
       mockRepo.updateWithVersion.mockResolvedValue(
         makeNetwork({ homePublicIp: '203.0.113.5', version: 2 }),
       );
 
-      await service.updateNetwork('org-1', 'net-1', {
+      await service.updateNetwork(OWNER, 'net-1', {
         baseVersion: 1,
         changes: [{ field: 'homePublicIp', oldValue: null, newValue: '203.0.113.5' }],
       });
@@ -224,10 +294,11 @@ describe('NetworksService', () => {
 
     it('does NOT trigger recomputeOnHomeForUser when only non-IP fields change', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ name: 'Renamed' });
       mockRepo.updateWithVersion.mockResolvedValue(makeNetwork({ name: 'Renamed', version: 2 }));
 
-      await service.updateNetwork('org-1', 'net-1', {
+      await service.updateNetwork(OWNER, 'net-1', {
         baseVersion: 1,
         changes: [{ field: 'name', oldValue: 'Home', newValue: 'Renamed' }],
       });
@@ -239,14 +310,27 @@ describe('NetworksService', () => {
   describe('deleteNetwork', () => {
     it('deletes the network when found', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
 
-      await service.deleteNetwork('org-1', 'net-1');
+      await service.deleteNetwork(OWNER, 'net-1');
       expect(mockRepo.deleteByIdAndOrgId).toHaveBeenCalledWith('net-1', 'org-1');
     });
 
     it('throws NETWORK_002 when network does not exist', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(null);
-      await expect(service.deleteNetwork('org-1', 'missing')).rejects.toThrow(NodeScopeException);
+      await expect(service.deleteNetwork(OWNER, 'missing')).rejects.toThrow(NodeScopeException);
+      expect(mockRepo.deleteByIdAndOrgId).not.toHaveBeenCalled();
+    });
+
+    it('throws PERM_004 when ADMIN does not fully cover chartered sites', async () => {
+      const admin: OrgMemberContext = { id: 'member-3', organizationId: 'org-1', role: 'ADMIN' };
+      mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork());
+      mockRepo.charteredPropertyIds.mockResolvedValue(['site-a', 'site-b']);
+      mockPermissions.assertNetworkFullCoverage.mockRejectedValue(
+        new NodeScopeException('PERM_004', 'NETWORK_PARTIAL_SCOPE', 403),
+      );
+
+      await expect(service.deleteNetwork(admin, 'net-1')).rejects.toThrow(NodeScopeException);
       expect(mockRepo.deleteByIdAndOrgId).not.toHaveBeenCalled();
     });
   });
@@ -254,13 +338,15 @@ describe('NetworksService', () => {
   describe('setHomeIpFromRequest', () => {
     it('updates the network with the request IP and triggers the on-home recompute', async () => {
       const network = makeNetwork({ homePublicIp: null });
+      // First call: org-wide lookup for version; second call: inside updateNetwork (org-wide lookup)
       mockRepo.findByIdAndOrgId.mockResolvedValue(network);
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
       mockRepo.updateWithVersion.mockResolvedValue(
         makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
       );
 
-      const result = await service.setHomeIpFromRequest('org-1', 'net-1', '203.0.113.42');
+      const result = await service.setHomeIpFromRequest(OWNER, 'net-1', '203.0.113.42');
 
       expect(mockRepo.updateWithVersion).toHaveBeenCalledWith(
         'net-1',
@@ -276,28 +362,30 @@ describe('NetworksService', () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(null);
 
       await expect(
-        service.setHomeIpFromRequest('org-1', 'missing', '203.0.113.42'),
+        service.setHomeIpFromRequest(OWNER, 'missing', '203.0.113.42'),
       ).rejects.toThrow(NodeScopeException);
       expect(mockRepo.updateWithVersion).not.toHaveBeenCalled();
       expect(mockRealtime.recomputeOnHomeForUser).not.toHaveBeenCalled();
     });
 
-    it('emits v1:network:updated through the conflict service', async () => {
+    it('emits v1:network:updated through the conflict service (scoped to charter sites)', async () => {
       mockRepo.findByIdAndOrgId.mockResolvedValue(makeNetwork({ homePublicIp: null }));
+      mockRepo.charteredPropertyIds.mockResolvedValue([]);
       mockConflict.buildUpdatePayload.mockReturnValue({ homePublicIp: '203.0.113.42' });
       mockRepo.updateWithVersion.mockResolvedValue(
         makeNetwork({ homePublicIp: '203.0.113.42', version: 2 }),
       );
 
-      await service.setHomeIpFromRequest('org-1', 'net-1', '203.0.113.42');
+      await service.setHomeIpFromRequest(OWNER, 'net-1', '203.0.113.42');
 
-      expect(mockConflict.emitEntityEvent).toHaveBeenCalledWith(
+      expect(mockConflict.emitScopedMulti).toHaveBeenCalledWith(
+        'org-1',
+        [],
         'v1:network:updated',
         expect.objectContaining({
           networkId: 'net-1',
           network: expect.objectContaining({ homePublicIp: '203.0.113.42' }),
         }),
-        expect.any(String),
       );
     });
   });

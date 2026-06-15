@@ -8,11 +8,11 @@ function ctxFor(request: any): ExecutionContext {
 
 describe('OrgContextGuard', () => {
   it('attaches request.orgMember from the session user membership', async () => {
-    const repo = { findMemberByUserId: jest.fn().mockResolvedValue({ organizationId: 'org1', role: 'ADMIN' }) };
+    const repo = { findMemberByUserId: jest.fn().mockResolvedValue({ id: 'm1', organizationId: 'org1', role: 'ADMIN' }) };
     const guard = new OrgContextGuard(repo as unknown as OrganizationsRepository);
     const request: any = { user: { id: 'u1' } };
     await guard.canActivate(ctxFor(request));
-    expect(request.orgMember).toEqual({ organizationId: 'org1', role: 'ADMIN' });
+    expect(request.orgMember).toEqual({ id: 'm1', organizationId: 'org1', role: 'ADMIN' });
   });
 
   it('attaches null when the user has no membership (does not throw)', async () => {

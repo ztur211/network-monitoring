@@ -10,7 +10,6 @@ import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
 import { GEOCODING_PROVIDER, GeocodingProvider } from '../map/geocoding/geocoding.interface';
 import { NetworksRepository } from '../networks/networks.repository';
-import { NetworksService } from '../networks/networks.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersRepository } from '../users/users.repository';
 import { AiService } from '../ai/ai.service';
@@ -45,7 +44,6 @@ export class OnboardingService {
 
   constructor(
     private readonly redis: RedisService,
-    private readonly networksService: NetworksService,
     private readonly networksRepository: NetworksRepository,
     private readonly usersRepository: UsersRepository,
     private readonly aiService: AiService,
@@ -210,11 +208,16 @@ export class OnboardingService {
   ): Promise<void> {
     const existing = await this.findOrgNetwork(organizationId);
     if (!existing) {
-      const created = await this.networksService.createNetwork(organizationId, userId, {
+      // The 1-per-org cap is enforced by NetworksService but the onboarding wizard
+      // is pre-authorised at the controller layer (@OrgRoles OWNER/ADMIN) and uses
+      // the repository directly to avoid constructing an OrgMemberContext here.
+      await this.networksRepository.create({
+        organizationId,
+        userId,
         name: typeof fields.name === 'string' ? fields.name : 'Home',
         ...stripNameKey(fields),
       });
-      return void created;
+      return;
     }
     const updated = await this.networksRepository.updateWithVersion(
       existing.id,

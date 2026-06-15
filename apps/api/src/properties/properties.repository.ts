@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, Property, PropertyType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+type PropertyScope = { propertyIdIn: string[] } | null;
+
 @Injectable()
 export class PropertiesRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -10,12 +12,21 @@ export class PropertiesRepository {
     return this.prisma.property.create({ data });
   }
 
-  findByIdAndOrgId(id: string, organizationId: string): Promise<Property | null> {
-    return this.prisma.property.findFirst({ where: { id, organizationId } });
+  findByIdAndOrgId(id: string, organizationId: string, scope?: PropertyScope): Promise<Property | null> {
+    return this.prisma.property.findFirst({
+      where: {
+        id,
+        organizationId,
+        ...(scope ? { AND: [{ id: { in: scope.propertyIdIn } }] } : {}),
+      },
+    });
   }
 
-  findAllByOrgId(organizationId: string): Promise<Property[]> {
-    return this.prisma.property.findMany({ where: { organizationId }, orderBy: { createdAt: 'asc' } });
+  findAllByOrgId(organizationId: string, scope?: PropertyScope): Promise<Property[]> {
+    return this.prisma.property.findMany({
+      where: { organizationId, ...(scope ? { id: { in: scope.propertyIdIn } } : {}) },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   findChildren(organizationId: string, parentId: string): Promise<Property[]> {
@@ -118,5 +129,14 @@ export class PropertiesRepository {
   countChartersUnder(organizationId: string, propertyIds: string[]): Promise<number> {
     if (propertyIds.length === 0) return Promise.resolve(0);
     return this.prisma.networkProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } });
+  }
+
+  async countAssignmentsUnder(organizationId: string, propertyIds: string[]): Promise<number> {
+    if (propertyIds.length === 0) return 0;
+    const [teams, members] = await Promise.all([
+      this.prisma.teamProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } }),
+      this.prisma.memberProperty.count({ where: { organizationId, propertyId: { in: propertyIds } } }),
+    ]);
+    return teams + members;
   }
 }

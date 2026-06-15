@@ -2,33 +2,44 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { Device, FiberRun, Circuit } from '@prisma/client';
 import { DeviceDto, FiberRunDto, CircuitDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
+import { OrgMemberContext } from '../organizations/org-context.types';
+import { PermissionsService } from '../permissions/permissions.service';
 import { MapRepository } from './map.repository';
 
 type BboxCoords = { west: number; south: number; east: number; north: number };
 
 @Injectable()
 export class MapService {
-  constructor(private readonly mapRepository: MapRepository) {}
+  constructor(
+    private readonly mapRepository: MapRepository,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   async getDevicesInBbox(
-    organizationId: string,
+    member: OrgMemberContext,
     bbox: string,
     floor?: number,
   ): Promise<{ items: DeviceDto[] }> {
     const coords = this.parseBbox(bbox);
-    const devices = await this.mapRepository.findDevicesInBbox(organizationId, coords, floor);
+    const scope = await this.permissions.scopeFilter(member);
+    const scopeIds = scope ? scope.propertyIdIn : null;
+    const devices = await this.mapRepository.findDevicesInBbox(member.organizationId, coords, floor, scopeIds);
     return { items: devices.map((d) => this.deviceToDto(d)) };
   }
 
-  async getFiberRunsInBbox(organizationId: string, bbox: string): Promise<{ items: FiberRunDto[] }> {
+  async getFiberRunsInBbox(member: OrgMemberContext, bbox: string): Promise<{ items: FiberRunDto[] }> {
     const coords = this.parseBbox(bbox);
-    const runs = await this.mapRepository.findFiberRunsInBbox(organizationId, coords);
+    const scope = await this.permissions.scopeFilter(member);
+    const scopeIds = scope ? scope.propertyIdIn : null;
+    const runs = await this.mapRepository.findFiberRunsInBbox(member.organizationId, coords, scopeIds);
     return { items: runs.map((r) => this.fiberRunToDto(r)) };
   }
 
-  async getCircuitsInBbox(organizationId: string, bbox: string): Promise<{ items: CircuitDto[] }> {
+  async getCircuitsInBbox(member: OrgMemberContext, bbox: string): Promise<{ items: CircuitDto[] }> {
     const coords = this.parseBbox(bbox);
-    const circuits = await this.mapRepository.findCircuitsInBbox(organizationId, coords);
+    const scope = await this.permissions.scopeFilter(member);
+    const scopeIds = scope ? scope.propertyIdIn : null;
+    const circuits = await this.mapRepository.findCircuitsInBbox(member.organizationId, coords, scopeIds);
     return { items: circuits.map((c) => this.circuitToDto(c)) };
   }
 

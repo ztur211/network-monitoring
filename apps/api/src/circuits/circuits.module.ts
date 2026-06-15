@@ -5,9 +5,10 @@ import { CircuitsRepository } from './circuits.repository';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
 import { DevicesModule } from '../devices/devices.module';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
-  imports: [ConflictResolutionModule, DevicesModule],
+  imports: [ConflictResolutionModule, DevicesModule, PermissionsModule],
   controllers: [CircuitsController],
   providers: [CircuitsService, CircuitsRepository, IdempotencyInterceptor],
   exports: [CircuitsRepository],

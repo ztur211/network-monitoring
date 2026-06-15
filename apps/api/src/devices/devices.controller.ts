@@ -18,7 +18,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@nodescope/shared';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { OrgId } from '../organizations/decorators/org-id.decorator';
-import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
+import { OrgMember } from '../organizations/decorators/org-member.decorator';
+import { OrgMemberContext } from '../organizations/org-context.types';
 import { CreateDeviceDto, PatchDeviceDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 import { NameSuggestionService } from './name-suggestion.service';
@@ -31,21 +32,20 @@ export class DevicesController {
   ) {}
 
   @Get()
-  async listDevices(@OrgId() orgId: string) {
-    const data = await this.devicesService.listDevices(orgId);
+  async listDevices(@OrgMember() member: OrgMemberContext) {
+    const data = await this.devicesService.listDevices(member);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Post()
-  @OrgRoles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
   async createDevice(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateDeviceDto,
   ) {
-    const data = await this.devicesService.createDevice(orgId, user.id, dto);
+    const data = await this.devicesService.createDevice(member, user.id, dto);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
@@ -62,31 +62,29 @@ export class DevicesController {
 
   @Get(':id')
   async getDevice(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const data = await this.devicesService.getDevice(orgId, id);
+    const data = await this.devicesService.getDevice(member, id);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Patch(':id')
-  @OrgRoles('OWNER', 'ADMIN')
   async updateDevice(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() patch: PatchDeviceDto,
   ) {
-    const data = await this.devicesService.updateDevice(orgId, id, patch);
+    const data = await this.devicesService.updateDevice(member, id, patch);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
   @Delete(':id')
-  @OrgRoles('OWNER', 'ADMIN')
   async deleteDevice(
-    @OrgId() orgId: string,
+    @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.devicesService.deleteDevice(orgId, id);
+    await this.devicesService.deleteDevice(member, id);
     return { success: true, data: null, timestamp: new Date().toISOString() };
   }
 }

@@ -8,6 +8,8 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { ConflictResolutionService } from '../conflict/conflict.service';
+import type { OrgMemberContext } from '../organizations/org-context.types';
+import { PermissionsService } from '../permissions/permissions.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import {
   CreateNetworkDto,
@@ -25,18 +27,24 @@ export class NetworksService {
     private readonly conflictService: ConflictResolutionService,
     @Inject(REALTIME_SERVICE) private readonly realtimeService: IRealtimeService,
     private readonly audit: AuditService,
+    private readonly permissions: PermissionsService,
   ) {}
 
-  async listNetworks(organizationId: string): Promise<NetworkSummary[]> {
-    const networks = await this.networksRepository.findAllByOrgId(organizationId);
+  async listNetworks(member: OrgMemberContext): Promise<NetworkSummary[]> {
+    const scope = await this.permissions.scopeFilter(member);
+    const networks = await this.networksRepository.listVisible(member.organizationId, scope);
     return networks.map((n) => this.toSummary(n));
   }
 
   async createNetwork(
-    organizationId: string,
+    member: OrgMemberContext,
     creatorUserId: string,
     dto: CreateNetworkDto,
   ): Promise<NetworkDetail> {
+    // No charters yet on create — just the role gate
+    await this.permissions.assertNetworkFullCoverage(member, []);
+    const organizationId = member.organizationId;
+
     const existingCount = await this.networksRepository.countByOrgId(organizationId);
     if (existingCount >= MAX_NETWORKS_PER_ORG) {
       throw new NodeScopeException(
@@ -53,16 +61,23 @@ export class NetworksService {
     });
     await this.audit.recordCreate(organizationId, 'Network', network);
     const detail = this.toDetail(network);
-    this.conflictService.emitEntityEvent(
+    // No charters yet on create → OWNER-only fan-out
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      [],
       WS_EVENTS.NETWORK_UPDATED,
       { networkId: network.id, network: detail },
-      organizationId,
     );
     return detail;
   }
 
-  async getNetwork(organizationId: string, networkId: string): Promise<NetworkDetail> {
-    const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
+  async getNetwork(member: OrgMemberContext, networkId: string): Promise<NetworkDetail> {
+    const scope = await this.permissions.scopeFilter(member);
+    const network = await this.networksRepository.findVisibleByIdAndOrgId(
+      networkId,
+      member.organizationId,
+      scope,
+    );
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
@@ -70,14 +85,22 @@ export class NetworksService {
   }
 
   async updateNetwork(
-    organizationId: string,
+    member: OrgMemberContext,
     networkId: string,
     patch: PatchNetworkDto,
   ): Promise<NetworkDetail> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup so out-of-scope ADMIN → PERM_004 not 404
     const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
+
+    const coverageSites = [...new Set([
+      ...(await this.networksRepository.charteredPropertyIds(organizationId, networkId)),
+      ...(await this.networksRepository.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
 
     const updatePayload = this.conflictService.buildUpdatePayload(
       patch,
@@ -98,10 +121,12 @@ export class NetworksService {
 
     const detail = this.toDetail(updated);
     await this.audit.recordUpdate(organizationId, 'Network', networkId, patch.changes);
-    this.conflictService.emitEntityEvent(
+    const charterSites = await this.networksRepository.charteredPropertyIds(organizationId, networkId);
+    await this.conflictService.emitScopedMulti(
+      organizationId,
+      charterSites,
       WS_EVENTS.NETWORK_UPDATED,
       { networkId, network: detail, changes: patch.changes, updatedBy: updated.userId ?? '' },
-      organizationId,
     );
 
     if (patch.changes.some((c) => c.field === 'homePublicIp')) {
@@ -112,15 +137,17 @@ export class NetworksService {
   }
 
   async setHomeIpFromRequest(
-    organizationId: string,
+    member: OrgMemberContext,
     networkId: string,
     requestIp: string,
   ): Promise<NetworkDetail> {
+    // Org-wide lookup to get the version for the changeset (coverage check runs inside updateNetwork)
+    const organizationId = member.organizationId;
     const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    return this.updateNetwork(organizationId, networkId, {
+    return this.updateNetwork(member, networkId, {
       baseVersion: network.version,
       changes: [
         {
@@ -132,11 +159,18 @@ export class NetworksService {
     });
   }
 
-  async deleteNetwork(organizationId: string, networkId: string): Promise<void> {
+  async deleteNetwork(member: OrgMemberContext, networkId: string): Promise<void> {
+    const organizationId = member.organizationId;
+    // Write path: org-wide lookup so out-of-scope ADMIN → PERM_004 not 404
     const network = await this.networksRepository.findByIdAndOrgId(networkId, organizationId);
     if (!network) {
       throw new NodeScopeException('NETWORK_002', 'NETWORK_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
+    const coverageSites = [...new Set([
+      ...(await this.networksRepository.charteredPropertyIds(organizationId, networkId)),
+      ...(await this.networksRepository.deviceFootprintPropertyIds(organizationId, networkId)),
+    ])];
+    await this.permissions.assertNetworkFullCoverage(member, coverageSites);
     await this.networksRepository.deleteByIdAndOrgId(networkId, organizationId);
     await this.audit.recordDelete(organizationId, 'Network', network);
   }

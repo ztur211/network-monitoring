@@ -14,11 +14,14 @@ describe('Invitations (e2e)', () => {
 
   let adminCookie: string;
   let adminUserId: string;
+  let ownerCookie: string;
   let orgId: string;
 
-  const adminEmail = `e2e-inv-admin-${Date.now()}@example.com`;
-  const inviteeEmail = `e2e-inv-invitee-${Date.now()}@example.com`;
-  const otherEmail = `e2e-inv-other-${Date.now()}@example.com`;
+  const ts = Date.now();
+  const adminEmail = `e2e-inv-admin-${ts}@example.com`;
+  const ownerEmail = `e2e-inv-owner-${ts}@example.com`;
+  const inviteeEmail = `e2e-inv-invitee-${ts}@example.com`;
+  const otherEmail = `e2e-inv-other-${ts}@example.com`;
   const password = 'Password123!';
 
   const pickCookie = (res: request.Response): string => {
@@ -34,7 +37,15 @@ describe('Invitations (e2e)', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
 
-    // Sign up admin user
+    // Sign up owner user
+    ownerCookie = pickCookie(
+      await request(app.getHttpServer())
+        .post('/api/auth/sign-up/email')
+        .send({ email: ownerEmail, password, name: 'Owner' }),
+    );
+    const ownerUser = await prisma.user.findUniqueOrThrow({ where: { email: ownerEmail } });
+
+    // Sign up admin user (ADMIN role — may only invite MEMBERs)
     adminCookie = pickCookie(
       await request(app.getHttpServer())
         .post('/api/auth/sign-up/email')
@@ -43,11 +54,14 @@ describe('Invitations (e2e)', () => {
     const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
     adminUserId = adminUser.id;
 
-    // Create org and wire admin as OWNER
+    // Create org; wire owner as OWNER, admin as ADMIN
     const org = await prisma.organization.create({ data: { name: `E2E Invitations Org ${Date.now()}` } });
     orgId = org.id;
     await prisma.organizationMember.create({
-      data: { userId: adminUserId, organizationId: orgId, role: 'OWNER' },
+      data: { userId: ownerUser.id, organizationId: orgId, role: 'OWNER' },
+    });
+    await prisma.organizationMember.create({
+      data: { userId: adminUserId, organizationId: orgId, role: 'ADMIN' },
     });
 
     // Sign up invitee and other user (they are NOT yet org members)
@@ -65,7 +79,7 @@ describe('Invitations (e2e)', () => {
     await prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({
-      where: { email: { in: [adminEmail, inviteeEmail, otherEmail] } },
+      where: { email: { in: [ownerEmail, adminEmail, inviteeEmail, otherEmail] } },
     });
     await app.close();
   });
@@ -174,5 +188,37 @@ describe('Invitations (e2e)', () => {
       .expect(404);
 
     expect(res.body.error.code).toBe('ORG_009');
+  });
+
+  it('ADMIN may invite MEMBER but not ADMIN or OWNER; OWNER may invite any role', async () => {
+    // ADMIN invites MEMBER → 201
+    await request(app.getHttpServer())
+      .post('/api/v1/organizations/me/invitations')
+      .set('Cookie', adminCookie)
+      .send({ email: `new-member-${Date.now()}@x.io`, role: 'MEMBER' })
+      .expect(201);
+
+    // ADMIN invites ADMIN → 403 PERM_003
+    const deniedAdmin = await request(app.getHttpServer())
+      .post('/api/v1/organizations/me/invitations')
+      .set('Cookie', adminCookie)
+      .send({ email: `boss-${Date.now()}@x.io`, role: 'ADMIN' })
+      .expect(403);
+    expect(deniedAdmin.body.error.code).toBe('PERM_003');
+
+    // ADMIN invites OWNER → 403 PERM_003
+    const deniedOwner = await request(app.getHttpServer())
+      .post('/api/v1/organizations/me/invitations')
+      .set('Cookie', adminCookie)
+      .send({ email: `owner2-${Date.now()}@x.io`, role: 'OWNER' })
+      .expect(403);
+    expect(deniedOwner.body.error.code).toBe('PERM_003');
+
+    // OWNER invites ADMIN → 201
+    await request(app.getHttpServer())
+      .post('/api/v1/organizations/me/invitations')
+      .set('Cookie', ownerCookie)
+      .send({ email: `admin2-${Date.now()}@x.io`, role: 'ADMIN' })
+      .expect(201);
   });
 });
