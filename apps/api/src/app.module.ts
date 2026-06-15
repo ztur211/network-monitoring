@@ -34,6 +34,7 @@ import { AuditModule } from './audit/audit.module';
 import { PropertiesModule } from './properties/properties.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { BuildingModelsModule } from './building-models/building-models.module';
+import { SpatialModule } from './spatial/spatial.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -84,6 +85,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     PropertiesModule,
     PermissionsModule,
     BuildingModelsModule,
+    SpatialModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
