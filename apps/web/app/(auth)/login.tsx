@@ -45,6 +45,14 @@ export default function LoginScreen() {
     if (result.data?.user) {
       setLoading(false);
       setUser(result.data.user as SessionUser);
+      const returnTo =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('returnTo')
+          : null;
+      if (returnTo) {
+        window.location.href = returnTo;
+        return;
+      }
       router.replace('/(app)/map');
     }
   };
