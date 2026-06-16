@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { bearer } from 'better-auth/plugins';
 import * as argon2 from 'argon2';
 import { prisma } from '../prisma/prisma.service';
 
@@ -32,4 +33,5 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins: [process.env.FRONTEND_URL ?? 'http://localhost:8081'],
+  plugins: [bearer()],
 });
