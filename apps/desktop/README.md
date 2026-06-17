@@ -74,5 +74,12 @@ resolve is discarded + disposed) with a **keep-last-1** in-memory model cache (t
 `data/clients.ts` exposes the bootstrapped REST + realtime clients (`getClients`) to the viewport hooks;
 `use-model-realtime.ts` raises a non-intrusive *model-updated* banner on `v1:buildingModel:activated` /
 `versionUploaded` for the open building (and reverts to *empty* on delete). `<ViewportHost>` switches on
-the status and renders the matching overlay; the `ready` slot is the placeholder Phase C replaces with the
-r3f `<Canvas>`.
+the status and renders the matching overlay; the `ready` slot mounts the live r3f viewport.
+
+The viewport renders via **react-three-fiber** (`viewport/scene/ViewportCanvas`): an r3f `<Canvas frameloop="demand">`
+(a building is near-static, so frames render only on camera/state change — `invalidate()`), a hemisphere +
+directional light rig, drei `<OrbitControls>` (orbit/pan/zoom), `<ModelView>` (a `<primitive>` of the parsed
+`model.root`), and a `<CameraRig>` that **fits the model bbox** on load (`fitCameraToBox`). `gl.localClippingEnabled`
+is set for Phase D's section plane. Headless scene tests use `@react-three/test-renderer` (no GPU); GPU/visual
+correctness is verified manually. (`r3f-jsx.d.ts` re-registers r3f's `ThreeElements` on the JSX namespaces — r3f
+v9's bundled types omit the augmentation.)
