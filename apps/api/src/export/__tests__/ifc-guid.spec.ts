@@ -19,4 +19,12 @@ describe('toIfcGuid', () => {
   it('different uuids → different guids', () => {
     expect(toIfcGuid(uuid)).not.toBe(toIfcGuid('00000000-0000-0000-0000-000000000001'));
   });
+
+  it('accepts a non-uuid seed deterministically (derived structural/pset GUIDs)', () => {
+    const a = toIfcGuid(`${uuid}:site`);
+    expect(a).toHaveLength(22);
+    expect([...a].every((c) => IFC_B64.includes(c))).toBe(true);
+    expect(toIfcGuid(`${uuid}:site`)).toBe(a); // deterministic
+    expect(a).not.toBe(toIfcGuid(`${uuid}:bldg`)); // distinct seeds → distinct guids
+  });
 });
