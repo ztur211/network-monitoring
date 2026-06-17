@@ -21,6 +21,7 @@ export function PickingController({ model }: { model: ParsedModel }) {
   const { gl, camera, raycaster } = useThree();
   useEffect(() => {
     const el = gl.domElement;
+    if (!el) return; // headless (test-renderer) has no canvas element
     const onDown = (e: PointerEvent) => {
       const r = el.getBoundingClientRect();
       const ndc = new THREE.Vector2(

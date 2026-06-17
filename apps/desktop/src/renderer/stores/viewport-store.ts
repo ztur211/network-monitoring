@@ -18,6 +18,8 @@ export interface ViewportState {
   model: ParsedModel | null;
   reloadNonce: number;
   updateAvailable: boolean;
+  fitNonce: number;
+  focusNonce: number;
   // Spec 3 interaction state (the Spec 3 boundary Spec 4 also writes onto):
   selection: ExpressId | null;
   hiddenCategories: Set<IfcType>;
@@ -34,6 +36,8 @@ export interface ViewportState {
   setSection: (s: Partial<SectionState>) => void;
   flagUpdate: () => void;
   reload: () => void;
+  requestFit: () => void;
+  requestFocus: () => void;
   // internal lifecycle setters:
   _setStatus: (s: ViewportStatus, error?: string | null) => void;
   _setModel: (m: ParsedModel | null) => void;
@@ -46,6 +50,8 @@ export const initialViewportState = () => ({
   model: null,
   reloadNonce: 0,
   updateAvailable: false,
+  fitNonce: 0,
+  focusNonce: 0,
   selection: null,
   hiddenCategories: new Set<IfcType>(),
   isolated: null,
@@ -84,6 +90,8 @@ export const useViewportStore = create<ViewportState>()((set) => ({
   setSection: (p) => set((s) => ({ section: { ...s.section, ...p } })),
   flagUpdate: () => set({ updateAvailable: true }),
   reload: () => set((s) => ({ updateAvailable: false, reloadNonce: s.reloadNonce + 1 })),
+  requestFit: () => set((s) => ({ fitNonce: s.fitNonce + 1 })),
+  requestFocus: () => set((s) => ({ focusNonce: s.focusNonce + 1 })),
   _setStatus: (status, error = null) => set({ status, error }),
   _setModel: (model) => set({ model }),
 }));
