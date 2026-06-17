@@ -5,6 +5,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { ParsedModel } from '../ifc/ifc-types';
 import { useViewportStore } from '../../stores/viewport-store';
 import { fitCameraToBox } from './fit';
+import { toViewport } from '../nodes/node-coords';
 
 // DOM→r3f camera commands via store nonces: fit the model, or frame the current selection.
 export function ViewCommands({
@@ -40,9 +41,16 @@ export function ViewCommands({
   useEffect(() => {
     if (!focusNonce) return;
     const sel = useViewportStore.getState().selection;
-    const id = sel?.kind === 'element' ? sel.expressID : null;
-    const mesh = id != null ? model.elementIndex.get(id) : null;
-    if (mesh) frame(new THREE.Box3().setFromObject(mesh));
+    if (sel?.kind === 'element') {
+      const mesh = model.elementIndex.get(sel.expressID);
+      if (mesh) frame(new THREE.Box3().setFromObject(mesh));
+    } else if (sel?.kind === 'device') {
+      const dev = useViewportStore.getState().devices.find((x) => x.id === sel.deviceId);
+      if (dev && dev.x !== null) {
+        const p = toViewport({ x: dev.x, y: dev.y!, z: dev.z! }, model.frame);
+        frame(new THREE.Box3().setFromCenterAndSize(p, new THREE.Vector3(4, 4, 4)));
+      }
+    }
   }, [focusNonce]);
 
   return null;

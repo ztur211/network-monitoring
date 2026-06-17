@@ -6,6 +6,7 @@ import { Idle, Loading, Empty, ErrorState, UpdateBanner } from '../viewport/ui/o
 import { ViewportCanvas } from '../viewport/scene/ViewportCanvas';
 import { Toolbar } from '../viewport/ui/Toolbar';
 import { Inspector } from '../viewport/ui/Inspector';
+import { NodePanel } from '../viewport/ui/NodePanel';
 
 export function ViewportHost() {
   useViewportLoader();
@@ -24,7 +25,22 @@ export function ViewportHost() {
         <>
           <ViewportCanvas model={model} />
           <Toolbar />
-          <Inspector />
+          <aside
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 320,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              background: '#23262c',
+            }}
+          >
+            <NodePanel />
+            <Inspector />
+          </aside>
           {updateAvailable && <UpdateBanner onReload={reload} />}
         </>
       )}

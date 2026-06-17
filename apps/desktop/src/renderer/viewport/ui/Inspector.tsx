@@ -1,6 +1,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useViewportStore } from '../../stores/viewport-store';
 import type { ElementProperties } from '../ifc/ifc-types';
+import { DeviceDetails } from './DeviceDetails';
 
 export function Inspector() {
   const { model, selection, isolate, hideElement, requestFocus } = useViewportStore();
@@ -23,12 +24,11 @@ export function Inspector() {
     };
   }, [model, expressID]);
 
+  // Spec 4 §7: the unified Inspector switches on selection.kind.
+  if (selection?.kind === 'device') return <DeviceDetails />;
   if (expressID == null || !props) return null;
   return (
-    <aside
-      aria-label="inspector"
-      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 300, overflow: 'auto' }}
-    >
+    <aside aria-label="inspector" style={{ overflow: 'auto' }}>
       <h3>{props.name ?? props.ifcType}</h3>
       <dl>
         <dt>Type</dt>
