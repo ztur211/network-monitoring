@@ -25,6 +25,9 @@ export function PlacementController({
     const el = gl.domElement;
     if (!el) return; // headless (test-renderer) has no canvas element
     const onDown = (e: PointerEvent) => {
+      // A click while placing is a placement, never a selection — stop the picking handler on the
+      // same element from also firing (robust regardless of listener registration order).
+      e.stopImmediatePropagation();
       const r = el.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((e.clientX - r.left) / r.width) * 2 - 1,

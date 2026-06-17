@@ -21,13 +21,14 @@ describe('device load', () => {
     expect(useViewportStore.getState().devices).toEqual([]);
   });
 
-  it('applyDeviceEvent updates only an already-listed device, and removes on delete', () => {
+  // The realtime wire shapes (devices.service): DEVICE_UPDATED → { deviceId, device }, DEVICE_DELETED → { deviceId }.
+  it('applyDeviceEvent updates only an already-listed device (by the wire envelope), and removes on delete', () => {
     useViewportStore.getState().setDevices([dev('a')]);
-    applyDeviceEvent('updated', dev('a', { x: 1, y: 2, z: 3 }));
+    applyDeviceEvent('updated', { deviceId: 'a', device: dev('a', { x: 1, y: 2, z: 3 }) });
     expect(useViewportStore.getState().devices[0].x).toBe(1);
-    applyDeviceEvent('updated', dev('foreign')); // not listed → ignored
+    applyDeviceEvent('updated', { deviceId: 'foreign', device: dev('foreign') }); // not listed → ignored
     expect(useViewportStore.getState().devices.map((d: any) => d.id)).toEqual(['a']);
-    applyDeviceEvent('deleted', { id: 'a' });
+    applyDeviceEvent('deleted', { deviceId: 'a' });
     expect(useViewportStore.getState().devices).toEqual([]);
   });
 });
