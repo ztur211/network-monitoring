@@ -23,19 +23,23 @@ export async function loadDevicesFor(
   }
 }
 
-/** Patch the store from a realtime device event. Live-updates only ALREADY-listed devices (a newly
- *  created device enters the list on the next building switch; device CRUD stays the existing API). */
+/**
+ * Patch the store from a realtime device event, using the API's wire envelopes
+ * (`devices.service`): DEVICE_UPDATED → `{ deviceId, device }`, DEVICE_DELETED → `{ deviceId }`.
+ * Live-updates only ALREADY-listed devices (a newly created device enters the list on the next
+ * building switch; device CRUD stays the existing API).
+ */
 export function applyDeviceEvent(
-  kind: 'updated' | 'created' | 'deleted',
-  payload: DeviceDto | { id: string },
+  kind: 'updated' | 'deleted',
+  payload: { deviceId: string; device?: DeviceDto },
 ): void {
   const store = useViewportStore.getState();
   if (kind === 'deleted') {
-    store.removeDevice(payload.id);
+    store.removeDevice(payload.deviceId);
     return;
   }
-  const d = payload as DeviceDto;
-  if (store.devices.some((x) => x.id === d.id)) store.upsertDevice(d);
+  const d = payload.device;
+  if (d && store.devices.some((x) => x.id === d.id)) store.upsertDevice(d);
 }
 
 /** Load the building's devices (+ the caller's access once) and keep the list live via realtime. */
@@ -69,8 +73,8 @@ export function useDeviceLoad(): void {
   useEffect(() => {
     const rt = getClients()?.realtime;
     if (!rt) return;
-    const upd = (d: unknown) => applyDeviceEvent('updated', d as DeviceDto);
-    const del = (p: unknown) => applyDeviceEvent('deleted', p as { id: string });
+    const upd = (p: unknown) => applyDeviceEvent('updated', p as { deviceId: string; device: DeviceDto });
+    const del = (p: unknown) => applyDeviceEvent('deleted', p as { deviceId: string });
     rt.on(WS_EVENTS.DEVICE_UPDATED, upd);
     rt.on(WS_EVENTS.DEVICE_DELETED, del);
     return () => {
