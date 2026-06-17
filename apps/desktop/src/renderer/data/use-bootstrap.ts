@@ -2,13 +2,14 @@ import { useEffect } from 'react';
 import { WS_EVENTS } from '@nodescope/shared';
 import { useAuthStore } from '../stores/auth-store';
 import { useSitesStore } from '../stores/sites-store';
-import { buildClients } from './clients';
+import { buildClients, setClients } from './clients';
 
 type Clients = Awaited<ReturnType<typeof buildClients>>;
 
 // Load the org + property tree into the stores and connect realtime; refresh the tree on
 // any property lifecycle event (kept simple: re-fetch the list).
 export async function bootstrap(clients: Clients): Promise<void> {
+  setClients(clients); // expose to the viewport hooks
   const [org, properties] = await Promise.all([
     clients.rest.getOrganization(),
     clients.rest.listProperties(),
