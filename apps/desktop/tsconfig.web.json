@@ -12,7 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "outDir": "out",
-    "types": ["react", "react-dom"]
+    "types": ["react", "react-dom", "node"]
   },
   "include": [
     "src/renderer/**/*.ts",
