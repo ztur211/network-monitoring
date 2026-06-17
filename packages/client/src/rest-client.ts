@@ -1,4 +1,10 @@
-import type { OrganizationDto, PropertyDto, BuildingModelDto, DeviceDto } from '@nodescope/shared';
+import type {
+  OrganizationDto,
+  PropertyDto,
+  BuildingModelDto,
+  DeviceDto,
+  AccessSummaryDto,
+} from '@nodescope/shared';
 import { ApiError } from './api-error';
 
 export interface RestClientOptions {
@@ -51,5 +57,7 @@ export function createRestClient(opts: RestClientOptions) {
     // Spec 4: place/move (pos) or clear (null) a device's model-local 3D position (Spec 1 endpoint).
     setDevicePosition: (id: string, pos: { x: number; y: number; z: number } | null) =>
       request<DeviceDto>('PATCH', `/v1/devices/${id}/position`, pos ?? { x: null, y: null, z: null }),
+    // Spec 4 / F3: the caller's effective access (role + assigned roots) — gates configure affordances (UX only).
+    getAccessSummary: () => request<AccessSummaryDto>('GET', '/v1/access/me'),
   };
 }
