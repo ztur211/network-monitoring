@@ -14,6 +14,8 @@
   "dependencies": {
     "@nodescope/client": "*",
     "@nodescope/shared": "*",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-router-dom": "^6.26.0",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.47.0",
+    "@react-three/test-renderer": "^9.1.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.0.0",
     "@types/react": "~19.1.1",
