@@ -2,6 +2,8 @@ import { Test } from '@nestjs/testing';
 import { SpatialService } from '../spatial.service';
 import { SpatialRepository } from '../spatial.repository';
 import { BuildingModelsRepository } from '../../building-models/building-models.repository';
+import { PermissionsService } from '../../permissions/permissions.service';
+import { ConflictResolutionService } from '../../conflict/conflict.service';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
 import type { Device } from '@prisma/client';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
@@ -47,6 +49,8 @@ describe('SpatialService.setPosition (unit)', () => {
   const models = {
     findByProperty: jest.fn(),
   } as unknown as jest.Mocked<BuildingModelsRepository>;
+  const permissions = { assertCanConfigure: jest.fn() } as any;
+  const conflict = { emitScoped: jest.fn() } as any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -55,11 +59,15 @@ describe('SpatialService.setPosition (unit)', () => {
         SpatialService,
         { provide: SpatialRepository, useValue: repo },
         { provide: BuildingModelsRepository, useValue: models },
+        { provide: PermissionsService, useValue: permissions },
+        { provide: ConflictResolutionService, useValue: conflict },
       ],
     }).compile();
     service = ref.get(SpatialService);
-    // Default: device exists
+    // Default: device exists; configure allowed; emit resolves
     repo.findDevice.mockResolvedValue(fullDevice());
+    permissions.assertCanConfigure.mockResolvedValue(undefined);
+    conflict.emitScoped.mockResolvedValue(undefined);
   });
 
   it('rejects when device not found (DEVICE_001)', async () => {
@@ -104,6 +112,31 @@ describe('SpatialService.setPosition (unit)', () => {
     const dto = await service.setPosition(owner, 'd', { x: 1, y: 2, z: 3 });
     expect(repo.setPosition).toHaveBeenCalledWith('org', 'd', 1, 2, 3);
     expect(dto).toMatchObject({ id: 'd', x: 1, y: 2, z: 3 });
+  });
+
+  it('authorizes per-site scope (out-of-scope ADMIN → PERM_001)', async () => {
+    permissions.assertCanConfigure.mockRejectedValue(Object.assign(new Error('x'), { code: 'PERM_001' }));
+    await expect(
+      service.setPosition({ id: 'm-admin', organizationId: 'org', role: 'ADMIN' }, 'd', { x: 1, y: 2, z: 3 }),
+    ).rejects.toMatchObject({ code: 'PERM_001' });
+    expect(permissions.assertCanConfigure).toHaveBeenCalledWith(
+      { id: 'm-admin', organizationId: 'org', role: 'ADMIN' },
+      'p', // the device's governing site (propertyId)
+    );
+    expect(repo.setPosition).not.toHaveBeenCalled();
+  });
+
+  it('emits v1:device:updated (with the device) on a successful set, scoped to the site', async () => {
+    repo.resolveGoverningBuildingId.mockResolvedValue('b1');
+    models.findByProperty.mockResolvedValue({ id: 'm' } as any);
+    repo.setPosition.mockResolvedValue(fullDevice({ x: 1, y: 2, z: 3 }));
+    await service.setPosition(owner, 'd', { x: 1, y: 2, z: 3 });
+    expect(conflict.emitScoped).toHaveBeenCalledWith(
+      'org',
+      'p',
+      'v1:device:updated',
+      expect.objectContaining({ deviceId: 'd', device: expect.objectContaining({ id: 'd', x: 1, y: 2, z: 3 }) }),
+    );
   });
 
   it('clearing (all null) is always allowed without a building check', async () => {
