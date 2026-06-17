@@ -1,4 +1,5 @@
 import { useRef, type RefObject } from 'react';
+import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -8,6 +9,7 @@ import { ModelView } from './ModelView';
 import { CameraRig } from './CameraRig';
 import { PickingController } from '../interaction/picking';
 import { ViewCommands } from './ViewCommands';
+import { NodeLayer } from '../nodes/NodeLayer';
 
 function InvalidateOnControls({ controls }: { controls: RefObject<OrbitControlsImpl | null> }) {
   const { invalidate } = useThree();
@@ -17,13 +19,15 @@ function InvalidateOnControls({ controls }: { controls: RefObject<OrbitControlsI
 /** The scene contents (no <Canvas>) — rendered headless by @react-three/test-renderer. */
 export function Scene({ model }: { model: ParsedModel }) {
   const controls = useRef<OrbitControlsImpl>(null);
+  const markersRef = useRef<THREE.Object3D[]>([]);
   return (
     <>
       <color attach="background" args={[0x1c1f24]} />
       <Lighting />
       <InvalidateOnControls controls={controls} />
       <ModelView model={model} />
-      <PickingController model={model} />
+      <NodeLayer model={model} markersRef={markersRef} />
+      <PickingController model={model} markersRef={markersRef} />
       <CameraRig box={model.bbox} controls={controls} />
       <ViewCommands model={model} controls={controls} />
     </>
