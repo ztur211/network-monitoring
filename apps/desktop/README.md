@@ -92,3 +92,26 @@ IFC type/name/tag + property sets with Isolate / Hide / Zoom-to; the **Toolbar**
 toggle (axis + position), and a per-category visibility list. Camera commands (Fit / Zoom-to) cross the DOM↔r3f
 boundary via store nonces (`fitNonce`/`focusNonce`) consumed by an in-Canvas `<ViewCommands>`. The extended
 `viewportStore` + the `ParsedModel` handle (with its recenter + Z-up→Y-up `frame`) are the **Spec 4 contract**.
+
+## Nodes in 3D (Spec 4 — in progress)
+
+Spec 4 layers network **device nodes** onto the Spec 3 viewport (the convergence of the 3D + permissions
+tracks). **Phase A (foundations)** is in — the headless layer the marker/placement/panel phases build on:
+
+- `viewport/nodes/node-coords.ts` — pure `toViewport(xyz)` / `toModel(point)` bridging a device's stored
+  model-local `x/y/z` ↔ viewport world space via `ParsedModel.frame` (one `Rx(-90°)·T(-recenter)` matrix,
+  round-trip tested). The coordinate contract for every 3D node feature.
+- `viewport/nodes/node-status.ts` — the **status-display seam**: `NodeStatus` (`up|down|warning|unknown`)
+  + a colour map. The **Monitoring spec** fills `viewportStore.nodeStatus`; **v1 renders every node `unknown`**.
+- `viewport/nodes/filter-devices.ts` + `can-configure.ts` — the pure Node-panel filter (text/category/
+  network/placement/floor/status) and the F3 role gate (`canConfigure` → OWNER/ADMIN; MEMBER view-only).
+- `viewportStore.selection` is now a **tagged `element | device` union** (`selectElement`/`selectNode`/
+  `clearSelection`), and the store carries node state (`devices`, `placingDeviceId`, `nodeFilter`,
+  `nodeStatus`, `access`). Spec 3's pick/highlight/inspect consumers read the union.
+- Data: `@nodescope/client.listDevicesForBuilding(buildingPropertyId)` (server `GET /v1/devices?
+  buildingPropertyId=…`, F3 scope-filtered over the building subtree) + `setDevicePosition(id, pos|null)`
+  (Spec 1's `PATCH /v1/devices/:id/position`).
+
+Markers (`NodeLayer` + status ring), select-then-click placement, and the right-dock Node panel land in
+Phases B–D. The server is the authority — placement runs F3's `assertCanConfigure`; the client gate only
+hides affordances.
