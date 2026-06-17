@@ -30,6 +30,7 @@ export function PickingController({
     const el = gl.domElement;
     if (!el) return; // headless (test-renderer) has no canvas element
     const onDown = (e: PointerEvent) => {
+      if (useViewportStore.getState().placingDeviceId) return; // placing → the click is a placement, not a selection
       const r = el.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((e.clientX - r.left) / r.width) * 2 - 1,
