@@ -56,3 +56,14 @@ triggered manually or on a `v*` tag). mac/Linux targets are added later by exten
   Spec 3's Three.js render loop reads/writes outside React.
 - **`<ViewportHost>`** is the placeholder Spec 3 replaces with the react-three-fiber `<Canvas>`;
   Spec 4 adds the node-placement panels.
+
+## 3D viewport (Spec 3)
+
+`viewport/ifc/IfcModelLoader` parses an IFC `ArrayBuffer` into a `ParsedModel` — a recentered, **Y-up**
+Three.js `Group` of per-element meshes grouped by IFC category (`expressID`-tagged), with a bbox, the
+coordinate `frame` (`{ recenter, upConversion }`), lazy `getProperties`, and `dispose`. Parsing is
+**client-side, main-thread (v1)** via [web-ifc](https://github.com/ThatOpen/engine_web-ifc) (Rust→WASM,
+no Rust authored); the `web-ifc.wasm` is **bundled into the renderer** (served at the web root, not fetched
+remotely). Off-main-thread parsing + geometry batching are a deliberate later pass behind the same loader
+interface. `ParsedModel` / `ElementProperties` (`viewport/ifc/ifc-types.ts`) are the Spec 3 cross-phase
+contract that Phase B (lifecycle), C (r3f scene), and D (interaction) — and Spec 4 (nodes) — build on.
