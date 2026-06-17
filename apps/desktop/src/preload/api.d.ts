@@ -8,7 +8,10 @@ declare global {
         getToken: () => Promise<string | null>;
         onAuthChanged: (cb: (authed: boolean) => void) => () => void;
       };
-      app: { getConfig: () => Promise<{ apiUrl: string }> };
+      app: {
+        getConfig: () => Promise<{ apiUrl: string }>;
+        setApiUrl: (url: string) => Promise<void>;
+      };
     };
   }
 }

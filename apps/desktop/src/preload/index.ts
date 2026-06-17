@@ -10,5 +10,8 @@ contextBridge.exposeInMainWorld('nodescope', {
       return () => ipcRenderer.removeListener('auth:changed', listener);
     },
   },
-  app: { getConfig: () => ipcRenderer.invoke('app:getConfig') as Promise<{ apiUrl: string }> },
+  app: {
+    getConfig: () => ipcRenderer.invoke('app:getConfig') as Promise<{ apiUrl: string }>,
+    setApiUrl: (url: string) => ipcRenderer.invoke('app:setApiUrl', url) as Promise<void>,
+  },
 });
