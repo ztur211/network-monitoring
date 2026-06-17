@@ -53,4 +53,13 @@ describe('viewportStore (Spec 3)', () => {
     expect(useViewportStore.getState().updateAvailable).toBe(false);
     expect(useViewportStore.getState().reloadNonce).toBe(n + 1);
   });
+
+  it('requestFit / requestFocus bump their nonces', () => {
+    const f = useViewportStore.getState().fitNonce;
+    useViewportStore.getState().requestFit();
+    expect(useViewportStore.getState().fitNonce).toBe(f + 1);
+    const g = useViewportStore.getState().focusNonce;
+    useViewportStore.getState().requestFocus();
+    expect(useViewportStore.getState().focusNonce).toBe(g + 1);
+  });
 });

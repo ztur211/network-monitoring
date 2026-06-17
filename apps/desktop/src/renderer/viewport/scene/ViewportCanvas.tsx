@@ -6,6 +6,8 @@ import type { ParsedModel } from '../ifc/ifc-types';
 import { Lighting } from './Lighting';
 import { ModelView } from './ModelView';
 import { CameraRig } from './CameraRig';
+import { PickingController } from '../interaction/picking';
+import { ViewCommands } from './ViewCommands';
 
 function InvalidateOnControls({ controls }: { controls: RefObject<OrbitControlsImpl | null> }) {
   const { invalidate } = useThree();
@@ -21,7 +23,9 @@ export function Scene({ model }: { model: ParsedModel }) {
       <Lighting />
       <InvalidateOnControls controls={controls} />
       <ModelView model={model} />
+      <PickingController model={model} />
       <CameraRig box={model.bbox} controls={controls} />
+      <ViewCommands model={model} controls={controls} />
     </>
   );
 }
