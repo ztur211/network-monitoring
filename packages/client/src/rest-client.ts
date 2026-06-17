@@ -1,4 +1,4 @@
-import type { OrganizationDto, PropertyDto, BuildingModelDto } from '@nodescope/shared';
+import type { OrganizationDto, PropertyDto, BuildingModelDto, DeviceDto } from '@nodescope/shared';
 import { ApiError } from './api-error';
 
 export interface RestClientOptions {
@@ -42,5 +42,14 @@ export function createRestClient(opts: RestClientOptions) {
       if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
       return res.arrayBuffer();
     },
+    // Spec 4: the active building's devices (F3 scope-filtered, subtree-resolved server-side).
+    listDevicesForBuilding: (buildingPropertyId: string) =>
+      request<DeviceDto[]>(
+        'GET',
+        `/v1/devices?buildingPropertyId=${encodeURIComponent(buildingPropertyId)}`,
+      ),
+    // Spec 4: place/move (pos) or clear (null) a device's model-local 3D position (Spec 1 endpoint).
+    setDevicePosition: (id: string, pos: { x: number; y: number; z: number } | null) =>
+      request<DeviceDto>('PATCH', `/v1/devices/${id}/position`, pos ?? { x: null, y: null, z: null }),
   };
 }
