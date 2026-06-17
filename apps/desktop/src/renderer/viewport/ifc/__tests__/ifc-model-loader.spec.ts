@@ -49,4 +49,26 @@ describe('IfcModelLoader', () => {
     expect(() => model.dispose()).not.toThrow();
     expect((sample.geometry as THREE.BufferGeometry).attributes.position).toBeUndefined();
   });
+
+  it('getProperties returns type, name/tag and property sets for an element', async () => {
+    const loader = createIfcModelLoader({ wasmPath: { path: wasmDir, absolute: true } });
+    const m = await loader.loadModel(fixtureBuffer());
+    const id = [...m.elementIndex.keys()][0];
+    const props = await m.getProperties(id);
+    expect(props.expressID).toBe(id);
+    expect(props.ifcType.length).toBeGreaterThan(0);
+    expect(props.name).toBe('Test Wall');
+    expect(props.tag).toBe('WALL-001');
+    const pset = props.propertySets.find((p) => p.name === 'Pset_WallCommon');
+    expect(pset).toBeDefined();
+    expect(pset!.props.find((p) => p.name === 'FireRating')?.value).toBe('2HR');
+    for (const ps of props.propertySets) {
+      expect(typeof ps.name).toBe('string');
+      for (const p of ps.props) {
+        expect(typeof p.name).toBe('string');
+        expect(typeof p.value).toBe('string');
+      }
+    }
+    m.dispose();
+  });
 });
