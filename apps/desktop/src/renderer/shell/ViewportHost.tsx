@@ -2,6 +2,7 @@ import { useViewportStore } from '../stores/viewport-store';
 import { useViewportLoader } from '../viewport/use-viewport-loader';
 import { useModelRealtime } from '../viewport/use-model-realtime';
 import { Idle, Loading, Empty, ErrorState, UpdateBanner } from '../viewport/ui/overlays';
+import { ViewportCanvas } from '../viewport/scene/ViewportCanvas';
 
 export function ViewportHost() {
   useViewportLoader();
@@ -15,10 +16,9 @@ export function ViewportHost() {
       {status === 'parsing' && <Loading parsing />}
       {status === 'empty' && <Empty />}
       {status === 'error' && <ErrorState message={error ?? 'Error'} onRetry={reload} />}
-      {status === 'ready' && (
+      {status === 'ready' && model && (
         <>
-          {/* Phase C replaces this slot with <ViewportCanvas model={model} /> */}
-          <div role="status">Model ready — {model?.elementIndex.size ?? 0} elements</div>
+          <ViewportCanvas model={model} />
           {updateAvailable && <UpdateBanner onReload={reload} />}
         </>
       )}

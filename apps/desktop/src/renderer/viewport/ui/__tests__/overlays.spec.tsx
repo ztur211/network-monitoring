@@ -7,6 +7,8 @@ import { useViewportStore, initialViewportState } from '../../../stores/viewport
 // presentation-only: stub the side-effectful hooks so they don't drive status
 vi.mock('../../use-viewport-loader', () => ({ useViewportLoader: () => {} }));
 vi.mock('../../use-model-realtime', () => ({ useModelRealtime: () => {} }));
+// the ready slot now mounts a real r3f <Canvas>, which jsdom can't host
+vi.mock('../../scene/ViewportCanvas', () => ({ ViewportCanvas: () => null }));
 
 beforeEach(() => useViewportStore.setState(initialViewportState()));
 afterEach(() => cleanup());
@@ -29,7 +31,12 @@ describe('ViewportHost states', () => {
     expect(useViewportStore.getState().reloadNonce).toBe(1);
   });
   it('updateAvailable shows the reload banner over the ready slot', () => {
-    useViewportStore.setState({ activeBuildingPropertyId: 'b', status: 'ready', updateAvailable: true });
+    useViewportStore.setState({
+      activeBuildingPropertyId: 'b',
+      status: 'ready',
+      updateAvailable: true,
+      model: { elementIndex: new Map() } as any,
+    });
     render(<ViewportHost />);
     fireEvent.click(screen.getByText('Reload'));
     expect(useViewportStore.getState().updateAvailable).toBe(false);
