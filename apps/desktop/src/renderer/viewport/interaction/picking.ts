@@ -35,7 +35,8 @@ export function PickingController({ model }: { model: ParsedModel }) {
         hiddenElements: s.hiddenElements,
         isolated: s.isolated,
       });
-      s.select(id);
+      if (id != null) s.selectElement(id);
+      else s.clearSelection();
     };
     el.addEventListener('pointerdown', onDown);
     return () => el.removeEventListener('pointerdown', onDown);

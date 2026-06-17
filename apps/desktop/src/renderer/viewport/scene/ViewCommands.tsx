@@ -39,7 +39,8 @@ export function ViewCommands({
 
   useEffect(() => {
     if (!focusNonce) return;
-    const id = useViewportStore.getState().selection;
+    const sel = useViewportStore.getState().selection;
+    const id = sel?.kind === 'element' ? sel.expressID : null;
     const mesh = id != null ? model.elementIndex.get(id) : null;
     if (mesh) frame(new THREE.Box3().setFromObject(mesh));
   }, [focusNonce]);

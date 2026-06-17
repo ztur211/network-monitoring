@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { applyModelState } from '../apply-model-state';
 import type { ParsedModel } from '../../ifc/ifc-types';
+import type { Selection } from '../../../stores/viewport-store';
 
 function model(): ParsedModel {
   const mk = (id: number, t: string) => {
@@ -28,7 +29,7 @@ function model(): ParsedModel {
   };
 }
 const base = {
-  selection: null as number | null,
+  selection: null as Selection,
   hiddenCategories: new Set<string>(),
   hiddenElements: new Set<number>(),
   isolated: null as number | null,
@@ -44,7 +45,7 @@ describe('applyModelState', () => {
   });
   it('highlights only the selected element (emissive)', () => {
     const m = model();
-    applyModelState(m, { ...base, selection: 1 });
+    applyModelState(m, { ...base, selection: { kind: 'element', expressID: 1 } });
     expect((m.elementIndex.get(1)!.material as THREE.MeshLambertMaterial).emissive.getHex()).not.toBe(0x000000);
     expect((m.elementIndex.get(2)!.material as THREE.MeshLambertMaterial).emissive.getHex()).toBe(0x000000);
   });
