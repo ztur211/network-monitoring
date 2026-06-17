@@ -1,30 +1,43 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import App from '../App';
+import { useAuthStore } from '../stores/auth-store';
 
-describe('App', () => {
-  beforeEach(() => {
-    (globalThis as any).window = (globalThis as any).window ?? {};
-    (globalThis as any).window.nodescope = {
-      auth: {
-        login: vi.fn().mockResolvedValue(undefined),
-        logout: vi.fn(),
-        getToken: vi.fn().mockResolvedValue(null),
-        onAuthChanged: vi.fn().mockReturnValue(() => {}),
-      },
-      app: { getConfig: vi.fn() },
-    };
-  });
-  it('shows Sign in and calls auth.login on click', async () => {
+// The Shell calls useBootstrap() on mount; stub it so mounting the authed route does no real I/O.
+vi.mock('../data/use-bootstrap', () => ({ useBootstrap: () => {} }));
+
+function stubBridge(token: string | null) {
+  (window as any).nodescope = {
+    auth: {
+      login: vi.fn(),
+      logout: vi.fn(),
+      getToken: vi.fn().mockResolvedValue(token),
+      onAuthChanged: vi.fn().mockReturnValue(() => {}),
+    },
+    app: { getConfig: vi.fn().mockResolvedValue({ apiUrl: 'http://api' }) },
+  };
+}
+
+beforeEach(() => {
+  useAuthStore.setState({ authed: false, org: null });
+  window.location.hash = '';
+});
+afterEach(() => cleanup());
+
+describe('App routing', () => {
+  it('shows the Login (Sign in) when unauthenticated and calls login() on click', async () => {
+    stubBridge(null);
     render(<App />);
     const btn = await screen.findByRole('button', { name: 'Sign in' });
     fireEvent.click(btn);
     expect((window as any).nodescope.auth.login).toHaveBeenCalled();
   });
-  it('renders Signed in when a token exists', async () => {
-    (window as any).nodescope.auth.getToken.mockResolvedValue('TKN');
+
+  it('renders the Shell (Sign out + viewport) when a token exists', async () => {
+    stubBridge('TKN');
     render(<App />);
-    await waitFor(() => expect(screen.getByText('Signed in')).toBeTruthy());
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy();
+    expect(screen.getByText('Select a building')).toBeTruthy();
   });
 });
