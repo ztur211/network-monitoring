@@ -27,7 +27,7 @@ describe('Inspector', () => {
     expect(container.firstChild).toBeNull();
   });
   it('shows the selected element properties and acts on it', async () => {
-    useViewportStore.setState({ model: modelWithProps(), selection: 5 });
+    useViewportStore.setState({ model: modelWithProps(), selection: { kind: 'element', expressID: 5 } });
     render(<Inspector />);
     await waitFor(() => expect(screen.getByText('Wall-1')).toBeTruthy());
     expect(screen.getByText('IsExternal')).toBeTruthy();

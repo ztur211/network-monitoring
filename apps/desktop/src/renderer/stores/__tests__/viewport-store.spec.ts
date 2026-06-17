@@ -35,7 +35,7 @@ describe('viewportStore (Spec 3)', () => {
   });
 
   it('switching the active building resets per-model state', () => {
-    useViewportStore.getState().select(9);
+    useViewportStore.getState().selectElement(9);
     useViewportStore.getState().isolate(9);
     useViewportStore.getState().toggleCategory('IfcSlab');
     useViewportStore.getState().setActiveBuilding('bld-2');

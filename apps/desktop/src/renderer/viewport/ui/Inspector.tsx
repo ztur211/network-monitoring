@@ -4,12 +4,15 @@ import type { ElementProperties } from '../ifc/ifc-types';
 
 export function Inspector() {
   const { model, selection, isolate, hideElement, requestFocus } = useViewportStore();
+  // Spec 4: the Inspector's element branch reads the tagged selection; the device branch
+  // (selection.kind === 'device') is rendered by DeviceDetails in Phase D — here it is null.
+  const expressID = selection?.kind === 'element' ? selection.expressID : null;
   const [props, setProps] = useState<ElementProperties | null>(null);
 
   useEffect(() => {
     let live = true;
-    if (model && selection != null) {
-      model.getProperties(selection).then((p) => {
+    if (model && expressID != null) {
+      model.getProperties(expressID).then((p) => {
         if (live) setProps(p);
       });
     } else {
@@ -18,9 +21,9 @@ export function Inspector() {
     return () => {
       live = false;
     };
-  }, [model, selection]);
+  }, [model, expressID]);
 
-  if (selection == null || !props) return null;
+  if (expressID == null || !props) return null;
   return (
     <aside
       aria-label="inspector"
@@ -38,8 +41,8 @@ export function Inspector() {
         )}
       </dl>
       <div>
-        <button onClick={() => isolate(selection)}>Isolate</button>
-        <button onClick={() => hideElement(selection)}>Hide</button>
+        <button onClick={() => isolate(expressID)}>Isolate</button>
+        <button onClick={() => hideElement(expressID)}>Hide</button>
         <button onClick={() => requestFocus()}>Zoom to</button>
       </div>
       {props.propertySets.map((ps) => (
