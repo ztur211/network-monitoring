@@ -8,7 +8,8 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "e2e": "playwright test",
-    "lint": "tsc -b --noEmit"
+    "lint": "tsc -b --noEmit",
+    "package:win": "electron-vite build && electron-builder --win --config electron-builder.yml"
   },
   "dependencies": {
     "@nodescope/client": "*",
