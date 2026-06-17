@@ -3,6 +3,8 @@ import { useViewportLoader } from '../viewport/use-viewport-loader';
 import { useModelRealtime } from '../viewport/use-model-realtime';
 import { Idle, Loading, Empty, ErrorState, UpdateBanner } from '../viewport/ui/overlays';
 import { ViewportCanvas } from '../viewport/scene/ViewportCanvas';
+import { Toolbar } from '../viewport/ui/Toolbar';
+import { Inspector } from '../viewport/ui/Inspector';
 
 export function ViewportHost() {
   useViewportLoader();
@@ -19,6 +21,8 @@ export function ViewportHost() {
       {status === 'ready' && model && (
         <>
           <ViewportCanvas model={model} />
+          <Toolbar />
+          <Inspector />
           {updateAvailable && <UpdateBanner onReload={reload} />}
         </>
       )}
