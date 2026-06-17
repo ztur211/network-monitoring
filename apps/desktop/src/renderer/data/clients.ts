@@ -9,3 +9,13 @@ export async function buildClients() {
     realtime: createRealtimeClient({ baseUrl: apiUrl, getToken }),
   };
 }
+
+// The built clients, shared with the viewport hooks (set by useBootstrap on auth).
+type Clients = Awaited<ReturnType<typeof buildClients>>;
+let _clients: Clients | null = null;
+export function setClients(c: Clients | null) {
+  _clients = c;
+}
+export function getClients(): Clients | null {
+  return _clients;
+}
