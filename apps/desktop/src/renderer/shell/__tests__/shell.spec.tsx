@@ -4,7 +4,6 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import type { OrganizationDto, PropertyDto } from '@nodescope/shared';
 import { Sidebar } from '../Sidebar';
 import { TopBar } from '../TopBar';
-import { ViewportHost } from '../ViewportHost';
 import { useSitesStore } from '../../stores/sites-store';
 import { useAuthStore } from '../../stores/auth-store';
 import { useViewportStore } from '../../stores/viewport-store';
@@ -64,14 +63,4 @@ describe('TopBar', () => {
   });
 });
 
-describe('ViewportHost', () => {
-  it('prompts to select a building when none is active', () => {
-    render(<ViewportHost />);
-    expect(screen.getByText('Select a building')).toBeTruthy();
-  });
-  it('shows the active building when one is set', () => {
-    useViewportStore.setState({ activeBuildingPropertyId: 'b' });
-    render(<ViewportHost />);
-    expect(screen.getByText(/3D viewport for b/)).toBeTruthy();
-  });
-});
+// ViewportHost is now the real Spec 3 viewport (state overlays) — covered by viewport/ui/__tests__/overlays.spec.tsx.

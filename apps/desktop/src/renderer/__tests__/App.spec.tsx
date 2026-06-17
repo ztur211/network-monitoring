@@ -6,6 +6,8 @@ import { useAuthStore } from '../stores/auth-store';
 
 // The Shell calls useBootstrap() on mount; stub it so mounting the authed route does no real I/O.
 vi.mock('../data/use-bootstrap', () => ({ useBootstrap: () => {} }));
+vi.mock('../viewport/use-viewport-loader', () => ({ useViewportLoader: () => {} }));
+vi.mock('../viewport/use-model-realtime', () => ({ useModelRealtime: () => {} }));
 
 function stubBridge(token: string | null) {
   (window as any).nodescope = {
@@ -38,6 +40,6 @@ describe('App routing', () => {
     stubBridge('TKN');
     render(<App />);
     expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy();
-    expect(screen.getByText('Select a building')).toBeTruthy();
+    expect(screen.getByLabelText('viewport')).toBeTruthy();
   });
 });

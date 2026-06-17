@@ -1,12 +1,27 @@
 import { useViewportStore } from '../stores/viewport-store';
+import { useViewportLoader } from '../viewport/use-viewport-loader';
+import { useModelRealtime } from '../viewport/use-model-realtime';
+import { Idle, Loading, Empty, ErrorState, UpdateBanner } from '../viewport/ui/overlays';
 
-// The Spec 3 boundary: Spec 3 replaces this placeholder's body with the react-three-fiber
-// <Canvas>, reading the active building (and the rest of viewportStore) for the render loop.
 export function ViewportHost() {
-  const buildingId = useViewportStore((s) => s.activeBuildingPropertyId);
+  useViewportLoader();
+  useModelRealtime();
+  const { status, error, model, updateAvailable, reload } = useViewportStore();
+
   return (
-    <main aria-label="viewport">
-      {buildingId ? `3D viewport for ${buildingId} (Spec 3)` : 'Select a building'}
+    <main aria-label="viewport" style={{ position: 'relative', flex: 1 }}>
+      {status === 'idle' && <Idle />}
+      {status === 'loading' && <Loading />}
+      {status === 'parsing' && <Loading parsing />}
+      {status === 'empty' && <Empty />}
+      {status === 'error' && <ErrorState message={error ?? 'Error'} onRetry={reload} />}
+      {status === 'ready' && (
+        <>
+          {/* Phase C replaces this slot with <ViewportCanvas model={model} /> */}
+          <div role="status">Model ready — {model?.elementIndex.size ?? 0} elements</div>
+          {updateAvailable && <UpdateBanner onReload={reload} />}
+        </>
+      )}
     </main>
   );
 }
