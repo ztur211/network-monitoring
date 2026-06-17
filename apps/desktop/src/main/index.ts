@@ -1,9 +1,11 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import { join } from 'node:path';
-import { apiUrl } from './config';
+import { getApiUrl, setApiUrl } from './config';
 import { TokenVault } from './auth/token-vault';
 import { AuthFlow } from './auth/auth-flow';
 
+// Resolved once at startup; a Settings change writes settings.json and applies on next launch.
+const apiUrl = getApiUrl();
 let win: BrowserWindow | null = null;
 const vault = new TokenVault(join(app.getPath('userData'), 'auth.bin'));
 const flow = new AuthFlow({
@@ -27,6 +29,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('auth:logout', () => flow.logout());
     ipcMain.handle('auth:getToken', () => flow.getToken());
     ipcMain.handle('app:getConfig', () => ({ apiUrl }));
+    ipcMain.handle('app:setApiUrl', (_e, url: string) => setApiUrl(url));
     win = new BrowserWindow({ width: 1280, height: 800, webPreferences: {
       preload: join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
     if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
