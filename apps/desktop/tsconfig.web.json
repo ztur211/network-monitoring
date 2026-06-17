@@ -14,6 +14,7 @@
     "outDir": "out",
     "types": ["react", "react-dom", "node"]
   },
+  "files": ["src/renderer/r3f-jsx.d.ts"],
   "include": [
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
