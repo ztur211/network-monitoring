@@ -117,6 +117,13 @@ tracks). **Phase A (foundations)** is in — the headless layer the marker/place
 as an annotation layer (`depthTest:false`, independent of section/isolate). `use-device-load.ts` loads the
 building's devices (stale loads discarded, Spec 3's race pattern) and live-patches them from
 `v1:device:updated`/`:deleted`; `interaction/picking.ts` raycasts the markers with **priority** over the
-building (`pickNode` → `selectNode`, else the building → `selectElement`). Select-then-click **placement**
-(Phase C) and the right-dock **Node panel** (Phase D) remain. The server is the authority — placement runs
-F3's `assertCanConfigure`; the client gate only hides affordances.
+building (`pickNode` → `selectNode`, else the building → `selectElement`).
+
+**Phase C (placement)** is in: `nodes/placement.ts` + `nodes/PlacementController.tsx` — while a device is in
+placing mode (`placingDeviceId`), the next click raycasts the building surface (`raycastBuildingPoint`,
+visible meshes only), converts the hit to native coords (`toModel`), and persists via `setDevicePosition`
+with an **optimistic** store update + **rollback on reject** (F3 `ORG_003`/`PERM_001`, Spec 1 `SPATIAL_*`);
+**no hit ⇒ no-op** (mid-air rejected), **Esc cancels**, and a placement click does not also select.
+`commitPlacement` covers place + move; `clearPlacement` clears. The right-dock **Node panel** + the
+Place/Move/Clear/Zoom buttons (the `placingDeviceId` triggers + the F3 affordance gate) land in **Phase D**.
+The server is the authority — placement runs F3's `assertCanConfigure`; the client gate only hides affordances.
