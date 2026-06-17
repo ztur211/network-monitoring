@@ -1918,3 +1918,15 @@ The building now actually renders in 3D and is navigable. Deps `@react-three/fib
 - **Mount (`fd73b25`).** `ViewportHost`'s `ready` slot renders `<ViewportCanvas model>` (UpdateBanner above), replacing the Phase B placeholder; the overlays test stubs ViewportCanvas (jsdom can't host a `<Canvas>`).
 
 **Phase gate:** desktop **vitest 49 passed** (17 files; +fit 2, +render smoke 1); `tsc -b --noEmit` clean; `electron-vite build` PASS. `@react-three/test-renderer` renders the scene graph headless (no GPU); live orbit/zoom + GPU/visual correctness are manual per spec §13. **Spec 3 Phase C complete.** Next: **Phase D** (raycast pick → highlight, Inspector + isolate/hide/zoom, category-hide, section plane, Toolbar — the last Spec 3 phase).
+
+## Post-MVP Pivot — Spec 3 (3D Viewport) Phase D — Interaction (2026-06-17)
+
+The viewer is now interactive — pick/inspect/visibility/section. **Spec 3 complete.**
+
+- **Picking (`c51fcbb`).** `interaction/picking.ts`: pure `pickExpressId(raycaster, model, vis)` → nearest VISIBLE mesh's `expressID` (skips hidden/isolated-out), else null; `PickingController` (in-Canvas) pointer-down → NDC → raycast → `store.select` (guards a missing headless `domElement`). 3 node units.
+- **Apply state (`a0a2394`).** `scene/apply-model-state.ts`: pure `applyModelState` reflects selection (emissive `0x3366ff`), category/element hide + isolation (`mesh.visible` via `isMeshVisible`), and the section plane (`material.clippingPlanes` via `sectionToPlane`) onto each per-element mesh; `ModelView` runs it in a store-subscribed effect + `invalidate()`. 3 node units.
+- **View commands (`9723595`).** Store gains additive `fitNonce`/`focusNonce` + `requestFit`/`requestFocus`; `scene/ViewCommands` frames `model.bbox` on fit and the selected mesh's bbox on focus — the DOM→r3f store-nonce bridge. `ViewportCanvas` mounts `PickingController` + `ViewCommands`. 1 store unit.
+- **Inspector (`8c0f84e`).** `ui/Inspector`: docked-right; on selection, `getProperties` → IFC type/name/tag + grouped property sets + Isolate/Hide/Zoom-to. 2 RTL units.
+- **Toolbar + mount (`f3106a9`).** `ui/Toolbar`: Fit, Show-all, a section toggle (axis select + position slider), per-category visibility list (element counts). `ViewportHost`'s ready slot renders `<Toolbar/>` + `<Inspector/>` over the canvas. 4 RTL units.
+
+**Phase gate:** desktop **vitest 62 passed** (21 files); `tsc -b --noEmit` clean; `electron-vite build` PASS; **Playwright-Electron e2e 1 passed** (the full app — web-ifc + r3f + interaction bundled — launches under xvfb). **Spec 3 Phase D complete → the entire Spec 3 (3D Viewport) is done** (A loader → B store/lifecycle → C r3f scene → D interaction). The extended `viewportStore` + `ParsedModel` (recenter + Z-up→Y-up `frame`) are the **Spec 4 contract**. Live orbit/pick/section + GPU/visual correctness are manual per spec §13. **On the 3D track, only Spec 4 (device nodes in 3D — needs F3) remains; it converges the permissions + 3D tracks.**
