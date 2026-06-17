@@ -83,3 +83,12 @@ directional light rig, drei `<OrbitControls>` (orbit/pan/zoom), `<ModelView>` (a
 is set for Phase D's section plane. Headless scene tests use `@react-three/test-renderer` (no GPU); GPU/visual
 correctness is verified manually. (`r3f-jsx.d.ts` re-registers r3f's `ThreeElements` on the JSX namespaces — r3f
 v9's bundled types omit the augmentation.)
+
+**Interaction** (`viewport/interaction`, `viewport/ui`): pointer-down raycasts the visible meshes
+(`pickExpressId`) → `store.select`; `applyModelState` (pure) reflects selection (emissive highlight),
+category/element hide + isolation (`mesh.visible`), and the section plane (`material.clippingPlanes`) onto the
+per-element meshes, run by `<ModelView>` on store change. The docked **Inspector** shows the picked element's
+IFC type/name/tag + property sets with Isolate / Hide / Zoom-to; the **Toolbar** has Fit, Show-all, a section
+toggle (axis + position), and a per-category visibility list. Camera commands (Fit / Zoom-to) cross the DOM↔r3f
+boundary via store nonces (`fitNonce`/`focusNonce`) consumed by an in-Canvas `<ViewCommands>`. The extended
+`viewportStore` + the `ParsedModel` handle (with its recenter + Z-up→Y-up `frame`) are the **Spec 4 contract**.
