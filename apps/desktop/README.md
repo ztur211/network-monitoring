@@ -67,3 +67,12 @@ no Rust authored); the `web-ifc.wasm` is **bundled into the renderer** (served a
 remotely). Off-main-thread parsing + geometry batching are a deliberate later pass behind the same loader
 interface. `ParsedModel` / `ElementProperties` (`viewport/ifc/ifc-types.ts`) are the Spec 3 cross-phase
 contract that Phase B (lifecycle), C (r3f scene), and D (interaction) — and Spec 4 (nodes) — build on.
+
+The **load lifecycle** (`use-viewport-loader.ts`) walks `idle → loading → parsing → ready` (or `empty`
+on `MODEL_001`, `error` on download/parse failure) keyed on the selected building, **race-safe** (a stale
+resolve is discarded + disposed) with a **keep-last-1** in-memory model cache (toggling back is instant).
+`data/clients.ts` exposes the bootstrapped REST + realtime clients (`getClients`) to the viewport hooks;
+`use-model-realtime.ts` raises a non-intrusive *model-updated* banner on `v1:buildingModel:activated` /
+`versionUploaded` for the open building (and reverts to *empty* on delete). `<ViewportHost>` switches on
+the status and renders the matching overlay; the `ready` slot is the placeholder Phase C replaces with the
+r3f `<Canvas>`.
