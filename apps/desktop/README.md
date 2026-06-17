@@ -112,6 +112,11 @@ tracks). **Phase A (foundations)** is in — the headless layer the marker/place
   buildingPropertyId=…`, F3 scope-filtered over the building subtree) + `setDevicePosition(id, pos|null)`
   (Spec 1's `PATCH /v1/devices/:id/position`).
 
-Markers (`NodeLayer` + status ring), select-then-click placement, and the right-dock Node panel land in
-Phases B–D. The server is the authority — placement runs F3's `assertCanConfigure`; the client gate only
-hides affordances.
+**Phase B (node layer)** is in: `nodes/NodeLayer.tsx` renders one billboard sprite per *placed* device at
+`toViewport(xyz)` — category-coloured (`category-color.ts`), with a status ring (the §9 seam; v1 `unknown`) —
+as an annotation layer (`depthTest:false`, independent of section/isolate). `use-device-load.ts` loads the
+building's devices (stale loads discarded, Spec 3's race pattern) and live-patches them from
+`v1:device:updated`/`:deleted`; `interaction/picking.ts` raycasts the markers with **priority** over the
+building (`pickNode` → `selectNode`, else the building → `selectElement`). Select-then-click **placement**
+(Phase C) and the right-dock **Node panel** (Phase D) remain. The server is the authority — placement runs
+F3's `assertCanConfigure`; the client gate only hides affordances.
