@@ -93,7 +93,7 @@ toggle (axis + position), and a per-category visibility list. Camera commands (F
 boundary via store nonces (`fitNonce`/`focusNonce`) consumed by an in-Canvas `<ViewCommands>`. The extended
 `viewportStore` + the `ParsedModel` handle (with its recenter + Z-up→Y-up `frame`) are the **Spec 4 contract**.
 
-## Nodes in 3D (Spec 4 — in progress)
+## Nodes in 3D (Spec 4)
 
 Spec 4 layers network **device nodes** onto the Spec 3 viewport (the convergence of the 3D + permissions
 tracks). **Phase A (foundations)** is in — the headless layer the marker/placement/panel phases build on:
@@ -124,6 +124,14 @@ placing mode (`placingDeviceId`), the next click raycasts the building surface (
 visible meshes only), converts the hit to native coords (`toModel`), and persists via `setDevicePosition`
 with an **optimistic** store update + **rollback on reject** (F3 `ORG_003`/`PERM_001`, Spec 1 `SPATIAL_*`);
 **no hit ⇒ no-op** (mid-air rejected), **Esc cancels**, and a placement click does not also select.
-`commitPlacement` covers place + move; `clearPlacement` clears. The right-dock **Node panel** + the
-Place/Move/Clear/Zoom buttons (the `placingDeviceId` triggers + the F3 affordance gate) land in **Phase D**.
-The server is the authority — placement runs F3's `assertCanConfigure`; the client gate only hides affordances.
+`commitPlacement` covers place + move; `clearPlacement` clears.
+
+**Phase D (Node panel + Inspector)** completes the viewer: `ui/NodePanel.tsx` is the right-dock filterable
+device list (text / placement / status / category via `filterDevices`) — the monitoring surface + placement
+source; a row click `selectNode`s. `ui/DeviceDetails.tsx` is the device branch of the **unified Inspector**
+(fields + status + position) with **F3-gated** Place / Move / Clear (rendered only for OWNER/ADMIN via
+`canConfigure`; MEMBER is view-only) and Zoom-to (frames the marker via `ViewCommands`). `Inspector` switches
+element ↔ device on `selection.kind`; `ViewportHost` stacks the panel over the Inspector in a right-dock
+column. The server is the authority — placement runs F3's `assertCanConfigure`; the client gate only hides
+affordances. **Status is the §9 seam the Monitoring spec fills (v1 = `unknown`).** Spec 4 is complete (A
+foundations → B node layer → C placement → D panel/inspector); GPU/visual correctness is verified manually.
