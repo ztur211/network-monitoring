@@ -35,7 +35,7 @@ describe('ViewportHost states', () => {
       activeBuildingPropertyId: 'b',
       status: 'ready',
       updateAvailable: true,
-      model: { elementIndex: new Map() } as any,
+      model: { elementIndex: new Map(), categories: new Map() } as any,
     });
     render(<ViewportHost />);
     fireEvent.click(screen.getByText('Reload'));
