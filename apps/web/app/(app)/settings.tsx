@@ -10,9 +10,21 @@ import {
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../../store/auth.store';
-import { api, listAgents, generateAgentCode, revokeAgent } from '../../lib/api.service';
+import {
+  api,
+  listAgents,
+  generateAgentCode,
+  revokeAgent,
+  listSnmpCredentials,
+  createSnmpCredential,
+  deleteSnmpCredential,
+  listOidProfiles,
+  createOidProfile,
+  assignSnmp,
+} from '../../lib/api.service';
 import type { UserDto } from '@nodescope/shared';
 import { AgentsSettings } from '../../components/AgentsSettings';
+import { SnmpSettings } from '../../components/SnmpSettings';
 
 interface DataSourceStatus {
   type: string;
@@ -253,6 +265,18 @@ export default function SettingsScreen() {
       {/* Agents Section */}
       <AgentsSettings
         client={{ listAgents, generateAgentCode, revokeAgent }}
+      />
+
+      {/* SNMP Section */}
+      <SnmpSettings
+        client={{
+          listSnmpCredentials,
+          createSnmpCredential,
+          deleteSnmpCredential,
+          listOidProfiles,
+          createOidProfile,
+          assignSnmp,
+        }}
       />
 
       {/* Data Sources Section */}

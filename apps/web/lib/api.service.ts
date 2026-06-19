@@ -1,5 +1,19 @@
 import axios from 'axios';
-import type { AgentDto } from '@nodescope/shared';
+import type {
+  AgentDto,
+  SnmpCredentialDto,
+  CreateSnmpCredentialDto,
+  OidProfileDto,
+  CreateOidProfileDto,
+} from '@nodescope/shared';
+
+/** Shape sent to POST /snmp/assign */
+export interface AssignSnmpPayload {
+  targetType: 'network' | 'device';
+  targetId: string;
+  snmpCredentialId: string | null;
+  oidProfileId: string | null;
+}
 
 const apiUrl =
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_API_URL
@@ -44,4 +58,45 @@ export async function generateAgentCode(): Promise<{ code: string }> {
 /** Revoke an enrolled agent by id. */
 export async function revokeAgent(id: string): Promise<void> {
   await api.post(`/agents/${id}/revoke`);
+}
+
+// ─── SNMP ────────────────────────────────────────────────────────────────────
+
+/** List SNMP credentials for the current org. Secrets are never returned. */
+export async function listSnmpCredentials(): Promise<SnmpCredentialDto[]> {
+  const res = await api.get<{ success: true; data: SnmpCredentialDto[] }>('/snmp/credentials');
+  return res.data.data;
+}
+
+/** Create a new SNMP credential (community/authKey/privKey are write-only). */
+export async function createSnmpCredential(
+  dto: CreateSnmpCredentialDto,
+): Promise<SnmpCredentialDto> {
+  const res = await api.post<{ success: true; data: SnmpCredentialDto }>(
+    '/snmp/credentials',
+    dto,
+  );
+  return res.data.data;
+}
+
+/** Delete an SNMP credential by id. */
+export async function deleteSnmpCredential(id: string): Promise<void> {
+  await api.delete(`/snmp/credentials/${id}`);
+}
+
+/** List OID profiles for the current org. */
+export async function listOidProfiles(): Promise<OidProfileDto[]> {
+  const res = await api.get<{ success: true; data: OidProfileDto[] }>('/snmp/oid-profiles');
+  return res.data.data;
+}
+
+/** Create a new OID profile. */
+export async function createOidProfile(dto: CreateOidProfileDto): Promise<OidProfileDto> {
+  const res = await api.post<{ success: true; data: OidProfileDto }>('/snmp/oid-profiles', dto);
+  return res.data.data;
+}
+
+/** Assign (or unassign) a credential/profile to a network or device. */
+export async function assignSnmp(dto: AssignSnmpPayload): Promise<void> {
+  await api.post('/snmp/assign', dto);
 }
