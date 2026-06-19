@@ -18,10 +18,10 @@ import { AssignSnmpDto, CreateSnmpCredentialBodyDto, CreateOidProfileBodyDto } f
  *   GET    /v1/snmp/credentials         — list credentials (secrets omitted)
  *   GET    /v1/snmp/credentials/:id     — get single credential
  *   DELETE /v1/snmp/credentials/:id     — delete (409 SNMP_003 if assigned)
- *   POST   /v1/snmp/profiles            — create OID profile
- *   GET    /v1/snmp/profiles            — list profiles (summary)
- *   GET    /v1/snmp/profiles/:id        — get profile with entries
- *   DELETE /v1/snmp/profiles/:id        — delete (409 SNMP_003 if assigned)
+ *   POST   /v1/snmp/oid-profiles         — create OID profile
+ *   GET    /v1/snmp/oid-profiles         — list profiles (summary)
+ *   GET    /v1/snmp/oid-profiles/:id     — get profile with entries
+ *   DELETE /v1/snmp/oid-profiles/:id     — delete (409 SNMP_003 if assigned)
  *   POST   /v1/snmp/assign              — assign cred/profile to network or device (F3-scoped)
  */
 @Controller('v1/snmp')
@@ -61,28 +61,28 @@ export class SnmpController {
 
   // ─── OID Profiles ─────────────────────────────────────────────────────────
 
-  @Post('profiles')
+  @Post('oid-profiles')
   @OrgRoles('OWNER', 'ADMIN')
   async createProfile(@OrgId() orgId: string, @Body() dto: CreateOidProfileBodyDto) {
     const data = await this.svc.createProfile(orgId, dto as Parameters<typeof this.svc.createProfile>[1]);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
-  @Get('profiles')
+  @Get('oid-profiles')
   @OrgRoles('OWNER', 'ADMIN')
   async listProfiles(@OrgId() orgId: string) {
     const data = await this.svc.listProfiles(orgId);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
-  @Get('profiles/:id')
+  @Get('oid-profiles/:id')
   @OrgRoles('OWNER', 'ADMIN')
   async getProfile(@OrgId() orgId: string, @Param('id') id: string) {
     const data = await this.svc.getProfile(orgId, id);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
-  @Delete('profiles/:id')
+  @Delete('oid-profiles/:id')
   @OrgRoles('OWNER', 'ADMIN')
   @HttpCode(200)
   async deleteProfile(@OrgId() orgId: string, @Param('id') id: string) {
