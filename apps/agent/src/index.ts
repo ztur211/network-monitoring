@@ -22,4 +22,7 @@ async function main() {
   const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency }).catch((e) => console.error('[agent] cycle error', e));
   setInterval(tick, cfg.probeIntervalMs); void tick();
 }
-void main();
+main().catch((e) => {
+  console.error('[agent] fatal', e);
+  process.exit(1);
+});
