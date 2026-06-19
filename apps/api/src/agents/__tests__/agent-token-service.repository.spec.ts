@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AgentRepository } from '../agent.repository';
 import { AgentTokenService } from '../agent-token.service';
+import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 /**
  * Integration (real test DB). DB-backed AgentTokenService.
@@ -57,10 +58,13 @@ describe('AgentTokenService (integration)', () => {
     // verifies back to {orgId, agentId}
     expect(await svc.verifyToken(token)).toEqual({ orgId, agentId });
 
-    // single-use: re-enrolling with the same code is rejected
+    // single-use: re-enrolling with the same code is rejected with AGENT_001
     await expect(
       svc.enroll(code, { name: 'x', platform: 'linux', version: '0' }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: 'AGENT_001' });
+    await expect(
+      svc.enroll(code, { name: 'x', platform: 'linux', version: '0' }),
+    ).rejects.toBeInstanceOf(NodeScopeException);
 
     // revoke invalidates the token
     await repo.setStatus(agentId, 'REVOKED');
