@@ -6,6 +6,8 @@ import type {
   OidProfileDto,
   OidProfileSummaryDto,
   CreateOidProfileDto,
+  SnmpTargetDto,
+  AgentDeviceDto,
 } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { CryptoService } from '../common/crypto/crypto.service';
@@ -196,6 +198,63 @@ export class SnmpService {
         oidProfileId: updated.oidProfileId,
       };
     }
+  }
+
+  // ─── Resolution — compute effective SNMP target for a device ─────────────
+
+  /**
+   * Compute the effective SNMP credential + OID profile for a device by applying
+   * override-wins semantics (device-level > network-level).
+   *
+   * Returns null when neither the device nor its network has a credential assigned.
+   * This is the ONLY place where encrypted secrets are decrypted.
+   * The returned DTO must NEVER be persisted or logged.
+   */
+  async resolveTarget(organizationId: string, deviceId: string): Promise<SnmpTargetDto | null> {
+    const device = await this.repo.deviceWithSnmp(organizationId, deviceId);
+    if (!device) return null;
+
+    // Override-wins: device credential takes precedence over network credential
+    const credId = device.snmpCredentialId ?? device.network?.snmpCredentialId ?? null;
+    if (!credId) return null;
+
+    const cred = await this.repo.findCredential(organizationId, credId);
+    if (!cred) return null;
+
+    // Override-wins: device OID profile takes precedence over network OID profile
+    const profId = device.oidProfileId ?? device.network?.oidProfileId ?? null;
+    const profile = profId ? await this.repo.findProfile(organizationId, profId) : null;
+
+    const dec = (b: string | null): string | undefined => (b ? this.crypto.decrypt(b) : undefined);
+
+    const target: SnmpTargetDto = {
+      version: cred.snmpVersion as 'V2C' | 'V3',
+      community: dec(cred.communityEnc),
+      securityName: cred.securityName ?? undefined,
+      securityLevel: cred.securityLevel ?? undefined,
+      authProtocol: cred.authProtocol ?? undefined,
+      authKey: dec(cred.authKeyEnc),
+      privProtocol: cred.privProtocol ?? undefined,
+      privKey: dec(cred.privKeyEnc),
+      oids: profile ? profile.entries.map((e) => ({ oid: e.oid, metric: e.metric })) : [],
+      interfaceMetrics: profile ? profile.includeInterfaceMetrics : false,
+    };
+
+    return target;
+  }
+
+  /**
+   * Attach the resolved SNMP target to each device in the list, returning a new
+   * array with `snmp` populated where a credential is resolved (or omitted if null).
+   * Designed for use in the agent device-sync payload (Phase C Task 3).
+   */
+  async attachTargets(organizationId: string, devices: AgentDeviceDto[]): Promise<AgentDeviceDto[]> {
+    return Promise.all(
+      devices.map(async (d) => {
+        const snmp = await this.resolveTarget(organizationId, d.id);
+        return snmp ? { ...d, snmp } : { ...d };
+      }),
+    );
   }
 
   // ─── Mappers — secrets NEVER exposed ──────────────────────────────────────
