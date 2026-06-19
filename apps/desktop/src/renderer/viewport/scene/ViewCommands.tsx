@@ -18,6 +18,7 @@ export function ViewCommands({
   const { camera, size, invalidate } = useThree();
   const fitNonce = useViewportStore((s) => s.fitNonce);
   const focusNonce = useViewportStore((s) => s.focusNonce);
+  const viewpointNonce = useViewportStore((s) => s.viewpointRequest?.nonce);
 
   const frame = (box: THREE.Box3) => {
     const { position, target } = fitCameraToBox(
@@ -52,6 +53,21 @@ export function ViewCommands({
       }
     }
   }, [focusNonce]);
+
+  // Spec 6 Phase E: apply a BCF viewpoint camera (position/up/target) when requested.
+  useEffect(() => {
+    if (!viewpointNonce) return;
+    const req = useViewportStore.getState().viewpointRequest;
+    if (!req) return;
+    camera.position.copy(req.camera.position);
+    camera.up.copy(req.camera.up);
+    camera.lookAt(req.camera.target);
+    if (controls.current) {
+      controls.current.target.copy(req.camera.target);
+      controls.current.update();
+    }
+    invalidate();
+  }, [viewpointNonce]);
 
   return null;
 }

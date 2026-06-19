@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as THREE from 'three';
 import type { DeviceDto, AccessSummaryDto } from '@nodescope/shared';
 import type { ParsedModel, IfcType, ExpressId } from '../viewport/ifc/ifc-types';
 import { type NodeFilter, emptyFilter } from '../viewport/nodes/filter-devices';
@@ -64,6 +65,10 @@ export interface ViewportState {
   setNodeFilter: (p: Partial<NodeFilter>) => void;
   setNodeStatus: (deviceId: string, s: NodeStatus) => void;
   setAccess: (a: AccessSummaryDto | null) => void;
+  // Spec 6 Phase E: BCF viewpoint camera request (set by navigateToViewpoint, consumed by ViewCommands)
+  viewpointRequest: { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number } | null;
+  setViewpointRequest: (req: { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number }) => void;
+  setHiddenElements: (s: Set<ExpressId>) => void;
   // internal lifecycle setters:
   _setStatus: (s: ViewportStatus, error?: string | null) => void;
   _setModel: (m: ParsedModel | null) => void;
@@ -88,6 +93,7 @@ export const initialViewportState = () => ({
   nodeFilter: emptyFilter(),
   nodeStatus: new Map<string, NodeStatus>(),
   access: null as AccessSummaryDto | null,
+  viewpointRequest: null as { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number } | null,
 });
 
 export const useViewportStore = create<ViewportState>()((set) => ({
@@ -151,6 +157,8 @@ export const useViewportStore = create<ViewportState>()((set) => ({
       return { nodeStatus: n };
     }),
   setAccess: (access) => set({ access }),
+  setViewpointRequest: (viewpointRequest) => set({ viewpointRequest }),
+  setHiddenElements: (hiddenElements) => set({ hiddenElements }),
   _setStatus: (status, error = null) => set({ status, error }),
   _setModel: (model) => set({ model }),
 }));
