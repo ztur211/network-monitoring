@@ -6,3 +6,4 @@ export * from './types/ai.types';
 export * from './types/network.types';
 export * from './types/onboarding.types';
 export * from './types/agent.types';
+export * from './types/snmp.types';
