@@ -63,6 +63,12 @@ export class BcfImportService {
       throw new NodeScopeException('BCF_001', 'BCF_FILE_TOO_LARGE', HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
+    // Building must exist in the org before the permission gate (consistent with createTopic).
+    const building = await this.properties.findInOrg(member.organizationId, buildingPropertyId);
+    if (!building) {
+      throw new NodeScopeException('PROP_001', 'Building not found', HttpStatus.NOT_FOUND);
+    }
+
     // F3 permission gate
     await this.permissions.assertCanConfigure(member, buildingPropertyId);
 
@@ -72,6 +78,20 @@ export class BcfImportService {
       parsed = await readBcfZip(buffer);
     } catch {
       throw new NodeScopeException('BCF_003', 'MALFORMED_BCF_ZIP', HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    // Validate each parsed topic has required fields before touching the DB.
+    // A malformed-but-parseable archive must 422 (BCF_003), never 500.
+    for (const t of parsed.topics) {
+      if (!t.title || typeof t.title !== 'string' || t.title.trim() === '') {
+        throw new NodeScopeException('BCF_003', 'Malformed BCF archive', HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (!t.creationAuthor || typeof t.creationAuthor !== 'string' || t.creationAuthor.trim() === '') {
+        throw new NodeScopeException('BCF_003', 'Malformed BCF archive', HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (!t.creationDate || isNaN(new Date(t.creationDate).getTime())) {
+        throw new NodeScopeException('BCF_003', 'Malformed BCF archive', HttpStatus.UNPROCESSABLE_ENTITY);
+      }
     }
 
     const { organizationId } = member;

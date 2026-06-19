@@ -233,4 +233,30 @@ describe('BcfController (e2e)', () => {
 
     expect(res.body.error.code).toBe('PROP_001');
   });
+
+  // ─── Out-of-scope ADMIN: mutation → 403 (PERM_001) ───────────────────────
+  // Fix 12: an ADMIN scoped to a DIFFERENT building (or no building) must
+  // hit PERM_001 from assertCanConfigure, not slip through.
+
+  it('out-of-scope ADMIN: POST topics (mutation) → 403 (PERM_001)', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/buildings/${buildingId}/bcf/topics`)
+      .set('Cookie', outOfScopeCookie)
+      .send({ title: 'ADMIN out-of-scope attempt' })
+      .expect(403);
+
+    expect(res.body.error.code).toBe('PERM_001');
+  });
+
+  it('out-of-scope ADMIN: import .bcfzip → 403 (PERM_001)', async () => {
+    const buf = await buildSampleBcfZip();
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/buildings/${buildingId}/bcf/import`)
+      .set('Cookie', outOfScopeCookie)
+      .attach('file', buf, 'in.bcfzip')
+      .expect(403);
+
+    expect(res.body.error.code).toBe('PERM_001');
+  });
 });

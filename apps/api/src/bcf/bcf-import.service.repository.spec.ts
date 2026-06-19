@@ -59,9 +59,14 @@ describe('BcfImportService (integration)', () => {
           useValue: { assertCanConfigure: jest.fn().mockResolvedValue(undefined) },
         },
         {
-          // Return real subtreeIds from the seeded DB via closure
+          // Return real subtreeIds from the seeded DB via closure; findInOrg uses closure too
           provide: PropertiesService,
-          useValue: { subtreePropertyIds: jest.fn().mockImplementation(() => Promise.resolve(subtreeIds)) },
+          useValue: {
+            subtreePropertyIds: jest.fn().mockImplementation(() => Promise.resolve(subtreeIds)),
+            findInOrg: jest.fn().mockImplementation((_orgId: string, propId: string) =>
+              Promise.resolve(propId === buildingId ? { id: propId } : null),
+            ),
+          },
         },
       ],
     }).compile();
@@ -244,6 +249,73 @@ describe('BcfImportService (integration)', () => {
 
     const linksAfter = await prisma.bcfTopicDevice.findMany({ where: { topicId: dbTopic.id } });
     expect(linksAfter).toHaveLength(0);
+  });
+
+  it('throws PROP_001 (404) when buildingPropertyId does not belong to the org (Fix 5)', async () => {
+    const member: OrgMemberContext = { id: 'mem-owner', organizationId: orgId, role: 'OWNER' };
+    const foreignBuildingId = 'ffffffff-0000-0000-0000-000000000000';
+    const topic = buildTopic('aaaabbbb-0000-0000-0000-f00000000001');
+    const buf = await writeBcfZip([topic]);
+    // findInOrg returns null for the foreign id → PROP_001
+    await expect(service.importBcfZip(member, foreignBuildingId, buf)).rejects.toMatchObject({
+      code: 'PROP_001',
+    });
+  });
+
+  it('throws BCF_003 (422) when a parsed topic is missing title (Fix 6 — malformed topic)', async () => {
+    const member: OrgMemberContext = { id: 'mem-owner', organizationId: orgId, role: 'OWNER' };
+    const topicNoTitle: ParsedTopic = {
+      guid: 'aaaabbbb-0000-0000-0000-000000000020',
+      title: '',           // empty title → malformed
+      topicType: 'Clash',
+      topicStatus: 'Open',
+      labels: [],
+      creationAuthor: 'author@x.com',
+      creationDate: '2026-06-19T00:00:00Z',
+      comments: [],
+      viewpoints: [
+        {
+          guid: 'vp-0000-0000-0000-000000000020',
+          isPrimary: true,
+          camera: { kind: 'perspective', position: [0, 0, 1], direction: [0, 0, -1], up: [0, 1, 0], fieldOfView: 60 },
+          components: { selection: [], visibility: { defaultVisibility: true, exceptions: [] } },
+          clippingPlanes: [],
+          snapshotPng: VALID_1X1_PNG,
+        },
+      ],
+    };
+    const buf = await writeBcfZip([topicNoTitle]);
+    await expect(service.importBcfZip(member, buildingId, buf)).rejects.toMatchObject({
+      code: 'BCF_003',
+    });
+  });
+
+  it('throws BCF_003 (422) when a parsed topic has an unparseable creationDate (Fix 6)', async () => {
+    const member: OrgMemberContext = { id: 'mem-owner', organizationId: orgId, role: 'OWNER' };
+    const topicBadDate: ParsedTopic = {
+      guid: 'aaaabbbb-0000-0000-0000-000000000021',
+      title: 'Valid title',
+      topicType: 'Clash',
+      topicStatus: 'Open',
+      labels: [],
+      creationAuthor: 'author@x.com',
+      creationDate: 'not-a-date',   // invalid date → malformed
+      comments: [],
+      viewpoints: [
+        {
+          guid: 'vp-0000-0000-0000-000000000021',
+          isPrimary: true,
+          camera: { kind: 'perspective', position: [0, 0, 1], direction: [0, 0, -1], up: [0, 1, 0], fieldOfView: 60 },
+          components: { selection: [], visibility: { defaultVisibility: true, exceptions: [] } },
+          clippingPlanes: [],
+          snapshotPng: VALID_1X1_PNG,
+        },
+      ],
+    };
+    const buf = await writeBcfZip([topicBadDate]);
+    await expect(service.importBcfZip(member, buildingId, buf)).rejects.toMatchObject({
+      code: 'BCF_003',
+    });
   });
 
   it('throws BCF_002 (422) when primary viewpoint has no valid PNG', async () => {
