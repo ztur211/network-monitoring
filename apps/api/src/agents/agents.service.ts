@@ -59,7 +59,8 @@ export class AgentsService {
   ): Promise<{ id: string }> {
     const agent = await this.assertOrgScope(organizationId, agentId);
     await this.repo.delete(agentId);
-    await this.audit.recordDelete(organizationId, 'Agent', agent as unknown as { id: string } & Record<string, unknown>);
+    const { id, name, platform, version, status } = agent;
+    await this.audit.recordDelete(organizationId, 'Agent', { id, name, platform, version, status });
     void actorMemberId;
     return { id: agentId };
   }

@@ -30,9 +30,10 @@ The agent runs a cycle on every `probeIntervalMs` interval:
 3. **Enqueue to the offline buffer** — the merged `IngestBatchDto` (`checks` + `metrics`)
    is appended to a file-backed JSONL queue.
 4. **Drain / flush to ingest** — batches are flushed one by one to
-   `POST /v1/monitoring/ingest`. If a flush call throws (server unreachable, non-2xx),
-   the item is kept at the head of the queue and the drain loop stops; it retries on the
-   next cycle.
+   `POST /v1/monitoring/ingest`. On a permanent 4xx response (e.g. 404, 401 — but not
+   429), the batch is dropped and logged; subsequent batches continue draining. On
+   network failure, 5xx, or 429, the item is kept at the head of the queue and the drain
+   loop stops; it retries on the next cycle.
 5. **Heartbeat** — calls `POST /v1/monitoring/agent/heartbeat` to record liveness.
 
 ### Collector seam
@@ -61,8 +62,12 @@ restarts. Behaviour:
 - **Enqueue** appends a batch and immediately persists the queue file.
 - **Drop-oldest cap** — if the queue exceeds `maxItems` (default 5 000) the oldest
   entries are dropped before persisting.
-- **Keep on failure** — if a flush call fails during `drain`, the failing batch stays at
-  position 0 and the drain loop exits; the agent retries next cycle.
+- **Keep on transient failure** — if a flush call throws a network/5xx/429 error during
+  `drain`, the failing batch stays at position 0 and the drain loop exits; the batch is
+  retried on the next cycle. (Exponential backoff is a future refinement — retries currently
+  happen on the next fixed cycle interval.)
+- **Drop on permanent 4xx** — if the server responds with a permanent client error (4xx,
+  excluding 429), the batch is dropped and logged; the drain loop continues to the next batch.
 - **Drain on reconnect** — as soon as the server is reachable again, each `runCycle`
   call works through all queued batches before sending the fresh batch.
 

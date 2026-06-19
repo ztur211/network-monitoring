@@ -268,7 +268,7 @@ All three scripts:
 1. Install the agent binary (from `dist/` or from `--binary-url <url>` for CI
    deployments where the binary is fetched from the Spaces bucket).
 2. Run `nodescope-agent enroll --code <code> --url <api-url>` to exchange the code
-   for a per-agent bearer token.
+   for a per-agent token (sent via the `x-agent-token` header on each request).
 3. Register and start the OS service so the agent restarts automatically.
 
 Once enrolled, the agent appears in the **Agents** management list in the web app and

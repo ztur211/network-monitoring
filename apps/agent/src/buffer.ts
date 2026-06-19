@@ -13,7 +13,14 @@ export function createBuffer(o: { path: string; maxItems: number }): Buffer {
     size() { return pending.length; },
     async drain(flush) {
       while (pending.length) {
-        await flush(pending[0]);   // throws on failure → loop stops, item kept
+        try { await flush(pending[0]); }
+        catch (e) {
+          const status = (e as { status?: number })?.status;
+          if (status != null && status >= 400 && status < 500 && status !== 429) {
+            console.error(`[agent] dropping batch (permanent ${status})`); pending.shift(); persist(); continue;
+          }
+          throw e; // transient: keep head, stop draining (retry next cycle)
+        }
         pending.shift(); persist();
       }
     },

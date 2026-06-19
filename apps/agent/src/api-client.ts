@@ -1,5 +1,12 @@
 import type { AgentDeviceDto, IngestBatchDto } from '@nodescope/shared';
 
+export class AgentHttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'AgentHttpError';
+  }
+}
+
 export interface AgentClient {
   syncDevices(): Promise<AgentDeviceDto[]>;
   ingest(batch: IngestBatchDto): Promise<void>;
@@ -10,8 +17,8 @@ export function createAgentClient(o: { apiUrl: string; token: string; fetchImpl?
   const f = o.fetchImpl ?? fetch;
   const headers = { 'content-type': 'application/json', 'x-agent-token': o.token };
   const call = async (path: string, init?: RequestInit) => {
-    const res = await f(`${o.apiUrl}${path}`, { ...init, headers });
-    if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} → ${res.status}`);
+    const res = await f(`${o.apiUrl}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+    if (!res.ok) throw new AgentHttpError(res.status, `${init?.method ?? 'GET'} ${path} → ${res.status}`);
     return (await res.json()) as { data: unknown };
   };
   return {
