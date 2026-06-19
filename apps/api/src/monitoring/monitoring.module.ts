@@ -8,6 +8,7 @@ import { IngestService, MONITORING_EMITTER } from './ingest/ingest.service';
 import { MonitoringGatewayEmitter } from './ingest/monitoring-gateway.emitter';
 import { MonitoringService } from './status/monitoring.service';
 import { MonitoringController } from './status/monitoring.controller';
+import { ProberService } from './prober/prober.service';
 
 /**
  * Monitoring pipeline. Phase A: storage + ingest seam. Phase B (this): the
@@ -24,6 +25,7 @@ import { MonitoringController } from './status/monitoring.controller';
     MonitoringService,
     MonitoringGatewayEmitter,
     { provide: MONITORING_EMITTER, useExisting: MonitoringGatewayEmitter },
+    ProberService,
   ],
   exports: [IngestService, MonitoringRepository],
 })
