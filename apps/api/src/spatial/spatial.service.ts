@@ -1,9 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { DeviceDto, DevicePositionDto } from '@nodescope/shared';
+import { DeviceDto, DevicePositionDto, WS_EVENTS } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import type { OrgMemberContext } from '../organizations/org-context.types';
 import { toDeviceDto } from '../devices/device.mapper';
 import { BuildingModelsRepository } from '../building-models/building-models.repository';
+import { PermissionsService } from '../permissions/permissions.service';
+import { ConflictResolutionService } from '../conflict/conflict.service';
 import { SpatialRepository } from './spatial.repository';
 
 /**
@@ -18,6 +20,8 @@ export class SpatialService {
   constructor(
     private readonly repo: SpatialRepository,
     private readonly models: BuildingModelsRepository,
+    private readonly permissions: PermissionsService,
+    private readonly conflict: ConflictResolutionService,
   ) {}
 
   async setPosition(
@@ -29,6 +33,10 @@ export class SpatialService {
     if (!device) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
+
+    // F3 / Spec 4 §8: per-site configure scope — OWNER any; MEMBER → ORG_003; out-of-scope ADMIN → PERM_001.
+    // (Authorize against the device's current governing site; org-wide lookup above so out-of-scope ADMIN → 403 not 404.)
+    await this.permissions.assertCanConfigure(member, device.propertyId);
 
     // Loose `== null` is intentional: a field absent from the request body arrives as undefined,
     // and both undefined and null must count as "unset".
@@ -69,6 +77,18 @@ export class SpatialService {
     if (!updated) {
       throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
     }
-    return toDeviceDto(updated);
+
+    const dto = toDeviceDto(updated);
+    // Spec 4 §10: position changes propagate live (carries x/y/z) — scoped to the device's site (F3).
+    const changes = (['x', 'y', 'z'] as const)
+      .filter((f) => device[f] !== updated[f])
+      .map((f) => ({ field: f, oldValue: device[f], newValue: updated[f] }));
+    await this.conflict.emitScoped(member.organizationId, updated.propertyId, WS_EVENTS.DEVICE_UPDATED, {
+      deviceId,
+      device: dto,
+      changes,
+      updatedBy: updated.userId ?? '',
+    });
+    return dto;
   }
 }

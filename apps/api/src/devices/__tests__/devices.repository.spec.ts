@@ -8,6 +8,7 @@ import { ChangeLogRepository } from '../../audit/change-log.repository';
 import { auditAls } from '../../audit/audit.als';
 import { DevicesService } from '../devices.service';
 import { ContainmentService } from '../../properties/containment.service';
+import { PropertiesService } from '../../properties/properties.service';
 import { PermissionsService } from '../../permissions/permissions.service';
 import { SpatialRepository } from '../../spatial/spatial.repository';
 import { DeviceCategory } from '@prisma/client';
@@ -238,6 +239,7 @@ describe('DevicesService audit integration', () => {
         DevicesService,
         { provide: ConflictResolutionService, useValue: mockConflict },
         { provide: ContainmentService, useValue: mockContainment },
+        { provide: PropertiesService, useValue: { subtreePropertyIds: jest.fn().mockResolvedValue([]) } },
         { provide: PermissionsService, useValue: { scopeFilter: jest.fn().mockResolvedValue(null), assertCanConfigure: jest.fn().mockResolvedValue(undefined) } },
         { provide: SpatialRepository, useValue: { resolveGoverningBuildingId: jest.fn().mockResolvedValue(null) } },
       ],

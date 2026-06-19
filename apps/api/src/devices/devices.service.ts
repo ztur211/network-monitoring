@@ -9,6 +9,7 @@ import { OrganizationsRepository } from '../organizations/organizations.reposito
 import { assertNameMatchesPolicy } from '../organizations/naming-policy';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ContainmentService } from '../properties/containment.service';
+import { PropertiesService } from '../properties/properties.service';
 import { SpatialRepository } from '../spatial/spatial.repository';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS, PatchDeviceDto } from './devices.dto';
 import { DevicesRepository } from './devices.repository';
@@ -22,6 +23,7 @@ export class DevicesService {
     private readonly audit: AuditService,
     private readonly containment: ContainmentService,
     private readonly permissions: PermissionsService,
+    private readonly properties: PropertiesService,
     private readonly spatial: SpatialRepository,
   ) {}
 
@@ -32,6 +34,23 @@ export class DevicesService {
       this.devicesRepository.countByOrgId(member.organizationId, scope),
     ]);
     return { items: items.map((d) => toDeviceDto(d)), total };
+  }
+
+  /**
+   * Spec 4: the active building's devices for the 3D viewport. Devices whose propertyId is at/under
+   * the building (F2 subtree), AND-ed with the caller's F3 read-scope (null = OWNER, no filter).
+   * Not paginated — a building's in-scope device set is loaded whole into the node layer.
+   */
+  async listDevicesForBuilding(
+    member: OrgMemberContext,
+    buildingPropertyId: string,
+  ): Promise<DeviceDto[]> {
+    const subtree = await this.properties.subtreePropertyIds(member.organizationId, buildingPropertyId);
+    const scope = await this.permissions.scopeFilter(member);
+    const propertyIdIn = scope ? subtree.filter((id) => scope.propertyIdIn.includes(id)) : subtree;
+    if (propertyIdIn.length === 0) return [];
+    const items = await this.devicesRepository.findAllByOrgId(member.organizationId, { propertyIdIn });
+    return items.map((d) => toDeviceDto(d));
   }
 
   async createDevice(

@@ -1,0 +1,26 @@
+name: Desktop Build
+
+# The Windows NSIS installer is heavy, so build it on demand (manual) or on a release tag —
+# not on every push. Unit/lint/e2e for the desktop run in the main CI.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Package Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run package:win --workspace=apps/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodescope-desktop-win
+          path: apps/desktop/release/*.exe
+          if-no-files-found: error
