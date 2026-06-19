@@ -39,6 +39,7 @@ import { DesktopAuthModule } from './desktop-auth/desktop-auth.module';
 import { ExportModule } from './export/export.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { AgentModule } from './agents/agents.module';
+import { SnmpModule } from './snmp/snmp.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -92,6 +93,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     SpatialModule,
     MonitoringModule,
     AgentModule,
+    SnmpModule,
     DesktopAuthModule,
     ExportModule,
   ],
