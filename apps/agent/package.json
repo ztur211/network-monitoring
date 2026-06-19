@@ -7,6 +7,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:bundle": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/nodescope-agent.cjs",
+    "build:bin": "npm run build:bundle && node --experimental-sea-config sea-config.json && cp $(which node) dist/nodescope-agent && npx postject dist/nodescope-agent NODE_SEA_BLOB dist/nodescope-agent.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
     "test": "vitest run"
   },
   "dependencies": {
@@ -15,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }
