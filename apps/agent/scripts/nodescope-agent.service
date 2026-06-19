@@ -1,0 +1,18 @@
+[Unit]
+Description=NodeScope Agent — network monitoring daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nodescope-agent
+Restart=on-failure
+RestartSec=10s
+# Credentials are written to /etc/nodescope-agent/credentials.json during enroll
+# Override API URL if needed: Environment=NODESCOPE_AGENT_API_URL=https://your-server/api
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nodescope-agent
+
+[Install]
+WantedBy=multi-user.target

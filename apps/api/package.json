@@ -25,6 +25,7 @@
     "@nestjs/throttler": "^6.0.0",
     "@nestjs/websockets": "^11.0.0",
     "@nodescope/shared": "*",
+    "@nodescope/probe": "*",
     "@prisma/client": "^5.14.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "argon2": "^0.44.0",

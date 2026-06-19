@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../../store/auth.store';
-import { api } from '../../lib/api.service';
+import { api, listAgents, generateAgentCode, revokeAgent } from '../../lib/api.service';
 import type { UserDto } from '@nodescope/shared';
+import { AgentsSettings } from '../../components/AgentsSettings';
 
 interface DataSourceStatus {
   type: string;
@@ -248,6 +249,11 @@ export default function SettingsScreen() {
           </View>
         </View>
       </View>
+
+      {/* Agents Section */}
+      <AgentsSettings
+        client={{ listAgents, generateAgentCode, revokeAgent }}
+      />
 
       {/* Data Sources Section */}
       <View className="px-4 mt-6 mb-8">

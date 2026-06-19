@@ -166,8 +166,10 @@ nodescope/
   apps/
     api/         NestJS backend (TypeScript, strict)
     web/         React Native + Expo Web (TypeScript, strict)
+    agent/       Cross-platform monitoring daemon (enrolls + polls + pushes; Phase B–D planned)
   packages/
-    shared/      Types shared between api and web
+    shared/      Types shared between api and web (incl. agent DTOs added in Spec 8)
+    probe/       @nodescope/probe — shared TCP/ICMP reachability primitives (extracted Spec 8)
   docs/          PRD, SAD, API Design, DB Schema, Implementation Plan
 ```
 

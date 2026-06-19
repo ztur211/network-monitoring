@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AgentTokenService } from '../../agents/agent-token.service';
 
 /**
  * E2E for the Spec 7 HTTP ingest + token endpoints. Requires the test stack (:5433/:6380/:9100).
@@ -11,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('IngestController (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let agentTokens: AgentTokenService;
   let ownerCookie: string;
   let orgId: string;
   let buildingId: string;
@@ -26,6 +28,7 @@ describe('IngestController (e2e)', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
     prisma = app.get(PrismaService);
+    agentTokens = app.get(AgentTokenService);
 
     const signUp = async (email: string, name: string) => {
       const res = await request(app.getHttpServer())
@@ -66,6 +69,8 @@ describe('IngestController (e2e)', () => {
       await prisma.deviceStatus.deleteMany({ where: { organizationId: oid } });
       await prisma.$executeRaw`DELETE FROM "MonitoringMetric" WHERE "organizationId" = ${oid}`;
       await prisma.monitoringIngestToken.deleteMany({ where: { organizationId: oid } });
+      await prisma.agentEnrollmentCode.deleteMany({ where: { organizationId: oid } });
+      await prisma.agent.deleteMany({ where: { organizationId: oid } });
       await prisma.device.deleteMany({ where: { organizationId: oid } });
       await prisma.network.deleteMany({ where: { organizationId: oid } });
       await prisma.property.deleteMany({ where: { organizationId: oid, type: 'FLOOR' } });
@@ -137,5 +142,23 @@ describe('IngestController (e2e)', () => {
       .set('Cookie', cookie)
       .expect(403);
     await prisma.organizationMember.deleteMany({ where: { userId: memUser.id } });
+  });
+
+  it('accepts an agent token (x-agent-token) and tags DeviceStatus.source = agent:<id>', async () => {
+    // Enroll a real agent via AgentTokenService (no HTTP – direct service call).
+    const code = await agentTokens.generateEnrollmentCode(orgId, null);
+    const { agentId, token } = await agentTokens.enroll(code, { name: 'e2e-agent', platform: 'linux', version: '0.0.1' });
+
+    // Ingest a check using the agent token.
+    await request(app.getHttpServer())
+      .post('/api/v1/monitoring/ingest')
+      .set('x-agent-token', token)
+      .send({ checks: [{ deviceId, ok: true, latencyMs: 4 }] })
+      .expect(202);
+
+    // Verify the persisted DeviceStatus row carries the agent-tagged source.
+    const row = await prisma.deviceStatus.findFirst({ where: { deviceId, source: `agent:${agentId}` } });
+    expect(row).not.toBeNull();
+    expect(row?.source).toBe(`agent:${agentId}`);
   });
 });
