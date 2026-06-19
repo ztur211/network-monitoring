@@ -73,4 +73,19 @@ export class AgentRepository {
       data: { usedAt: new Date() },
     });
   }
+
+  /**
+   * List the devices in an org that have an IP address — the set an agent can probe.
+   * Devices without ipAddress are excluded (no target to poll).
+   */
+  async listOrgDevicesWithIp(
+    organizationId: string,
+  ): Promise<{ id: string; name: string; ipAddress: string }[]> {
+    const rows = await this.prisma.device.findMany({
+      where: { organizationId, ipAddress: { not: null } },
+      select: { id: true, name: true, ipAddress: true },
+    });
+    // Prisma types ipAddress as string | null, but the where clause ensures it's non-null.
+    return rows as { id: string; name: string; ipAddress: string }[];
+  }
 }
