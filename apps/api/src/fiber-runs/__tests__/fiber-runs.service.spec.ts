@@ -46,6 +46,8 @@ const makeDevice = (id: string, propertyId = 'prop-1') => ({
   macAddress: null,
   notes: null,
   version: 1,
+  snmpCredentialId: null,
+  oidProfileId: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 });

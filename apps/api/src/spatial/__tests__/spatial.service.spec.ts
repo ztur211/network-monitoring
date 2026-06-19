@@ -34,6 +34,8 @@ const fullDevice = (over: Partial<Device> = {}): Device => ({
   macAddress: null,
   notes: null,
   version: 1,
+  snmpCredentialId: null,
+  oidProfileId: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...over,
