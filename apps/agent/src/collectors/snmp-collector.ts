@@ -61,9 +61,10 @@ export function snmpCollector(factory: SnmpSessionFactory): Collector {
       }
 
       const target = device.snmp;
-      const session = factory(target, device.ipAddress);
+      let session: SnmpSession | undefined;
 
       try {
+        session = factory(target, device.ipAddress);
         const metrics: Array<{ deviceId: string; metric: string; value: number }> = [];
 
         // --- sysUpTime scalar GET ---
@@ -78,18 +79,14 @@ export function snmpCollector(factory: SnmpSessionFactory): Collector {
         // sysUpTime in hundredths of seconds → convert to seconds
         const rawUptime = scalarResult[SYS_UPTIME];
         if (rawUptime != null) {
-          const uptimeValue = typeof rawUptime === 'bigint'
-            ? Number(rawUptime) / 100
-            : (Number(rawUptime) / 100);
-          metrics.push({ deviceId: device.id, metric: 'sys_uptime', value: uptimeValue });
+          metrics.push({ deviceId: device.id, metric: 'sys_uptime', value: Number(rawUptime) / 100 });
         }
 
         // Custom OID entries
         for (const entry of target.oids) {
           const raw = scalarResult[entry.oid];
           if (raw != null) {
-            const value = typeof raw === 'bigint' ? Number(raw) : Number(raw);
-            metrics.push({ deviceId: device.id, metric: entry.metric, value });
+            metrics.push({ deviceId: device.id, metric: entry.metric, value: Number(raw) });
           }
         }
 
@@ -102,18 +99,15 @@ export function snmpCollector(factory: SnmpSessionFactory): Collector {
           ]);
 
           for (const [idx, raw] of Object.entries(inOctets)) {
-            const value = typeof raw === 'bigint' ? Number(raw) : Number(raw);
-            metrics.push({ deviceId: device.id, metric: `if_hc_in_octets.${idx}`, value });
+            metrics.push({ deviceId: device.id, metric: `if_hc_in_octets.${idx}`, value: Number(raw) });
           }
 
           for (const [idx, raw] of Object.entries(outOctets)) {
-            const value = typeof raw === 'bigint' ? Number(raw) : Number(raw);
-            metrics.push({ deviceId: device.id, metric: `if_hc_out_octets.${idx}`, value });
+            metrics.push({ deviceId: device.id, metric: `if_hc_out_octets.${idx}`, value: Number(raw) });
           }
 
           for (const [idx, raw] of Object.entries(operStatus)) {
-            const value = typeof raw === 'bigint' ? Number(raw) : Number(raw);
-            metrics.push({ deviceId: device.id, metric: `if_oper_status.${idx}`, value });
+            metrics.push({ deviceId: device.id, metric: `if_oper_status.${idx}`, value: Number(raw) });
           }
         }
 
@@ -122,7 +116,7 @@ export function snmpCollector(factory: SnmpSessionFactory): Collector {
         // Per-device SNMP error: return empty result, never throw
         return { checks: [], metrics: [] };
       } finally {
-        session.close();
+        session?.close();
       }
     },
   };
