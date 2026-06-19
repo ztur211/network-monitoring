@@ -19,11 +19,14 @@ describe('buffer', () => {
     await buf.drain(flush);
     expect(flush).toHaveBeenCalledTimes(1); expect(buf.size()).toBe(0);
   });
-  it('drops oldest beyond the cap', () => {
+  it('drops oldest beyond the cap and keeps newest', async () => {
     const buf = createBuffer({ path: path(), maxItems: 2 });
     buf.enqueue({ checks: [{ deviceId: '1', ok: true }], metrics: [] });
     buf.enqueue({ checks: [{ deviceId: '2', ok: true }], metrics: [] });
     buf.enqueue({ checks: [{ deviceId: '3', ok: true }], metrics: [] });
     expect(buf.size()).toBe(2);
+    const drained: string[] = [];
+    await buf.drain(async (b) => { drained.push(b.checks![0].deviceId); });
+    expect(drained).toEqual(['2', '3']); // oldest ('1') was evicted
   });
 });
