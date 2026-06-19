@@ -22,6 +22,7 @@ function model(): ParsedModel {
       [1, a],
       [2, b],
     ]),
+    guidIndex: new Map(),
     bbox: new THREE.Box3(),
     frame: { recenter: new THREE.Vector3(), upConversion: 'Z_UP_TO_Y_UP' },
     getProperties: async () => ({}) as any,

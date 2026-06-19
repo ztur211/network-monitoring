@@ -44,6 +44,21 @@ describe('IfcModelLoader', () => {
     expect(model.root.rotation.x).toBeCloseTo(-Math.PI / 2, 5);
   });
 
+  it('guidIndex maps IFC GlobalIds to expressIDs (Spec 6 BCF)', () => {
+    // wall.ifc contains: #30=IFCWALL('2bjLUVfTLCM9P4iN8sefM6',...)
+    // guidIndex must map that GlobalId → expressID 30.
+    expect(model.guidIndex).toBeInstanceOf(Map);
+    expect(model.guidIndex.size).toBeGreaterThan(0);
+    const wallGuid = '2bjLUVfTLCM9P4iN8sefM6';
+    expect(model.guidIndex.has(wallGuid)).toBe(true);
+    expect(model.guidIndex.get(wallGuid)).toBe(30);
+    // Every entry in guidIndex should have a corresponding entry in elementIndex
+    // (guidIndex is populated only for elements that have renderable geometry).
+    for (const [, expressID] of model.guidIndex) {
+      expect(model.elementIndex.has(expressID)).toBe(true);
+    }
+  });
+
   it('disposes without throwing and frees geometries', () => {
     const sample = [...model.elementIndex.values()][0];
     expect(() => model.dispose()).not.toThrow();
