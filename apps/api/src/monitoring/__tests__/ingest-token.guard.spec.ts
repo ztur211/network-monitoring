@@ -31,6 +31,18 @@ describe('IngestTokenGuard', () => {
     await expect(guard.canActivate(ctx({ 'x-ingest-token': 'bad' }))).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('falls through to the org token when x-agent-token is present but invalid', async () => {
+    const agentTokens = { verifyToken: jest.fn().mockResolvedValue(null) } as any;
+    const agentRepo = { touchLastSeen: jest.fn() } as any;
+    const guard = new IngestTokenGuard({ verify: async () => 'org-1' } as any, agentTokens, agentRepo);
+    const c = ctx({ 'x-agent-token': 'stale', 'x-ingest-token': 'good-org' });
+    expect(await guard.canActivate(c)).toBe(true);
+    const req = c.switchToHttp().getRequest();
+    expect(req.ingestOrgId).toBe('org-1');
+    expect(req.ingestSource).toBeUndefined();
+    expect(agentRepo.touchLastSeen).not.toHaveBeenCalled();
+  });
+
   it('accepts an x-agent-token and sets ingestSource = agent:<id>', async () => {
     const agentTokens = { verifyToken: jest.fn().mockResolvedValue({ orgId: 'org-2', agentId: 'agt-1' }) } as any;
     const agentRepo = { touchLastSeen: jest.fn().mockResolvedValue(undefined) } as any;
