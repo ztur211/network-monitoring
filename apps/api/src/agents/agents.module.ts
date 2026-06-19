@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AgentRepository } from './agent.repository';
 import { AgentTokenService } from './agent-token.service';
 import { AgentTokenGuard } from './agent-token.guard';
+import { AgentIngestController } from './agent-ingest.controller';
 
 /**
  * Spec 8 agent registry core (Phase C): the agent/enrollment-code persistence,
@@ -11,6 +12,7 @@ import { AgentTokenGuard } from './agent-token.guard';
  */
 @Module({
   imports: [PrismaModule],
+  controllers: [AgentIngestController],
   providers: [AgentRepository, AgentTokenService, AgentTokenGuard],
   exports: [AgentTokenService, AgentRepository, AgentTokenGuard],
 })
