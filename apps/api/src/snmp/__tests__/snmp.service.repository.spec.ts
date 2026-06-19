@@ -20,6 +20,8 @@ import { SnmpRepository } from '../snmp.repository';
 import { SnmpService } from '../snmp.service';
 import { CryptoService, CRYPTO_KEY } from '../../common/crypto/crypto.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
+import { PermissionsService } from '../../permissions/permissions.service';
+import { NetworksRepository } from '../../networks/networks.repository';
 
 // 32-byte key (base64 of the same value used in CI env)
 const TEST_KEY_B64 = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
@@ -39,6 +41,10 @@ describe('SnmpService (integration)', () => {
         PrismaService,
         CryptoService,
         { provide: CRYPTO_KEY, useValue: Buffer.from(TEST_KEY_B64, 'base64') },
+        // PermissionsService and NetworksRepository are needed by SnmpService.assign()
+        // but not exercised by these integration tests — provide no-op stubs.
+        { provide: PermissionsService, useValue: {} },
+        { provide: NetworksRepository, useValue: {} },
       ],
     }).compile();
 

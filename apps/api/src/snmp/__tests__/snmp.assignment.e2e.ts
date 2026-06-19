@@ -11,8 +11,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Scenarios:
  *  1. OWNER assigns a credential to a network → 200, network.snmpCredentialId set
  *  2. OWNER assigns a credential to a device → 200, device.snmpCredentialId set
- *  3. ADMIN out-of-scope on network → 403 PERM_004
+ *  3. ADMIN out-of-scope on device (siteB) → 403 PERM_001
  *  4. Credential from wrong org → 404 SNMP_001
+ *  5. Body missing snmpCredentialId/oidProfileId → 400
+ *  6. ADMIN (siteA only) assigns to network with device footprint in siteB → 403 PERM_004
  *
  * Run: npm run test:e2e -- snmp.assignment
  */
@@ -28,8 +30,10 @@ describe('SnmpController assign (e2e)', () => {
   const adminEmail = `e2e-snmp-assign-admin-${Date.now()}@example.com`;
   const password = 'Password123!';
 
-  /** network used for assignment tests */
+  /** network used for assignment tests (chartered siteA only) */
   let networkId: string;
+  /** network whose device footprint spills into siteB (used for PERM_004 test) */
+  let networkBSpillId: string;
   /** device under siteA (within ADMIN scope) */
   let deviceIdInScope: string;
   /** device under siteB (outside ADMIN scope) */
@@ -101,7 +105,7 @@ describe('SnmpController assign (e2e)', () => {
     await prisma.teamProperty.create({ data: { organizationId: orgId, teamId: team.id, propertyId: siteAId } });
     await prisma.teamMember.create({ data: { organizationId: orgId, teamId: team.id, memberId: adminMembership.id } });
 
-    // Network chartered to siteA
+    // Network chartered to siteA only
     const net = await prisma.network.create({
       data: { organizationId: orgId, name: 'AssignTestNet', userId: ownerUser.id },
     });
@@ -136,6 +140,27 @@ describe('SnmpController assign (e2e)', () => {
     });
     deviceIdOutScope = deviceB.id;
 
+    // Network chartered to siteA but with a device footprint in siteB
+    // — used for the PERM_004 network-partial-scope test
+    const netBSpill = await prisma.network.create({
+      data: { organizationId: orgId, name: 'AssignTestNetBSpill', userId: ownerUser.id },
+    });
+    networkBSpillId = netBSpill.id;
+    await prisma.networkProperty.create({
+      data: { organizationId: orgId, networkId: netBSpill.id, propertyId: siteAId },
+    });
+    // Place a device in siteB on this network so the device footprint spills
+    await prisma.device.create({
+      data: {
+        organizationId: orgId,
+        networkId: netBSpill.id,
+        propertyId: siteBId,
+        name: 'DeviceSpill',
+        category: 'SWITCH',
+        ipAddress: '10.0.1.1',
+      },
+    });
+
     // SNMP credential for this org
     const cred = await prisma.snmpCredential.create({
       data: { organizationId: orgId, name: 'test-cred', snmpVersion: 'V2C', communityEnc: 'ENC_BLOB' },
@@ -164,7 +189,7 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', ownerCookie)
-      .send({ targetType: 'network', targetId: networkId, snmpCredentialId: credentialId })
+      .send({ targetType: 'network', targetId: networkId, snmpCredentialId: credentialId, oidProfileId: null })
       .expect(200);
 
     expect(res.body.success).toBe(true);
@@ -183,7 +208,7 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', ownerCookie)
-      .send({ targetType: 'device', targetId: deviceIdInScope, snmpCredentialId: credentialId })
+      .send({ targetType: 'device', targetId: deviceIdInScope, snmpCredentialId: credentialId, oidProfileId: null })
       .expect(200);
 
     expect(res.body.success).toBe(true);
@@ -196,13 +221,13 @@ describe('SnmpController assign (e2e)', () => {
     expect(dev?.snmpCredentialId).toBe(credentialId);
   });
 
-  // ─── ADMIN out-of-scope: network chartered to siteA but network also has device under siteB ──
+  // ─── ADMIN out-of-scope: device under siteB ──────────────────────────────
 
   it('ADMIN (scoped siteA only) cannot assign to device under siteB → 403 PERM_001', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', adminCookie)
-      .send({ targetType: 'device', targetId: deviceIdOutScope, snmpCredentialId: credentialId })
+      .send({ targetType: 'device', targetId: deviceIdOutScope, snmpCredentialId: credentialId, oidProfileId: null })
       .expect(403);
 
     // PERM_001 = OUTSIDE_ASSIGNED_SCOPE (assertCanConfigure)
@@ -218,7 +243,7 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', adminCookie)
-      .send({ targetType: 'device', targetId: deviceIdInScope, snmpCredentialId: credentialId })
+      .send({ targetType: 'device', targetId: deviceIdInScope, snmpCredentialId: credentialId, oidProfileId: null })
       .expect(200);
 
     expect(res.body.success).toBe(true);
@@ -231,7 +256,7 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', ownerCookie)
-      .send({ targetType: 'network', targetId: networkId, snmpCredentialId: '00000000-0000-0000-0000-000000000099' })
+      .send({ targetType: 'network', targetId: networkId, snmpCredentialId: '00000000-0000-0000-0000-000000000099', oidProfileId: null })
       .expect(404);
 
     expect(res.body.error.code).toBe('SNMP_001');
@@ -243,7 +268,7 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', ownerCookie)
-      .send({ targetType: 'network', targetId: '00000000-0000-0000-0000-000000000000' })
+      .send({ targetType: 'network', targetId: '00000000-0000-0000-0000-000000000000', snmpCredentialId: null, oidProfileId: null })
       .expect(404);
 
     expect(res.body.error.code).toBe('NETWORK_002');
@@ -253,9 +278,50 @@ describe('SnmpController assign (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/snmp/assign')
       .set('Cookie', ownerCookie)
-      .send({ targetType: 'device', targetId: '00000000-0000-0000-0000-000000000000' })
+      .send({ targetType: 'device', targetId: '00000000-0000-0000-0000-000000000000', snmpCredentialId: null, oidProfileId: null })
       .expect(404);
 
     expect(res.body.error.code).toBe('DEVICE_001');
+  });
+
+  // ─── Missing required fields → 400 ───────────────────────────────────────
+
+  it('body missing snmpCredentialId and oidProfileId → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/snmp/assign')
+      .set('Cookie', ownerCookie)
+      .send({ targetType: 'network', targetId: networkId })
+      .expect(400);
+  });
+
+  it('body missing snmpCredentialId only → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/snmp/assign')
+      .set('Cookie', ownerCookie)
+      .send({ targetType: 'network', targetId: networkId, oidProfileId: null })
+      .expect(400);
+  });
+
+  it('body missing oidProfileId only → 400', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/snmp/assign')
+      .set('Cookie', ownerCookie)
+      .send({ targetType: 'network', targetId: networkId, snmpCredentialId: null })
+      .expect(400);
+  });
+
+  // ─── ADMIN out-of-scope: network with device footprint in siteB → 403 PERM_004 ──
+
+  it('ADMIN (scoped siteA only) cannot assign to network whose device footprint includes siteB → 403 PERM_004', async () => {
+    // networkBSpillId is chartered to siteA but has a device in siteB,
+    // so assertNetworkFullCoverage fires PERM_004 (NETWORK_PARTIAL_SCOPE)
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/snmp/assign')
+      .set('Cookie', adminCookie)
+      .send({ targetType: 'network', targetId: networkBSpillId, snmpCredentialId: credentialId, oidProfileId: null })
+      .expect(403);
+
+    // PERM_004 = NETWORK_PARTIAL_SCOPE (assertNetworkFullCoverage)
+    expect(res.body.error.code).toBe('PERM_004');
   });
 });
