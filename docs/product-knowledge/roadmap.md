@@ -14,7 +14,7 @@
 
 ## Planned Features
 
-- **Desktop Agent** (planned): A lightweight background agent for macOS, Windows, and Linux that provides richer device metrics without requiring the browser tab to be open. Enables monitoring of remote devices.
+- **Desktop Agent** (planned): A lightweight background agent for macOS, Windows, and Linux that provides richer device metrics without requiring the browser tab to be open. Enables monitoring of remote devices. The server-side agent registry is now live: agents enroll via a one-time code, receive a per-agent bearer token, and are rejected with error code AGENT_001 if the code is invalid or expired.
 - **Router Integration** (planned): Direct API integration with Ubiquiti, MikroTik, and Meraki for automatic device discovery and live traffic data.
 - **Floor Plan Overlays** (planned): Upload building floor plans as image backgrounds for indoor network mapping.
 - **Multi-Property Support** (planned): Manage multiple locations/properties from a single account.
