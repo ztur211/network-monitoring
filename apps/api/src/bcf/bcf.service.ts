@@ -11,6 +11,7 @@ import {
   CreateBcfTopicDto,
   AddBcfCommentDto,
   PatchBcfTopicDto,
+  WS_EVENTS,
 } from '@nodescope/shared';
 import {
   BcfComment as BcfCommentRow,
@@ -25,6 +26,7 @@ import { PropertiesService } from '../properties/properties.service';
 import { DevicesRepository } from '../devices/devices.repository';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConflictResolutionService } from '../conflict/conflict.service';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
@@ -55,6 +57,7 @@ export class BcfService {
     private readonly devices: DevicesRepository,
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
+    private readonly conflict: ConflictResolutionService,
   ) {}
 
   // ─── Reads ─────────────────────────────────────────────────────────────────
@@ -174,7 +177,12 @@ export class BcfService {
       return tx.bcfTopic.findUniqueOrThrow({ where: { id: topic.id }, include: TOPIC_INCLUDE });
     });
 
-    return this.toTopicDto(created);
+    const topicDto = this.toTopicDto(created);
+    // Best-effort F3-scoped realtime event (does not block the response).
+    await this.conflict.emitScoped(organizationId, buildingPropertyId, WS_EVENTS.BCF_TOPIC_CREATED, {
+      topic: topicDto,
+    });
+    return topicDto;
   }
 
   /** Append a comment to a topic. F3 mutation-gated; touches modified author/date. */
@@ -206,7 +214,14 @@ export class BcfService {
       return tx.bcfTopic.findUniqueOrThrow({ where: { id: topic.id }, include: TOPIC_INCLUDE });
     });
 
-    return this.toTopicDto(updated);
+    const topicDto = this.toTopicDto(updated);
+    // Best-effort F3-scoped realtime event — the latest comment is in topicDto.comments.
+    const latestComment = topicDto.comments[topicDto.comments.length - 1];
+    await this.conflict.emitScoped(member.organizationId, topic.propertyId, WS_EVENTS.BCF_COMMENT_ADDED, {
+      topicId,
+      comment: latestComment,
+    });
+    return topicDto;
   }
 
   /**
@@ -247,7 +262,12 @@ export class BcfService {
       where: { id: topic.id },
       include: TOPIC_INCLUDE,
     });
-    return this.toTopicDto(updated);
+    const topicDto = this.toTopicDto(updated);
+    // Best-effort F3-scoped realtime event.
+    await this.conflict.emitScoped(member.organizationId, topic.propertyId, WS_EVENTS.BCF_TOPIC_UPDATED, {
+      topic: topicDto,
+    });
+    return topicDto;
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────────

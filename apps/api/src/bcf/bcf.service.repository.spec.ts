@@ -22,6 +22,7 @@ import { StorageService } from '../storage/storage.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PropertiesService } from '../properties/properties.service';
 import { DevicesRepository } from '../devices/devices.repository';
+import { ConflictResolutionService } from '../conflict/conflict.service';
 import { DeviceCategory } from '@prisma/client';
 import { toIfcGuid } from '@nodescope/shared';
 import type { CreateBcfTopicDto } from '@nodescope/shared';
@@ -40,6 +41,7 @@ describe('BcfService (integration)', () => {
   const inScope = jest.fn().mockResolvedValue(true);
   const findInOrg = jest.fn();
   const subtreePropertyIds = jest.fn().mockImplementation(() => Promise.resolve(subtreeIds));
+  const emitScoped = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     const ref = await Test.createTestingModule({
@@ -50,6 +52,7 @@ describe('BcfService (integration)', () => {
         { provide: StorageService, useValue: { putObjectStream } },
         { provide: PermissionsService, useValue: { assertCanConfigure, inScope } },
         { provide: PropertiesService, useValue: { findInOrg, subtreePropertyIds } },
+        { provide: ConflictResolutionService, useValue: { emitScoped } },
       ],
     }).compile();
 
@@ -66,6 +69,7 @@ describe('BcfService (integration)', () => {
     jest.clearAllMocks();
     assertCanConfigure.mockResolvedValue(undefined);
     inScope.mockResolvedValue(true);
+    emitScoped.mockResolvedValue(undefined);
     subtreeIds = [];
 
     const org = await prisma.organization.create({
@@ -144,10 +148,19 @@ describe('BcfService (integration)', () => {
     expect(links.map((l) => l.deviceId)).toEqual([deviceId]);
     // No snapshot supplied → storage untouched.
     expect(putObjectStream).not.toHaveBeenCalled();
+    // Realtime event emitted with BCF_TOPIC_CREATED and the topic DTO.
+    expect(emitScoped).toHaveBeenCalledWith(
+      orgId,
+      buildingId,
+      'v1:bcf:topic:created',
+      expect.objectContaining({ topic: expect.objectContaining({ id: created.id }) }),
+    );
   });
 
   it('addComment persists a comment and bumps the topic version', async () => {
     const created = await service.createTopic(owner(), buildingId, topicDto());
+    jest.clearAllMocks();
+    emitScoped.mockResolvedValue(undefined);
     const updated = await service.addComment(owner(), created.id, { comment: 'Please fix' });
 
     expect(updated.comments).toHaveLength(1);
@@ -156,10 +169,19 @@ describe('BcfService (integration)', () => {
     expect(updated.commentCount).toBe(1);
     expect(updated.version).toBe(created.version + 1);
     expect(updated.modifiedAuthor).toBe('mem-owner');
+    // Realtime event emitted with BCF_COMMENT_ADDED.
+    expect(emitScoped).toHaveBeenCalledWith(
+      orgId,
+      buildingId,
+      'v1:bcf:comment:added',
+      expect.objectContaining({ topicId: created.id, comment: expect.objectContaining({ comment: 'Please fix' }) }),
+    );
   });
 
   it('patchTopic with the current baseVersion updates status and increments version', async () => {
     const created = await service.createTopic(owner(), buildingId, topicDto());
+    jest.clearAllMocks();
+    emitScoped.mockResolvedValue(undefined);
     const patched = await service.patchTopic(owner(), created.id, {
       topicStatus: 'Closed',
       baseVersion: created.version,
@@ -167,6 +189,13 @@ describe('BcfService (integration)', () => {
 
     expect(patched.topicStatus).toBe('Closed');
     expect(patched.version).toBe(created.version + 1);
+    // Realtime event emitted with BCF_TOPIC_UPDATED.
+    expect(emitScoped).toHaveBeenCalledWith(
+      orgId,
+      buildingId,
+      'v1:bcf:topic:updated',
+      expect.objectContaining({ topic: expect.objectContaining({ id: created.id, topicStatus: 'Closed' }) }),
+    );
   });
 
   it('patchTopic with a stale baseVersion → BCF_005 (409)', async () => {
