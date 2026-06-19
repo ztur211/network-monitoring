@@ -40,6 +40,7 @@ import { ExportModule } from './export/export.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { AgentModule } from './agents/agents.module';
 import { SnmpModule } from './snmp/snmp.module';
+import { BcfModule } from './bcf/bcf.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -94,6 +95,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     MonitoringModule,
     AgentModule,
     SnmpModule,
+    BcfModule,
     DesktopAuthModule,
     ExportModule,
   ],
