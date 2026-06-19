@@ -1,6 +1,6 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { ParsedModel } from '../ifc/ifc-types';
 import { useViewportStore } from '../../stores/viewport-store';
@@ -16,9 +16,25 @@ export function ViewCommands({
   controls: RefObject<OrbitControlsImpl | null>;
 }) {
   const { camera, size, invalidate } = useThree();
+  const setCameraSnapshot = useViewportStore((s) => s.setCameraSnapshot);
+  const controlsTarget = useRef(new THREE.Vector3());
   const fitNonce = useViewportStore((s) => s.fitNonce);
   const focusNonce = useViewportStore((s) => s.focusNonce);
   const viewpointNonce = useViewportStore((s) => s.viewpointRequest?.nonce);
+
+  // Per-frame camera snapshot reporter for create-from-view (low-frequency: every ~10 frames)
+  const frameCount = useRef(0);
+  useFrame(() => {
+    frameCount.current += 1;
+    if (frameCount.current % 10 !== 0) return;
+    const target = controls.current?.target ?? controlsTarget.current;
+    setCameraSnapshot({
+      position: camera.position.clone(),
+      target: target.clone(),
+      up: camera.up.clone(),
+      fov: (camera as THREE.PerspectiveCamera).fov ?? 50,
+    });
+  });
 
   const frame = (box: THREE.Box3) => {
     const { position, target } = fitCameraToBox(
@@ -66,6 +82,7 @@ export function ViewCommands({
       controls.current.target.copy(req.camera.target);
       controls.current.update();
     }
+    controlsTarget.current.copy(req.camera.target);
     invalidate();
   }, [viewpointNonce]);
 

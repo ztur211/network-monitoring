@@ -7,6 +7,7 @@ import { ViewportCanvas } from '../viewport/scene/ViewportCanvas';
 import { Toolbar } from '../viewport/ui/Toolbar';
 import { Inspector } from '../viewport/ui/Inspector';
 import { NodePanel } from '../viewport/ui/NodePanel';
+import { IssuesPanel } from '../viewport/bcf/ui/IssuesPanel';
 
 export function ViewportHost() {
   useViewportLoader();
@@ -39,6 +40,7 @@ export function ViewportHost() {
             }}
           >
             <NodePanel />
+            <IssuesPanel />
             <Inspector />
           </aside>
           {updateAvailable && <UpdateBanner onReload={reload} />}

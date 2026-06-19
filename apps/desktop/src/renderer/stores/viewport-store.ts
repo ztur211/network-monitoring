@@ -69,6 +69,9 @@ export interface ViewportState {
   viewpointRequest: { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number } | null;
   setViewpointRequest: (req: { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number }) => void;
   setHiddenElements: (s: Set<ExpressId>) => void;
+  // Spec 6 Phase E: live camera snapshot (updated per-frame by ViewCommands for create-from-view)
+  cameraSnapshot: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number } | null;
+  setCameraSnapshot: (snap: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }) => void;
   // internal lifecycle setters:
   _setStatus: (s: ViewportStatus, error?: string | null) => void;
   _setModel: (m: ParsedModel | null) => void;
@@ -94,6 +97,7 @@ export const initialViewportState = () => ({
   nodeStatus: new Map<string, NodeStatus>(),
   access: null as AccessSummaryDto | null,
   viewpointRequest: null as { camera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number }; nonce: number } | null,
+  cameraSnapshot: null as { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number } | null,
 });
 
 export const useViewportStore = create<ViewportState>()((set) => ({
@@ -159,6 +163,7 @@ export const useViewportStore = create<ViewportState>()((set) => ({
   setAccess: (access) => set({ access }),
   setViewpointRequest: (viewpointRequest) => set({ viewpointRequest }),
   setHiddenElements: (hiddenElements) => set({ hiddenElements }),
+  setCameraSnapshot: (cameraSnapshot) => set({ cameraSnapshot }),
   _setStatus: (status, error = null) => set({ status, error }),
   _setModel: (model) => set({ model }),
 }));
