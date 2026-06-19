@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useEffect } from 'react';
 import { WS_EVENTS } from '@nodescope/shared';
-import type { BcfTopicDto } from '@nodescope/shared';
+import type { BcfTopicDto, BcfCommentDto } from '@nodescope/shared';
 import { useViewportStore } from '../../stores/viewport-store';
 import { getClients } from '../../data/clients';
 
@@ -9,6 +9,7 @@ export const useBcfStore = create<{
   topics: BcfTopicDto[];
   set: (t: BcfTopicDto[]) => void;
   upsert: (t: BcfTopicDto) => void;
+  addComment: (topicId: string, comment: BcfCommentDto) => void;
 }>((s) => ({
   topics: [],
   set: (topics) => s({ topics }),
@@ -17,6 +18,14 @@ export const useBcfStore = create<{
       topics: st.topics.some((x) => x.id === t.id)
         ? st.topics.map((x) => (x.id === t.id ? t : x))
         : [...st.topics, t],
+    })),
+  addComment: (topicId, comment) =>
+    s((st) => ({
+      topics: st.topics.map((x) =>
+        x.id === topicId
+          ? { ...x, comments: [...(x.comments ?? []), comment] }
+          : x,
+      ),
     })),
 }));
 
@@ -54,20 +63,35 @@ export function useBcf(): void {
   }, [buildingId]);
 
   useEffect(() => {
+    // Fix 4: key on buildingId so the effect re-runs once clients/building become ready.
     const rt = getClients()?.realtime;
-    if (!rt) return;
+    if (!rt || !buildingId) return;
 
-    // Server emits { topic } — unwrap it
-    const onCreated = (payload: { topic: BcfTopicDto }) =>
-      applyBcfEvent('created', payload.topic);
-    const onUpdated = (payload: { topic: BcfTopicDto }) =>
-      applyBcfEvent('updated', payload.topic);
+    // Fix 2: only apply events that belong to the currently-active building.
+    const isMine = (p: { propertyId?: string }) => p?.propertyId === buildingId;
+
+    // Server emits { topic } — unwrap it; guard with isMine (Fix 2).
+    const onCreated = (payload: { topic: BcfTopicDto }) => {
+      if (isMine(payload.topic)) applyBcfEvent('created', payload.topic);
+    };
+    const onUpdated = (payload: { topic: BcfTopicDto }) => {
+      if (isMine(payload.topic)) applyBcfEvent('updated', payload.topic);
+    };
+
+    // Fix 1: handle live comment additions; guard: topic must already be in the store
+    // (the store is building-scoped from the initial load).
+    const onCommentAdded = (payload: { topicId: string; comment: BcfCommentDto }) => {
+      const inStore = useBcfStore.getState().topics.some((t) => t.id === payload.topicId);
+      if (inStore) useBcfStore.getState().addComment(payload.topicId, payload.comment);
+    };
 
     rt.on(WS_EVENTS.BCF_TOPIC_CREATED, onCreated);
     rt.on(WS_EVENTS.BCF_TOPIC_UPDATED, onUpdated);
+    rt.on(WS_EVENTS.BCF_COMMENT_ADDED, onCommentAdded);
     return () => {
       rt.off?.(WS_EVENTS.BCF_TOPIC_CREATED, onCreated);
       rt.off?.(WS_EVENTS.BCF_TOPIC_UPDATED, onUpdated);
+      rt.off?.(WS_EVENTS.BCF_COMMENT_ADDED, onCommentAdded);
     };
-  }, []);
+  }, [buildingId]);
 }

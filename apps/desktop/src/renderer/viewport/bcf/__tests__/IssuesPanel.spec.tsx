@@ -6,6 +6,7 @@ import { IssuesPanel } from '../ui/IssuesPanel';
 import { useBcfStore } from '../use-bcf';
 import { useViewportStore, initialViewportState } from '../../../stores/viewport-store';
 import * as clientsModule from '../../../data/clients';
+import * as ViewCommandsModule from '../../scene/ViewCommands';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,13 @@ beforeEach(() => {
     rest: noopRest,
     realtime: null,
   } as any);
+  // Fix 3: default live camera so create-from-view tests have a THREE.Vector3-bearing camera
+  vi.spyOn(ViewCommandsModule, 'getLiveCamera').mockReturnValue({
+    position: new THREE.Vector3(0, 5, 0),
+    target: new THREE.Vector3(0, 0, 0),
+    up: new THREE.Vector3(0, 1, 0),
+    fov: 60,
+  });
 });
 
 afterEach(() => {
@@ -275,5 +283,52 @@ describe('IssuesPanel', () => {
     fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'Closed' } });
     expect(screen.queryByText('Open Issue')).toBeNull();
     expect(screen.getByText('Closed Issue')).toBeTruthy();
+  });
+
+  // Fix 3: create-from-view uses the live camera (getLiveCamera()) not the stale store snapshot
+  it('create-from-view uses the live camera from getLiveCamera() (Fix 3)', async () => {
+    const mockCreate = vi.fn().mockResolvedValue({ id: 'new-topic' });
+    vi.spyOn(clientsModule, 'getClients').mockReturnValue({
+      rest: { createBcfTopic: mockCreate },
+      realtime: null,
+    } as any);
+    vi.spyOn(document, 'querySelector').mockReturnValue(null as any);
+
+    // Live camera returned at click time
+    const livePos = new THREE.Vector3(9, 8, 7);
+    vi.spyOn(ViewCommandsModule, 'getLiveCamera').mockReturnValue({
+      position: livePos,
+      target: new THREE.Vector3(1, 2, 3),
+      up: new THREE.Vector3(0, 1, 0),
+      fov: 45,
+    });
+
+    useViewportStore.setState({
+      access: { role: 'ADMIN', assignedRoots: [] } as any,
+      model: fakeModel(),
+      activeBuildingPropertyId: 'b1',
+      // cameraSnapshot is stale/different — should NOT be used
+      cameraSnapshot: {
+        position: new THREE.Vector3(0, 0, 0),
+        target: new THREE.Vector3(0, 0, 0),
+        up: new THREE.Vector3(0, 1, 0),
+        fov: 10,
+      },
+      devices: [],
+    });
+
+    render(<IssuesPanel />);
+    fireEvent.click(screen.getByText('New issue from view'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const [, dto] = mockCreate.mock.calls[0];
+    // The camera position should come from getLiveCamera() (9,8,7 in Y-up viewport space),
+    // NOT the stale store snapshot (0,0,0). captureViewpoint converts to IFC native Z-up via
+    // Rx(+90°): (x,y,z)_viewport → (x,-z,y)_native, so (9,8,7) → (9,-7,8).
+    // We verify it's not the stale (0,0,0) default, and that x matches (untouched by rotation).
+    const vp = dto.viewpoints[0];
+    expect(vp.camera.position[0]).toBeCloseTo(9);  // x unchanged
+    expect(vp.camera.position[1]).toBeCloseTo(-7); // native y = -viewport_z
+    expect(vp.camera.position[2]).toBeCloseTo(8);  // native z = viewport_y
   });
 });

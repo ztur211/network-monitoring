@@ -7,6 +7,15 @@ import { useViewportStore } from '../../stores/viewport-store';
 import { fitCameraToBox } from './fit';
 import { toViewport } from '../nodes/node-coords';
 
+// Fix 3: module-level ref so IssuesPanel can read the live camera synchronously at click time.
+type CameraSnapshot = { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number };
+let _liveCameraRef: CameraSnapshot | null = null;
+
+/** Returns the most recently captured live camera state, or null before any frame runs. */
+export function getLiveCamera(): CameraSnapshot | null {
+  return _liveCameraRef;
+}
+
 // DOM→r3f camera commands via store nonces: fit the model, or frame the current selection.
 export function ViewCommands({
   model,
@@ -22,18 +31,17 @@ export function ViewCommands({
   const focusNonce = useViewportStore((s) => s.focusNonce);
   const viewpointNonce = useViewportStore((s) => s.viewpointRequest?.nonce);
 
-  // Per-frame camera snapshot reporter for create-from-view (low-frequency: every ~10 frames)
-  const frameCount = useRef(0);
+  // Fix 3: update the live camera ref every frame (no throttle) so getLiveCamera() is always current.
   useFrame(() => {
-    frameCount.current += 1;
-    if (frameCount.current % 10 !== 0) return;
     const target = controls.current?.target ?? controlsTarget.current;
-    setCameraSnapshot({
+    const snap: CameraSnapshot = {
       position: camera.position.clone(),
       target: target.clone(),
       up: camera.up.clone(),
       fov: (camera as THREE.PerspectiveCamera).fov ?? 50,
-    });
+    };
+    _liveCameraRef = snap;
+    setCameraSnapshot(snap);
   });
 
   const frame = (box: THREE.Box3) => {

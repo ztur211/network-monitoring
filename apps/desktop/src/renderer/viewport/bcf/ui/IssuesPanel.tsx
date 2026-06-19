@@ -15,6 +15,7 @@ import { navigateToViewpoint } from '../navigate-viewpoint';
 import { captureViewpoint } from '../capture-viewpoint';
 import { canConfigure } from '../../nodes/can-configure';
 import { getClients } from '../../../data/clients';
+import { getLiveCamera } from '../../scene/ViewCommands';
 import { toIfcGuid } from '@nodescope/shared';
 import type { BcfTopicDto } from '@nodescope/shared';
 
@@ -27,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function IssuesPanel() {
   useBcf();
   const topics = useBcfStore((s) => s.topics);
-  const { model, devices, access, selection, activeBuildingPropertyId, cameraSnapshot } =
+  const { model, devices, access, selection, activeBuildingPropertyId } =
     useViewportStore();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [creating, setCreating] = useState(false);
@@ -45,8 +46,9 @@ export function IssuesPanel() {
     const clients = getClients();
     if (!clients) return;
 
-    // Use the stored camera snapshot; fall back to a default if not yet populated.
-    const cam = cameraSnapshot ?? {
+    // Fix 3: read the live camera at click time so camera + snapshot image are consistent.
+    // Fall back to a sensible default only if the R3F canvas hasn't rendered yet.
+    const cam = getLiveCamera() ?? {
       position: { x: 0, y: 5, z: 10 } as any,
       target: { x: 0, y: 0, z: 0 } as any,
       up: { x: 0, y: 1, z: 0 } as any,
