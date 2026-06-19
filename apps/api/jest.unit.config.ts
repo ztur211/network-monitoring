@@ -33,6 +33,7 @@ const config: Config = {
   ],
   moduleNameMapper: {
     '^@nodescope/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
+    '^@nodescope/probe$': '<rootDir>/../../../packages/probe/src/index.ts',
   },
 };
 

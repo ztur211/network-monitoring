@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IngestService } from '../ingest/ingest.service';
-import { probeDevice, ProbeResult } from './probe';
+import { probeDevice, ProbeResult } from '@nodescope/probe';
 
 const cfg = () => ({
   enabled: process.env.MONITORING_PROBER_ENABLED === 'true',
