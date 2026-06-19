@@ -12,6 +12,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { AgentTokenGuard } from './agent-token.guard';
 import { AgentTokenService } from './agent-token.service';
 import { AgentRepository } from './agent.repository';
+import { SnmpService } from '../snmp/snmp.service';
 
 export class EnrollDto {
   @IsString()
@@ -36,6 +37,7 @@ export class AgentIngestController {
   constructor(
     private readonly tokens: AgentTokenService,
     private readonly repo: AgentRepository,
+    private readonly snmp: SnmpService,
   ) {}
 
   /**
@@ -60,9 +62,9 @@ export class AgentIngestController {
   @Get('devices')
   @Public()
   @UseGuards(AgentTokenGuard)
-  async listDevices(@Req() req: { agent: { orgId: string; agentId: string } }) {
-    const data = await this.repo.listOrgDevicesWithIp(req.agent.orgId);
-    return { success: true, data, timestamp: new Date().toISOString() };
+  async devices(@Req() req: { agent: { orgId: string; agentId: string } }) {
+    const base = await this.repo.listOrgDevicesWithIp(req.agent.orgId);
+    return { success: true, data: await this.snmp.attachTargets(req.agent.orgId, base), timestamp: new Date().toISOString() };
   }
 
   /**

@@ -35,6 +35,8 @@ const makeDevice = (overrides = {}) => ({
   macAddress: null,
   notes: null,
   version: 1,
+  snmpCredentialId: null,
+  oidProfileId: null,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
   ...overrides,

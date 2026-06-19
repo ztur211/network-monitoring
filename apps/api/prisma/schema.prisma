@@ -100,6 +100,29 @@ enum AgentStatus {
   REVOKED
 }
 
+enum SnmpVersion {
+  V2C
+  V3
+}
+
+enum SnmpSecurityLevel {
+  NO_AUTH_NO_PRIV
+  AUTH_NO_PRIV
+  AUTH_PRIV
+}
+
+enum SnmpAuthProtocol {
+  MD5
+  SHA
+  SHA256
+}
+
+enum SnmpPrivProtocol {
+  DES
+  AES
+  AES256
+}
+
 // ─── Better Auth Models ───────────────────────────────────────────────────────
 
 model User {
@@ -218,12 +241,17 @@ model Device {
   network      Network      @relation(fields: [networkId], references: [id], onDelete: Restrict)
   property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
 
+  snmpCredentialId String?
+  oidProfileId     String?
+
   connectionsFrom DeviceConnection[] @relation("sourceDevice")
   connectionsTo   DeviceConnection[] @relation("targetDevice")
   fiberRunsFrom   FiberRun[]         @relation("startDevice")
   fiberRunsTo     FiberRun[]         @relation("endDevice")
   circuits        Circuit[]
   status          DeviceStatus?
+  snmpCredential  SnmpCredential?    @relation(fields: [snmpCredentialId], references: [id], onDelete: Restrict)
+  oidProfile      OidProfile?        @relation(fields: [oidProfileId], references: [id], onDelete: Restrict)
 
   @@index([organizationId])
   @@index([organizationId, category])
@@ -249,10 +277,15 @@ model Network {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  devices      Device[]
-  networkLinks NetworkProperty[]
+  snmpCredentialId String?
+  oidProfileId     String?
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  devices        Device[]
+  networkLinks   NetworkProperty[]
+  snmpCredential SnmpCredential?   @relation(fields: [snmpCredentialId], references: [id], onDelete: Restrict)
+  oidProfile     OidProfile?       @relation(fields: [oidProfileId], references: [id], onDelete: Restrict)
 
   @@index([organizationId])
 }
@@ -417,6 +450,8 @@ model Organization {
   monitoringIngestToken MonitoringIngestToken?
   agents                Agent[]
   agentEnrollmentCodes  AgentEnrollmentCode[]
+  snmpCredentials       SnmpCredential[]
+  oidProfiles           OidProfile[]
 }
 
 model DeviceStatus {
@@ -698,6 +733,59 @@ model AgentEnrollmentCode {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+// ─── SNMP Credential / OID Profile Models (Spec 9) ───────────────────────────
+
+model SnmpCredential {
+  id             String             @id @default(uuid())
+  organizationId String
+  name           String
+  snmpVersion    SnmpVersion
+  securityLevel  SnmpSecurityLevel?
+  securityName   String?
+  authProtocol   SnmpAuthProtocol?
+  privProtocol   SnmpPrivProtocol?
+  communityEnc   String?
+  authKeyEnc     String?
+  privKeyEnc     String?
+  version        Int                @default(1)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  networks     Network[]
+  devices      Device[]
+
+  @@index([organizationId])
+}
+
+model OidProfile {
+  id                      String   @id @default(uuid())
+  organizationId          String
+  name                    String
+  includeInterfaceMetrics Boolean  @default(false)
+  version                 Int      @default(1)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      OidEntry[]
+  networks     Network[]
+  devices      Device[]
+
+  @@index([organizationId])
+}
+
+model OidEntry {
+  id           String @id @default(uuid())
+  oidProfileId String
+  oid          String
+  metric       String
+
+  profile OidProfile @relation(fields: [oidProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([oidProfileId, oid])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
