@@ -1,0 +1,21 @@
+{
+  "name": "@nodescope/agent",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "nodescope-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nodescope/probe": "*",
+    "@nodescope/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
