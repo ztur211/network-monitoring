@@ -28,6 +28,14 @@ function makeFactory(session: SnmpSession): SnmpSessionFactory {
 }
 
 // ---------------------------------------------------------------------------
+// Minimal device helper for concise test cases
+// ---------------------------------------------------------------------------
+
+function device(snmp: NonNullable<AgentDeviceDto['snmp']>): AgentDeviceDto {
+  return { id: 'dev-x', name: 'TestDevice', ipAddress: '10.0.0.99', snmp };
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -145,5 +153,11 @@ describe('snmpCollector', () => {
     expect(result).toEqual({ checks: [], metrics: [] });
     // close() must still be called even after an error (finally block)
     expect(session.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('a session-factory that throws synchronously yields empty (no throw)', async () => {
+    const throwingFactory = (() => { throw new Error('createSession failed'); }) as any;
+    await expect(snmpCollector(throwingFactory).collect(device({ version: 'V2C', community: 'x', oids: [{ oid: '1', metric: 'm' }], interfaceMetrics: false })))
+      .resolves.toEqual({ checks: [], metrics: [] });
   });
 });
