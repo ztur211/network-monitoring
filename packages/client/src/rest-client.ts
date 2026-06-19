@@ -6,6 +6,10 @@ import type {
   AccessSummaryDto,
   DeviceStatusDto,
   MetricPointDto,
+  BcfTopicDto,
+  CreateBcfTopicDto,
+  PatchBcfTopicDto,
+  AddBcfCommentDto,
 } from '@nodescope/shared';
 import { ApiError } from './api-error';
 
@@ -73,5 +77,18 @@ export function createRestClient(opts: RestClientOptions) {
         'GET',
         `/v1/devices/${encodeURIComponent(id)}/metrics?metric=${encodeURIComponent(metric)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&bucket=${encodeURIComponent(bucket)}`,
       ),
+    // Spec 6: BCF topic/comment CRUD
+    listBcfTopics: (buildingId: string) =>
+      request<BcfTopicDto[]>('GET', `/v1/buildings/${buildingId}/bcf/topics`),
+    getBcfTopic: (id: string) =>
+      request<BcfTopicDto>('GET', `/v1/bcf/topics/${id}`),
+    createBcfTopic: (buildingId: string, dto: CreateBcfTopicDto) =>
+      request<BcfTopicDto>('POST', `/v1/buildings/${buildingId}/bcf/topics`, dto),
+    patchBcfTopic: (id: string, dto: PatchBcfTopicDto) =>
+      request<BcfTopicDto>('PATCH', `/v1/bcf/topics/${id}`, dto),
+    addBcfComment: (id: string, dto: AddBcfCommentDto): Promise<void> =>
+      request<void>('POST', `/v1/bcf/topics/${id}/comments`, dto),
+    exportBcfUrl: (buildingId: string): string =>
+      `${opts.baseUrl}/v1/buildings/${buildingId}/bcf/export`,
   };
 }
