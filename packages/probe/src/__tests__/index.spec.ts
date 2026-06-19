@@ -1,5 +1,5 @@
 import { createServer, Server } from 'node:net';
-import { tcpProbe, probeDevice } from '../prober/probe';
+import { tcpProbe, probeDevice } from '../index';
 
 const listen = (): Promise<{ srv: Server; port: number }> =>
   new Promise((resolve) => {

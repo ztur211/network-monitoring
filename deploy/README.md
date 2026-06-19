@@ -238,6 +238,51 @@ the existing `.do/app.yaml` paid path becomes the better target).
 
 ---
 
+## 8. NodeScope Monitoring Agent
+
+The NodeScope Agent is a lightweight background daemon (built in Spec 8) that monitors
+devices assigned to it and pushes reachability checks and latency metrics to the server
+without requiring an open browser tab.
+
+### Installing on a managed host
+
+Each OS has a one-command installer in `apps/agent/scripts/`. Obtain the one-time
+enrollment code from the web app under **Settings → Agents → Generate Code**, then:
+
+**Linux (systemd)**
+```bash
+sudo ./install-linux.sh --url https://<your-origin>/api --code <code>
+```
+
+**macOS (launchd)**
+```bash
+sudo ./install-macos.sh --url https://<your-origin>/api --code <code>
+```
+
+**Windows (PowerShell — service/Task Scheduler)**
+```powershell
+.\install-windows.ps1 -Url https://<your-origin>/api -Code <code>
+```
+
+All three scripts:
+1. Install the agent binary (from `dist/` or from `--binary-url <url>` for CI
+   deployments where the binary is fetched from the Spaces bucket).
+2. Run `nodescope-agent enroll --code <code> --url <api-url>` to exchange the code
+   for a per-agent token (sent via the `x-agent-token` header on each request).
+3. Register and start the OS service so the agent restarts automatically.
+
+Once enrolled, the agent appears in the **Agents** management list in the web app and
+begins pushing device status within one probe interval (default 30 s).
+
+Release binaries are published to the DigitalOcean Spaces bucket by the CI workflow;
+pass `--binary-url <spaces-url>` to the installer to download from there instead of
+copying a local `dist/` binary.
+
+See `apps/agent/README.md` for full CLI reference, configuration options, and build
+instructions.
+
+---
+
 ## 7. Tracking
 
 Progress is tracked in the **"Demo Launch (self-hosted)"** GitHub milestone — one

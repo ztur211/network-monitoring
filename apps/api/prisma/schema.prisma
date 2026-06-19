@@ -94,6 +94,12 @@ enum ChangeAction {
   DELETE
 }
 
+enum AgentStatus {
+  PENDING
+  APPROVED
+  REVOKED
+}
+
 // ─── Better Auth Models ───────────────────────────────────────────────────────
 
 model User {
@@ -409,6 +415,8 @@ model Organization {
   buildingModelVersions BuildingModelVersion[]
   deviceStatuses        DeviceStatus[]
   monitoringIngestToken MonitoringIngestToken?
+  agents                Agent[]
+  agentEnrollmentCodes  AgentEnrollmentCode[]
 }
 
 model DeviceStatus {
@@ -656,6 +664,40 @@ model BuildingModelVersion {
   @@unique([buildingModelId, versionNumber])
   @@index([organizationId])
   @@index([buildingModelId])
+}
+
+// ─── Agent Registry Models (Spec 8) ──────────────────────────────────────────
+
+model Agent {
+  id                String      @id @default(uuid())
+  organizationId    String
+  name              String
+  platform          String?
+  version           String?
+  status            AgentStatus @default(APPROVED)
+  lastSeenAt        DateTime?
+  tokenHash         String      @unique
+  createdByMemberId String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model AgentEnrollmentCode {
+  id                String   @id @default(uuid())
+  organizationId    String
+  codeHash          String   @unique
+  expiresAt         DateTime
+  createdByMemberId String?
+  usedAt            DateTime?
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
