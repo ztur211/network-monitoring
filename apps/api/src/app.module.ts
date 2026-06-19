@@ -38,6 +38,7 @@ import { SpatialModule } from './spatial/spatial.module';
 import { DesktopAuthModule } from './desktop-auth/desktop-auth.module';
 import { ExportModule } from './export/export.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { AgentModule } from './agents/agents.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -90,6 +91,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     BuildingModelsModule,
     SpatialModule,
     MonitoringModule,
+    AgentModule,
     DesktopAuthModule,
     ExportModule,
   ],
