@@ -37,6 +37,7 @@ const makeDevice = (id: string, propertyId = 'prop-1') => ({
   latitude: null, longitude: null, floor: null, floorLabel: null,
   x: null, y: null, z: null,
   ipAddress: null, macAddress: null, notes: null, version: 1,
+  snmpCredentialId: null, oidProfileId: null,
   createdAt: new Date(), updatedAt: new Date(),
 });
 
