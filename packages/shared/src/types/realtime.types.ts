@@ -50,6 +50,9 @@ export const WS_EVENTS = {
   BUILDING_MODEL_VERSION_UPLOADED: 'v1:buildingModel:versionUploaded',
   BUILDING_MODEL_ACTIVATED: 'v1:buildingModel:activated',
   BUILDING_MODEL_DELETED: 'v1:buildingModel:deleted',
+  BCF_TOPIC_CREATED: 'v1:bcf:topic:created',
+  BCF_TOPIC_UPDATED: 'v1:bcf:topic:updated',
+  BCF_COMMENT_ADDED: 'v1:bcf:comment:added',
 } as const;
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'offline';
