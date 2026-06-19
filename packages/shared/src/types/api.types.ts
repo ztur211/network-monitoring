@@ -245,3 +245,21 @@ export interface MapPreferences {
   selectedFloor?: number | null;
   floorDisplayMode?: FloorDisplayMode;
 }
+
+// ─── Device health monitoring (Spec 7) ───────────────────────────────────────
+export type DeviceStatusState = 'UP' | 'DOWN' | 'WARNING' | 'UNKNOWN';
+
+export interface DeviceStatusDto {
+  deviceId: string;
+  state: DeviceStatusState;
+  latencyMs: number | null;
+  lastCheckAt: string | null;
+  lastOkAt: string | null;
+  lastChangeAt: string | null;
+}
+
+/** A bucketed metric series point from GET /v1/devices/:id/metrics. */
+export interface MetricPointDto {
+  bucket: string;
+  avg: number;
+}
