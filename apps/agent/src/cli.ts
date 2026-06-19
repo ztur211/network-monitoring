@@ -8,8 +8,18 @@ import { createBuffer } from './buffer.js';
 import { probeFromConfig } from './poller.js';
 import { runCycle } from './runtime.js';
 
-// Resolve version from package.json at module load time (works in both ESM and CJS).
+// Injected by esbuild at bundle time via --define:__AGENT_VERSION__='"x.y.z"'.
+// In non-bundled (dev/test) mode this declaration resolves to undefined at runtime.
+declare const __AGENT_VERSION__: string | undefined;
+
+// Resolve version from (in priority order):
+// 1. Compile-time constant injected by esbuild (works inside SEA binary where package.json is absent)
+// 2. package.json loaded at runtime via createRequire (works in dev / non-bundled ESM)
+// 3. Hardcoded fallback '0.0.0'
 function getVersion(): string {
+  try {
+    if (typeof __AGENT_VERSION__ !== 'undefined' && __AGENT_VERSION__) return __AGENT_VERSION__;
+  } catch { /* not bundled */ }
   try {
     // In a bundled CJS output, createRequire works and resolves relative to __dirname.
     const req = createRequire(import.meta.url);
@@ -73,7 +83,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<void> {
 
   if (parsed.command === 'enroll') {
     const { code, url } = parsed.options;
-    if (!code) { console.error('enroll requires --code'); exitFn(1); return; }
+    if (!code) { logFn('enroll requires --code'); exitFn(1); return; }
 
     const cfg = loadConfig(url ? { env: { ...process.env, NODESCOPE_AGENT_API_URL: url } } : undefined);
     const credPath = process.env.NODESCOPE_AGENT_CREDENTIALS ?? '/etc/nodescope-agent/credentials.json';
