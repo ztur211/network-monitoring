@@ -37,6 +37,7 @@ import { BuildingModelsModule } from './building-models/building-models.module';
 import { SpatialModule } from './spatial/spatial.module';
 import { DesktopAuthModule } from './desktop-auth/desktop-auth.module';
 import { ExportModule } from './export/export.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
 
 @Module({
@@ -88,6 +89,7 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
     PermissionsModule,
     BuildingModelsModule,
     SpatialModule,
+    MonitoringModule,
     DesktopAuthModule,
     ExportModule,
   ],
