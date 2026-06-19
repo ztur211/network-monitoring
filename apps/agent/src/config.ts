@@ -4,13 +4,16 @@ export interface AgentConfig {
   apiUrl: string; syncIntervalMs: number; probeIntervalMs: number;
   concurrency: number; ports: number[]; icmpEnabled: boolean; timeoutMs: number;
 }
-const num = (v: string | undefined, d: number) => (v != null ? Number(v) : d);
+const num = (v: string | undefined, d: number) => (v != null && v !== '' ? Number(v) : d);
 
 export function loadConfig(opts?: { configPath?: string; env?: Record<string, string | undefined> }): AgentConfig {
   const env = opts?.env ?? process.env;
   const path = opts?.configPath ?? env.NODESCOPE_AGENT_CONFIG ?? '/etc/nodescope-agent/config.json';
   let file: Partial<AgentConfig> = {};
-  try { file = JSON.parse(readFileSync(path, 'utf8')); } catch { /* defaults */ }
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) file = parsed as Partial<AgentConfig>;
+  } catch { /* defaults */ }
   return {
     apiUrl: env.NODESCOPE_AGENT_API_URL ?? file.apiUrl ?? 'http://localhost:3000/api',
     syncIntervalMs: num(env.NODESCOPE_AGENT_SYNC_INTERVAL_MS, file.syncIntervalMs ?? 300000),
