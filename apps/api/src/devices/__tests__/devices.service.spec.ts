@@ -6,6 +6,7 @@ import { ConflictResolutionService } from '../../conflict/conflict.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContainmentService } from '../../properties/containment.service';
 import { PermissionsService } from '../../permissions/permissions.service';
+import { PropertiesService } from '../../properties/properties.service';
 import { SpatialRepository } from '../../spatial/spatial.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { DeviceCategory, DeviceMobility } from '@prisma/client';
@@ -89,6 +90,10 @@ const mockPermissions = {
   assertCanConfigure: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockProperties = {
+  subtreePropertyIds: jest.fn().mockResolvedValue([]),
+};
+
 const mockSpatial: jest.Mocked<Pick<SpatialRepository, 'resolveGoverningBuildingId'>> = {
   resolveGoverningBuildingId: jest.fn().mockResolvedValue(null),
 };
@@ -106,6 +111,7 @@ describe('DevicesService', () => {
         { provide: AuditService, useValue: mockAudit },
         { provide: ContainmentService, useValue: mockContainment },
         { provide: PermissionsService, useValue: mockPermissions },
+        { provide: PropertiesService, useValue: mockProperties },
         { provide: SpatialRepository, useValue: mockSpatial },
       ],
     }).compile();
@@ -115,6 +121,7 @@ describe('DevicesService', () => {
     mockContainment.assertDevicePlacement.mockResolvedValue(undefined);
     mockPermissions.scopeFilter.mockResolvedValue(null);
     mockPermissions.assertCanConfigure.mockResolvedValue(undefined);
+    mockProperties.subtreePropertyIds.mockResolvedValue([]);
     mockConflict.emitScoped.mockResolvedValue(undefined);
     mockConflict.emitScopedMulti.mockResolvedValue(undefined);
     // Default: same building for both old + new property → coords preserved (safe default for non-move tests)
@@ -132,6 +139,46 @@ describe('DevicesService', () => {
       expect(result.items[0].id).toBe('dev-1');
       expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1', null);
       expect(mockRepo.countByOrgId).toHaveBeenCalledWith('org-1', null);
+    });
+  });
+
+  describe('listDevicesForBuilding', () => {
+    const buildingId = 'bld-1';
+
+    it('OWNER: lists the full building subtree, no scope filter', async () => {
+      mockProperties.subtreePropertyIds.mockResolvedValue(['bld-1', 'floor-1', 'floor-2']);
+      mockPermissions.scopeFilter.mockResolvedValue(null);
+      mockRepo.findAllByOrgId.mockResolvedValue([makeDevice({ id: 'd1', propertyId: 'floor-1' })]);
+
+      const out = await service.listDevicesForBuilding(member, buildingId);
+
+      expect(mockProperties.subtreePropertyIds).toHaveBeenCalledWith('org-1', 'bld-1');
+      expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1', {
+        propertyIdIn: ['bld-1', 'floor-1', 'floor-2'],
+      });
+      expect(out.map((d) => d.id)).toEqual(['d1']);
+    });
+
+    it('ADMIN: intersects the building subtree with the F3 read-scope', async () => {
+      const admin = { id: 'm-admin', organizationId: 'org-1', role: 'ADMIN' as const };
+      mockProperties.subtreePropertyIds.mockResolvedValue(['bld-1', 'floor-1', 'floor-2']);
+      mockPermissions.scopeFilter.mockResolvedValue({ propertyIdIn: ['floor-1', 'elsewhere'] });
+      mockRepo.findAllByOrgId.mockResolvedValue([]);
+
+      await service.listDevicesForBuilding(admin, buildingId);
+
+      expect(mockRepo.findAllByOrgId).toHaveBeenCalledWith('org-1', { propertyIdIn: ['floor-1'] });
+    });
+
+    it('returns [] without querying when scope excludes the whole subtree', async () => {
+      const admin = { id: 'm-admin', organizationId: 'org-1', role: 'ADMIN' as const };
+      mockProperties.subtreePropertyIds.mockResolvedValue(['bld-1', 'floor-1']);
+      mockPermissions.scopeFilter.mockResolvedValue({ propertyIdIn: ['unrelated'] });
+
+      const out = await service.listDevicesForBuilding(admin, buildingId);
+
+      expect(out).toEqual([]);
+      expect(mockRepo.findAllByOrgId).not.toHaveBeenCalled();
     });
   });
 
