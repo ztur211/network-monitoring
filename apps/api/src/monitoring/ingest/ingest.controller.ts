@@ -23,7 +23,7 @@ export class IngestController {
   @Public()
   @UseGuards(IngestTokenGuard)
   @HttpCode(202)
-  async ingestBatch(@Req() req: { ingestOrgId: string }, @Body() body: IngestBatchDto) {
+  async ingestBatch(@Req() req: { ingestOrgId: string; ingestSource?: string }, @Body() body: IngestBatchDto) {
     const organizationId = req.ingestOrgId;
     for (const c of body.checks ?? []) {
       await this.ingest.reportStatusCheck({
@@ -31,7 +31,7 @@ export class IngestController {
         deviceId: c.deviceId,
         ok: c.ok,
         latencyMs: c.latencyMs,
-        source: c.source ?? 'agent',
+        source: req.ingestSource ?? c.source ?? 'agent',
       });
     }
     for (const m of body.metrics ?? []) {
@@ -40,7 +40,7 @@ export class IngestController {
         deviceId: m.deviceId,
         metric: m.metric,
         value: m.value,
-        source: m.source ?? 'agent',
+        source: req.ingestSource ?? m.source ?? 'agent',
         ts: m.ts ? new Date(m.ts) : undefined,
       });
     }
