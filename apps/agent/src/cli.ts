@@ -125,5 +125,13 @@ async function runDaemon(): Promise<void> {
   const buffer = createBuffer({ path: process.env.NODESCOPE_AGENT_QUEUE ?? '/var/lib/nodescope-agent/queue.jsonl', maxItems: 5000 });
   const probe = probeFromConfig(cfg);
   const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency }).catch((e) => console.error('[agent] cycle error', e));
-  setInterval(tick, cfg.probeIntervalMs); void tick();
+  const interval = setInterval(tick, cfg.probeIntervalMs);
+  void tick();
+  const shutdown = async () => {
+    clearInterval(interval);
+    try { await buffer.drain(client.ingest); } catch { /* best-effort */ }
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => { void shutdown(); });
+  process.on('SIGINT', () => { void shutdown(); });
 }
