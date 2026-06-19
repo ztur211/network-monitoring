@@ -224,6 +224,28 @@ describe('BcfImportService (integration)', () => {
     });
   });
 
+  it('re-importing with no device components clears stale BcfTopicDevice rows', async () => {
+    const topicGuid = 'aaaabbbb-0000-0000-0000-000000000010';
+
+    // First import: viewpoint selects deviceId → link created
+    const topicWithDevice = buildTopic(topicGuid, true /* includeDeviceComponent */);
+    const bufWith = await writeBcfZip([topicWithDevice]);
+    const member: OrgMemberContext = { id: 'mem-owner', organizationId: orgId, role: 'OWNER' };
+    await service.importBcfZip(member, buildingId, bufWith);
+
+    const dbTopic = await prisma.bcfTopic.findFirstOrThrow({ where: { organizationId: orgId, guid: topicGuid } });
+    const linksBefore = await prisma.bcfTopicDevice.findMany({ where: { topicId: dbTopic.id } });
+    expect(linksBefore).toHaveLength(1);
+
+    // Second import: same guid, viewpoint selects NOTHING → device link must be cleared
+    const topicNoDevice = buildTopic(topicGuid, false /* includeDeviceComponent */);
+    const bufWithout = await writeBcfZip([topicNoDevice]);
+    await service.importBcfZip(member, buildingId, bufWithout);
+
+    const linksAfter = await prisma.bcfTopicDevice.findMany({ where: { topicId: dbTopic.id } });
+    expect(linksAfter).toHaveLength(0);
+  });
+
   it('throws BCF_002 (422) when primary viewpoint has no valid PNG', async () => {
     const topicGuid = 'aaaabbbb-0000-0000-0000-000000000003';
     const topic: ParsedTopic = {
