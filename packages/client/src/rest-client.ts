@@ -4,6 +4,8 @@ import type {
   BuildingModelDto,
   DeviceDto,
   AccessSummaryDto,
+  DeviceStatusDto,
+  MetricPointDto,
 } from '@nodescope/shared';
 import { ApiError } from './api-error';
 
@@ -59,5 +61,17 @@ export function createRestClient(opts: RestClientOptions) {
       request<DeviceDto>('PATCH', `/v1/devices/${id}/position`, pos ?? { x: null, y: null, z: null }),
     // Spec 4 / F3: the caller's effective access (role + assigned roots) — gates configure affordances (UX only).
     getAccessSummary: () => request<AccessSummaryDto>('GET', '/v1/access/me'),
+    // Spec 7: current health status for the building's in-scope devices (Spec 4's initial node-status load).
+    getBuildingDeviceStatus: (propertyId: string) =>
+      request<DeviceStatusDto[]>(
+        'GET',
+        `/v1/buildings/${encodeURIComponent(propertyId)}/device-status`,
+      ),
+    // Spec 7: bucketed metric series for a device (charts).
+    getDeviceMetrics: (id: string, metric: string, from: string, to: string, bucket = '5 minutes') =>
+      request<MetricPointDto[]>(
+        'GET',
+        `/v1/devices/${encodeURIComponent(id)}/metrics?metric=${encodeURIComponent(metric)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&bucket=${encodeURIComponent(bucket)}`,
+      ),
   };
 }
