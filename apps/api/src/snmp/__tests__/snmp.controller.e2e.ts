@@ -10,9 +10,9 @@ import { PrismaService } from '../../prisma/prisma.service';
  * POST   /v1/snmp/credentials         — create
  * GET    /v1/snmp/credentials         — list (secrets NEVER in response)
  * DELETE /v1/snmp/credentials/:id     — delete; 409 SNMP_003 if assigned
- * POST   /v1/snmp/profiles            — create
- * GET    /v1/snmp/profiles            — list
- * DELETE /v1/snmp/profiles/:id        — delete; 409 SNMP_003 if assigned
+ * POST   /v1/snmp/oid-profiles        — create
+ * GET    /v1/snmp/oid-profiles        — list
+ * DELETE /v1/snmp/oid-profiles/:id    — delete; 409 SNMP_003 if assigned
  *
  * Role gating: MEMBER → 403 on write endpoints.
  * Secret safety: JSON.stringify(listResponse) must never contain community string.
@@ -166,9 +166,9 @@ describe('SnmpController (e2e)', () => {
   describe('OID profile CRUD', () => {
     let profileId: string;
 
-    it('POST /v1/snmp/profiles → 201 + profile with entries', async () => {
+    it('POST /v1/snmp/oid-profiles → 201 + profile with entries', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/snmp/profiles')
+        .post('/api/v1/snmp/oid-profiles')
         .set('Cookie', ownerCookie)
         .send({
           name: 'std-profile',
@@ -184,9 +184,9 @@ describe('SnmpController (e2e)', () => {
       profileId = res.body.data.id;
     });
 
-    it('GET /v1/snmp/profiles → 200 + list', async () => {
+    it('GET /v1/snmp/oid-profiles → 200 + list', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/snmp/profiles')
+        .get('/api/v1/snmp/oid-profiles')
         .set('Cookie', ownerCookie)
         .expect(200);
 
@@ -196,9 +196,9 @@ describe('SnmpController (e2e)', () => {
       expect(found).toBeDefined();
     });
 
-    it('DELETE /v1/snmp/profiles/:id → 200 (unassigned profile)', async () => {
+    it('DELETE /v1/snmp/oid-profiles/:id → 200 (unassigned profile)', async () => {
       const res = await request(app.getHttpServer())
-        .delete(`/api/v1/snmp/profiles/${profileId}`)
+        .delete(`/api/v1/snmp/oid-profiles/${profileId}`)
         .set('Cookie', ownerCookie)
         .expect(200);
 
@@ -206,7 +206,7 @@ describe('SnmpController (e2e)', () => {
       expect(res.body.data.id).toBe(profileId);
     });
 
-    it('DELETE /v1/snmp/profiles/:id → 409 SNMP_003 when profile is assigned to a network', async () => {
+    it('DELETE /v1/snmp/oid-profiles/:id → 409 SNMP_003 when profile is assigned to a network', async () => {
       const assignedProf = await prisma.oidProfile.create({
         data: { organizationId: orgId, name: 'assigned-profile', includeInterfaceMetrics: false },
       });
@@ -215,7 +215,7 @@ describe('SnmpController (e2e)', () => {
       });
 
       const res = await request(app.getHttpServer())
-        .delete(`/api/v1/snmp/profiles/${assignedProf.id}`)
+        .delete(`/api/v1/snmp/oid-profiles/${assignedProf.id}`)
         .set('Cookie', ownerCookie)
         .expect(409);
 
