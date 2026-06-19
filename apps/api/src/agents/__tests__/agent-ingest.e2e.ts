@@ -112,7 +112,7 @@ describe('AgentIngestController (e2e)', () => {
     it('returns 401 with an invalid code', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/monitoring/agent/enroll')
-        .send({ code: 'invalid-code-xyz', name: 'bad-agent' })
+        .send({ code: 'invalid-code-xyz', name: 'bad-agent', platform: 'linux', version: '1.0.0' })
         .expect(401);
     });
   });
