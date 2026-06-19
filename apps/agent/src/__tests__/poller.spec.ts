@@ -16,8 +16,19 @@ describe('poller', () => {
     expect(batch.checks.map((c) => c.deviceId).sort()).toEqual(['a', 'b']);
     expect(batch.checks.find((c) => c.deviceId === 'b')!.ok).toBe(false);
   });
-  it('mapLimit runs all under a cap', async () => {
-    const seen: number[] = []; await mapLimit([1, 2, 3], 2, async (n) => { seen.push(n); });
+  it('mapLimit runs all items', async () => {
+    const seen: number[] = [];
+    await mapLimit([1, 2, 3], 2, async (n) => { seen.push(n); });
     expect(seen.sort()).toEqual([1, 2, 3]);
+  });
+  it('mapLimit never exceeds the concurrency cap', async () => {
+    let inflight = 0, maxSeen = 0;
+    await mapLimit([1, 2, 3, 4, 5], 2, async () => {
+      inflight++; maxSeen = Math.max(maxSeen, inflight);
+      await new Promise((r) => setTimeout(r, 2));
+      inflight--;
+    });
+    expect(maxSeen).toBeLessThanOrEqual(2);
+    expect(maxSeen).toBeGreaterThan(1); // did run in parallel
   });
 });
