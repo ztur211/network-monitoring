@@ -7,7 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
 import { AgentTokenGuard } from './agent-token.guard';
 import { AgentTokenService } from './agent-token.service';
@@ -15,18 +15,20 @@ import { AgentRepository } from './agent.repository';
 
 export class EnrollDto {
   @IsString()
+  @IsNotEmpty()
   code: string;
 
   @IsString()
+  @IsNotEmpty()
   name: string;
 
-  @IsOptional()
   @IsString()
-  platform?: string;
+  @IsNotEmpty()
+  platform: string;
 
-  @IsOptional()
   @IsString()
-  version?: string;
+  @IsNotEmpty()
+  version: string;
 }
 
 @Controller('v1/monitoring/agent')
@@ -45,8 +47,8 @@ export class AgentIngestController {
   async enroll(@Body() body: EnrollDto) {
     const data = await this.tokens.enroll(body.code, {
       name: body.name,
-      platform: body.platform ?? 'unknown',
-      version: body.version ?? '0.0.0',
+      platform: body.platform,
+      version: body.version,
     });
     return { success: true, data, timestamp: new Date().toISOString() };
   }

@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 /**
  * E2E for Phase D Task 2: OWNER/ADMIN agent management endpoints.
  *
- * POST   /v1/agents/enrollment-code  — generate code (OWNER only)
+ * POST   /v1/agents/enrollment-code  — generate code (OWNER/ADMIN only)
  * GET    /v1/agents                  — list agents (OWNER/ADMIN only)
  * POST   /v1/agents/:id/revoke       — revoke agent (OWNER/ADMIN only)
  * DELETE /v1/agents/:id              — delete agent (OWNER/ADMIN only)
@@ -172,6 +172,27 @@ describe('AgentsController (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   describe('MEMBER access', () => {
+    let seededAgentId: string;
+
+    beforeAll(async () => {
+      const agent = await prisma.agent.create({
+        data: {
+          organizationId: orgId,
+          name: 'member-test-agent',
+          platform: 'linux',
+          version: '1.0.0',
+          status: 'APPROVED',
+          tokenHash: 'dummy-hash-for-member-access-test',
+          createdByMemberId: null,
+        },
+      });
+      seededAgentId = agent.id;
+    });
+
+    afterAll(async () => {
+      await prisma.agent.deleteMany({ where: { id: seededAgentId } });
+    });
+
     it('GET /v1/agents → 403', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/agents')
@@ -186,6 +207,24 @@ describe('AgentsController (e2e)', () => {
         .post('/api/v1/agents/enrollment-code')
         .set('Cookie', memberCookie)
         .expect(403);
+    });
+
+    it('POST /v1/agents/:id/revoke → 403', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/agents/${seededAgentId}/revoke`)
+        .set('Cookie', memberCookie)
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+    });
+
+    it('DELETE /v1/agents/:id → 403', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/api/v1/agents/${seededAgentId}`)
+        .set('Cookie', memberCookie)
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
     });
   });
 
