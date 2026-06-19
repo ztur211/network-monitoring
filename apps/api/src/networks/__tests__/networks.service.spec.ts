@@ -22,6 +22,8 @@ const makeNetwork = (overrides = {}) => ({
   downMbps: null,
   upMbps: null,
   version: 1,
+  snmpCredentialId: null,
+  oidProfileId: null,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
   ...overrides,
