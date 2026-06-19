@@ -49,7 +49,7 @@ export class BcfController {
   // ─── Import ───────────────────────────────────────────────────────────────
 
   @Post('buildings/:propertyId/bcf/import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 52428800 } })) // 50 MB, matches BCF_001
   async import(
     @OrgMember() m: OrgMemberContext,
     @Param('propertyId') propertyId: string,

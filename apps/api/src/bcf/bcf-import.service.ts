@@ -11,17 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { readBcfZip } from './bcf-zip';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '../export/ifc-guid';
-
-/** Minimum PNG header (8 bytes): \x89PNG\r\n\x1a\n */
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-function isPng(buf: Buffer): boolean {
-  if (buf.length < 8) return false;
-  for (let i = 0; i < 8; i++) {
-    if (buf[i] !== PNG_MAGIC[i]) return false;
-  }
-  return true;
-}
+import { isPng } from './bcf-utils';
 
 /** BCF import result. */
 export interface BcfImportResult {
@@ -178,13 +168,14 @@ export class BcfImportService {
           });
         }
 
-        // Derive and upsert device links
+        // Derive and upsert device links — delete is ALWAYS run so re-import with no
+        // matching devices clears stale BcfTopicDevice rows (mirrors comments/viewpoints).
         const allComponents = topic.viewpoints.flatMap((vp) =>
           vp.components.selection.map((g) => ({ ifcGuid: g })),
         );
         const deviceIds = deriveDeviceLinks(allComponents, deviceGuidMap);
+        await tx.bcfTopicDevice.deleteMany({ where: { topicId: upserted.id } });
         if (deviceIds.length > 0) {
-          await tx.bcfTopicDevice.deleteMany({ where: { topicId: upserted.id } });
           await tx.bcfTopicDevice.createMany({
             data: deviceIds.map((deviceId) => ({ topicId: upserted.id, deviceId })),
           });

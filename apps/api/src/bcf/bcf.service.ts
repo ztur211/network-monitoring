@@ -27,17 +27,7 @@ import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '../export/ifc-guid';
-
-/** Minimum PNG header (8 bytes): \x89PNG\r\n\x1a\n */
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-function isPng(buf: Buffer): boolean {
-  if (buf.length < 8) return false;
-  for (let i = 0; i < 8; i++) {
-    if (buf[i] !== PNG_MAGIC[i]) return false;
-  }
-  return true;
-}
+import { isPng } from './bcf-utils';
 
 type TopicWithRelations = BcfTopicRow & {
   comments: BcfCommentRow[];
@@ -113,7 +103,9 @@ export class BcfService {
       components: vp.components,
       clippingPlanes: vp.clippingPlanes ?? [],
       isPrimary: vp.isPrimary ?? i === 0,
-      snapshotPng: vp.snapshotPngBase64 ? Buffer.from(vp.snapshotPngBase64, 'base64') : undefined,
+      // snapshotPng is set to a Buffer (possibly 0-byte) when the field is present so
+      // the upload loop can distinguish "not supplied" (undefined) from "supplied but empty".
+      snapshotPng: vp.snapshotPngBase64 !== undefined ? Buffer.from(vp.snapshotPngBase64, 'base64') : undefined,
     }));
 
     // Derive device links from every viewpoint's selected component IfcGuids.
@@ -124,12 +116,14 @@ export class BcfService {
     const deviceIds = deriveDeviceLinks(components, deviceGuidMap);
 
     // Upload snapshots before the DB write (avoid half-written rows on upload failure).
+    // If snapshotPngBase64 is present (non-undefined) the decoded buffer must be a valid
+    // non-empty PNG; an empty string decodes to a 0-byte buffer which is also invalid.
     const snapshotKeys = new Map<string, string>(); // viewpointGuid → storageKey
     const topicGuid = randomUUID();
     for (const vp of viewpoints) {
-      if (vp.snapshotPng) {
+      if (vp.snapshotPng !== undefined) {
         if (!isPng(vp.snapshotPng)) {
-          throw new NodeScopeException('BCF_002', 'Invalid snapshot PNG', HttpStatus.UNPROCESSABLE_ENTITY);
+          throw new NodeScopeException('BCF_002', 'Invalid snapshot', HttpStatus.UNPROCESSABLE_ENTITY);
         }
         const key = `org/${organizationId}/bcf/${topicGuid}/${vp.guid}.png`;
         await this.storage.putObjectStream(key, Readable.from(vp.snapshotPng), 'image/png');
