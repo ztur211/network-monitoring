@@ -1,3 +1,5 @@
+import type { DeviceStatusState } from '@nodescope/shared';
+
 // The display side of the Monitoring boundary (Spec 4 §9). Spec 4 ships only this
 // type + colour map and the `unknown` default; the Monitoring spec populates the
 // store's nodeStatus map (initial fetch + a realtime status event), and these
@@ -10,3 +12,8 @@ export const STATUS_COLOR: Record<NodeStatus, number> = {
   warning: 0xf5a623,
   unknown: 0x8a8f98,
 };
+
+// Spec 7 fills the seam: map the server DeviceStatusState → the Spec 4 NodeStatus union.
+export function statusFromState(state: DeviceStatusState): NodeStatus {
+  return ({ UP: 'up', DOWN: 'down', WARNING: 'warning', UNKNOWN: 'unknown' } as const)[state] ?? 'unknown';
+}
