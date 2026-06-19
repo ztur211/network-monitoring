@@ -7,6 +7,7 @@ import { createAgentClient } from './api-client.js';
 import { createBuffer } from './buffer.js';
 import { probeFromConfig } from './poller.js';
 import { runCycle } from './runtime.js';
+import { netSnmpSessionFactory } from './net-snmp-session.js';
 
 // Injected by esbuild at bundle time via --define:__AGENT_VERSION__='"x.y.z"'.
 // In non-bundled (dev/test) mode this declaration resolves to undefined at runtime.
@@ -124,7 +125,7 @@ async function runDaemon(): Promise<void> {
   const client = createAgentClient({ apiUrl: cfg.apiUrl, token: creds.token });
   const buffer = createBuffer({ path: process.env.NODESCOPE_AGENT_QUEUE ?? '/var/lib/nodescope-agent/queue.jsonl', maxItems: 5000 });
   const probe = probeFromConfig(cfg);
-  const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency }).catch((e) => console.error('[agent] cycle error', e));
+  const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency, snmpFactory: netSnmpSessionFactory }).catch((e) => console.error('[agent] cycle error', e));
   const interval = setInterval(tick, cfg.probeIntervalMs);
   void tick();
   const shutdown = async () => {

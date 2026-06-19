@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@nodescope/probe": "*",
-    "@nodescope/shared": "*"
+    "@nodescope/shared": "*",
+    "net-snmp": "^3.26.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
