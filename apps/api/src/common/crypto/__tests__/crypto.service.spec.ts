@@ -14,4 +14,9 @@ describe('CryptoService', () => {
     const c = svc(); const blob = Buffer.from(c.encrypt('x'), 'base64'); blob[blob.length - 1] ^= 0xff;
     expect(() => c.decrypt(blob.toString('base64'))).toThrow();
   });
+  it('rejects a tampered auth tag (GCM auth)', () => {
+    const c = svc(); const blob = Buffer.from(c.encrypt('x'), 'base64');
+    blob[12] ^= 0x01; // first byte of the 16-byte auth tag
+    expect(() => c.decrypt(blob.toString('base64'))).toThrow();
+  });
 });
