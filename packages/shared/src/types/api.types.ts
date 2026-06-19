@@ -245,3 +245,40 @@ export interface MapPreferences {
   selectedFloor?: number | null;
   floorDisplayMode?: FloorDisplayMode;
 }
+
+// ─── Device health monitoring (Spec 7) ───────────────────────────────────────
+export type DeviceStatusState = 'UP' | 'DOWN' | 'WARNING' | 'UNKNOWN';
+
+export interface DeviceStatusDto {
+  deviceId: string;
+  state: DeviceStatusState;
+  latencyMs: number | null;
+  lastCheckAt: string | null;
+  lastOkAt: string | null;
+  lastChangeAt: string | null;
+}
+
+/** A bucketed metric series point from GET /v1/devices/:id/metrics. */
+export interface MetricPointDto {
+  bucket: string;
+  avg: number;
+}
+
+// ─── Monitoring ingest (Spec 7 Phase D; the Agent/external push contract) ─────
+export interface StatusCheckDto {
+  deviceId: string;
+  ok: boolean;
+  latencyMs?: number;
+  source?: string;
+}
+export interface MetricSampleDto {
+  deviceId: string;
+  metric: string;
+  value: number;
+  ts?: string;
+  source?: string;
+}
+export interface IngestBatchDto {
+  checks?: StatusCheckDto[];
+  metrics?: MetricSampleDto[];
+}
