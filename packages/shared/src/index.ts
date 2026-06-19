@@ -5,3 +5,4 @@ export * from './types/realtime.types';
 export * from './types/ai.types';
 export * from './types/network.types';
 export * from './types/onboarding.types';
+export * from './types/agent.types';
