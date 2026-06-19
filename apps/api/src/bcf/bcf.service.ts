@@ -195,8 +195,9 @@ export class BcfService {
     await this.permissions.assertCanConfigure(member, topic.propertyId);
 
     const now = new Date();
+    let createdComment: BcfCommentRow;
     const updated = await this.prisma.$transaction(async (tx) => {
-      await tx.bcfComment.create({
+      createdComment = await tx.bcfComment.create({
         data: {
           organizationId: member.organizationId,
           topicId: topic.id,
@@ -215,11 +216,11 @@ export class BcfService {
     });
 
     const topicDto = this.toTopicDto(updated);
-    // Best-effort F3-scoped realtime event — the latest comment is in topicDto.comments.
-    const latestComment = topicDto.comments[topicDto.comments.length - 1];
+    // Best-effort F3-scoped realtime event — emit the just-created comment directly
+    // (avoids relying on unordered include ordering).
     await this.conflict.emitScoped(member.organizationId, topic.propertyId, WS_EVENTS.BCF_COMMENT_ADDED, {
       topicId,
-      comment: latestComment,
+      comment: this.toCommentDto(createdComment!),
     });
     return topicDto;
   }
