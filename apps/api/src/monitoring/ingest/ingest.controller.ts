@@ -15,7 +15,8 @@ export class IngestController {
   ) {}
 
   /**
-   * Agent-agnostic batch ingest. Authed by the per-org ingest token (NOT a session),
+   * Agent-agnostic batch ingest. Authed by EITHER a per-agent token (x-agent-token) OR
+   * the per-org ingest token (x-ingest-token / Bearer) — NOT a session,
    * so it is @Public (skips the session AuthGuard); the org is derived from the token.
    * A foreign-org deviceId fails per-item via IngestService (ORG_008).
    */
