@@ -2013,3 +2013,16 @@ Two gaps in the Spec 1 `PATCH /v1/devices/:id/position` endpoint, surfaced by th
 - **Realtime on position change.** The endpoint emitted no event, so device placements/moves/clears did not propagate to other clients (Spec 4 §10's `v1:device:updated` carries `x/y/z`). `setPosition` now `ConflictResolutionService.emitScoped(orgId, device.propertyId, WS_EVENTS.DEVICE_UPDATED, { deviceId, device, changes, updatedBy })` — the same envelope `DevicesService.updateDevice` emits (and the shape Spec 4's `applyDeviceEvent` consumes). `SpatialModule` now imports `PermissionsModule` + `ConflictResolutionModule`.
 
 **Phase gate:** api **unit 483 passed** (48 suites; +2 spatial.service: out-of-scope-ADMIN→PERM_001, emit-on-set) + `nest build` clean (no DI cycle) + `tsc -p tsconfig.jest.json` clean (all src+tests). The existing `spatial.e2e` is unaffected (its position writes are OWNER; MEMBER→403 still via `@OrgRoles`); DB e2e for the new ADMIN-scope path runs in the build env. **PR pending manual open:** `https://github.com/ztur211/nodescope/pull/new/fix/spec1-position-scope-and-realtime` (independent fix off master; merge before/with the Spec 4 desktop stack so placement is fully scope-enforced + live).
+
+---
+
+## Post-MVP Pivot — Integration & Full DB-Backed Validation (2026-06-19)
+
+The unmerged feature stack was consolidated onto **`integration/full-stack`** (off `master`) and validated end-to-end against a **real, natively-installed** data stack (no Docker): Postgres 16.14 + PostGIS 3.6.4 + TimescaleDB 2.28.0, Redis 7, MinIO. This is the first time the DB-backed integration/e2e suites — previously deferred to "the build env" — have actually run for Spec 4/5/6A/Spec-1-follow-up.
+
+- **Merge.** `integration/full-stack` = `master` + `feat/spec4-nodes-in-3d` (the spec2-b→c→spec3→spec4 desktop stack) + `feat/spec6-bcf` (spec5 + the BCF codec) + `fix/spec1-position-scope-and-realtime`. Only conflicts were additive `PROGRESS.md` sections + `package-lock.json` (regenerated via `npm install`). 124 files, +5028 lines vs master.
+- **Test-setup gap caught by the DB run (`devices.repository.spec.ts`).** Spec 4 added `PropertiesService` to `DevicesService`'s constructor (for `listDevicesForBuilding`), but this DB-backed audit integration test's hand-built provider list was never updated — it could not run in the sandbox without a database, so the gap was invisible. Fixed by adding a `PropertiesService` mock (the create path the test exercises never calls `subtreePropertyIds`).
+
+**Validation gate (all green against real infra):** api **unit 499** (52 suites) · **integration 132** (16 suites) · **e2e 303** (33 suites) — including the IFC-export controller e2e (Spec 5) and the `?buildingPropertyId` F2-subtree ∩ F3-scope device query e2e (Spec 4) that were written-but-unrun before. Desktop **vitest 95** (33 files) · client **vitest 6** (3 files). Builds/type-checks: `nest build`, api `tsc -p tsconfig.jest.json`, desktop `tsc -b`, `electron-vite build` — all clean. The Playwright-Electron e2e + live GPU/orbit/pick and IFC-tool import remain manual (display/external-tool) checks.
+
+**Net:** the entire merged server stack (F1a→F3, Spec 1 + follow-up, Spec 2 Phase A, Spec 4 server side, Spec 5, Spec 6 codec) is now proven correct against a real Postgres/PostGIS/TimescaleDB/Redis/MinIO — not just headless unit gates.
