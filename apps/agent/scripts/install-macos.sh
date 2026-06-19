@@ -51,8 +51,8 @@ chown root:wheel "$PLIST_PATH"
 chmod 644 "$PLIST_PATH"
 
 echo "[4/4] Loading and starting service..."
-launchctl unload "$PLIST_PATH" 2>/dev/null || true
-launchctl load -w "$PLIST_PATH"
+launchctl bootout system "$PLIST_PATH" 2>/dev/null || true
+launchctl bootstrap system "$PLIST_PATH"
 
 echo "nodescope-agent installed and running. Check logs:"
 echo "  stdout: /var/log/nodescope-agent.log"

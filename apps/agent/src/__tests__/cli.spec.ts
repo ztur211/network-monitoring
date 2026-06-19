@@ -68,14 +68,20 @@ describe('runCli', () => {
     const call = vi.mocked(deps.enroll!).mock.calls[0][0];
     expect(call.code).toBe('abc');
     expect(call.apiUrl).toBe('http://x');
-    expect(deps.saveCredentials).toHaveBeenCalledOnce();
+    // Fix 2: assert saveCredentials was called WITH the mocked enroll's return value
+    expect(deps.saveCredentials).toHaveBeenCalledWith(
+      expect.any(String),
+      { agentId: 'agent-1', token: 'tok-abc' },
+    );
     expect(exitCode).toBe(0);
   });
 
-  it('enroll without --code exits 1', async () => {
+  it('enroll without --code exits 1 and logs error via injected log', async () => {
     await runCli(['enroll'], deps);
     expect(exitCode).toBe(1);
     expect(deps.enroll).not.toHaveBeenCalled();
+    // Fix 3: error message must go through injected log (not console.error)
+    expect(logs).toContain('enroll requires --code');
   });
 
   it('no args calls startDaemon', async () => {
