@@ -9,6 +9,9 @@ import { MonitoringGatewayEmitter } from './ingest/monitoring-gateway.emitter';
 import { MonitoringService } from './status/monitoring.service';
 import { MonitoringController } from './status/monitoring.controller';
 import { ProberService } from './prober/prober.service';
+import { IngestTokenService } from './ingest/ingest-token.service';
+import { IngestTokenGuard } from './ingest/ingest-token.guard';
+import { IngestController } from './ingest/ingest.controller';
 
 /**
  * Monitoring pipeline. Phase A: storage + ingest seam. Phase B (this): the
@@ -18,7 +21,7 @@ import { ProberService } from './prober/prober.service';
  */
 @Module({
   imports: [PrismaModule, DevicesModule, PermissionsModule, ConflictResolutionModule],
-  controllers: [MonitoringController],
+  controllers: [MonitoringController, IngestController],
   providers: [
     MonitoringRepository,
     IngestService,
@@ -26,6 +29,8 @@ import { ProberService } from './prober/prober.service';
     MonitoringGatewayEmitter,
     { provide: MONITORING_EMITTER, useExisting: MonitoringGatewayEmitter },
     ProberService,
+    IngestTokenService,
+    IngestTokenGuard,
   ],
   exports: [IngestService, MonitoringRepository],
 })

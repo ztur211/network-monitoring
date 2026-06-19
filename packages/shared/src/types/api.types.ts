@@ -263,3 +263,22 @@ export interface MetricPointDto {
   bucket: string;
   avg: number;
 }
+
+// ─── Monitoring ingest (Spec 7 Phase D; the Agent/external push contract) ─────
+export interface StatusCheckDto {
+  deviceId: string;
+  ok: boolean;
+  latencyMs?: number;
+  source?: string;
+}
+export interface MetricSampleDto {
+  deviceId: string;
+  metric: string;
+  value: number;
+  ts?: string;
+  source?: string;
+}
+export interface IngestBatchDto {
+  checks?: StatusCheckDto[];
+  metrics?: MetricSampleDto[];
+}
