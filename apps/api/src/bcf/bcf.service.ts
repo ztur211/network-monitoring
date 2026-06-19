@@ -26,7 +26,7 @@ import { DevicesRepository } from '../devices/devices.repository';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { deriveDeviceLinks } from './device-links';
-import { toIfcGuid } from '../export/ifc-guid';
+import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
 
 type TopicWithRelations = BcfTopicRow & {

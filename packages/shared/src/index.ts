@@ -8,3 +8,4 @@ export * from './types/onboarding.types';
 export * from './types/agent.types';
 export * from './types/snmp.types';
 export * from './types/bcf.types';
+export * from './ifc-guid';

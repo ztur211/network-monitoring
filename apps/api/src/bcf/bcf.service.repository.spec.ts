@@ -23,7 +23,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { PropertiesService } from '../properties/properties.service';
 import { DevicesRepository } from '../devices/devices.repository';
 import { DeviceCategory } from '@prisma/client';
-import { toIfcGuid } from '../export/ifc-guid';
+import { toIfcGuid } from '@nodescope/shared';
 import type { CreateBcfTopicDto } from '@nodescope/shared';
 import type { OrgMemberContext } from '../organizations/org-context.types';
 
