@@ -32,8 +32,14 @@ export class DevicesController {
   ) {}
 
   @Get()
-  async listDevices(@OrgMember() member: OrgMemberContext) {
-    const data = await this.devicesService.listDevices(member);
+  async listDevices(
+    @OrgMember() member: OrgMemberContext,
+    @Query('buildingPropertyId') buildingPropertyId?: string,
+  ) {
+    // Spec 4: ?buildingPropertyId scopes to a building subtree (bare array); otherwise the full org list.
+    const data = buildingPropertyId
+      ? await this.devicesService.listDevicesForBuilding(member, buildingPropertyId)
+      : await this.devicesService.listDevices(member);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 
