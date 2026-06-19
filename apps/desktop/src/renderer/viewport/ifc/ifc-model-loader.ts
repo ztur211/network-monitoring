@@ -30,6 +30,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
     root.add(recenterGroup);
     const categories = new Map<IfcType, THREE.Group>();
     const elementIndex = new Map<ExpressId, THREE.Mesh>();
+    const guidIndex = new Map<string, ExpressId>(); // BCF Spec 6: IFC GlobalId → expressID
 
     const flat = api.LoadAllGeometry(modelID);
     for (let i = 0; i < flat.size(); i++) {
@@ -66,6 +67,13 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
         g.delete();
       }
       if (!pos.length) continue;
+
+      // BCF Spec 6: index the IFC GlobalId for viewpoint selection/visibility lookup.
+      const lineObj = api.GetLine(modelID, expressID) as any;
+      const rawGuid = lineObj?.GlobalId;
+      const guid: string | undefined =
+        rawGuid == null ? undefined : typeof rawGuid === 'object' && 'value' in rawGuid ? String(rawGuid.value) : String(rawGuid);
+      if (guid) guidIndex.set(guid, expressID);
 
       const bg = new THREE.BufferGeometry();
       bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -121,6 +129,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
       root,
       categories,
       elementIndex,
+      guidIndex,
       bbox,
       frame: { recenter, upConversion: 'Z_UP_TO_Y_UP' },
       getProperties,
