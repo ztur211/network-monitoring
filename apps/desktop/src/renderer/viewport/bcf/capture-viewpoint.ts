@@ -16,6 +16,23 @@ import type { ParsedModel } from '../ifc/ifc-types';
 import { toModel, toModelDir } from '../nodes/node-coords';
 import { toIfcGuid } from '@nodescope/shared';
 
+export interface CapturedViewpoint {
+  camera: {
+    kind: 'perspective';
+    position: number[];
+    direction: number[];
+    up: number[];
+    fieldOfView: number;
+  };
+  components: {
+    selection: string[];
+    visibility: {
+      defaultVisibility: boolean;
+      exceptions: string[];
+    };
+  };
+}
+
 /**
  * Capture the current viewport camera state as a BCF 2.1 viewpoint.
  *
@@ -29,7 +46,7 @@ export function captureViewpoint(
   cam: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number },
   frame: ParsedModel['frame'],
   selectedDeviceId?: string,
-) {
+): CapturedViewpoint {
   // Convert Y-up viewport position → IFC native Z-up.
   const nativePosition = toModel(cam.position, frame);
 

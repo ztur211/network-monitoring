@@ -57,6 +57,7 @@ describe('IfcModelLoader', () => {
     for (const [, expressID] of model.guidIndex) {
       expect(model.elementIndex.has(expressID)).toBe(true);
     }
+    expect(model.guidIndex.size).toBe(model.elementIndex.size);
   });
 
   it('disposes without throwing and frees geometries', () => {
