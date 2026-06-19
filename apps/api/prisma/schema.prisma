@@ -55,6 +55,13 @@ enum DeviceMobility {
   UNKNOWN
 }
 
+enum DeviceStatusState {
+  UP
+  DOWN
+  WARNING
+  UNKNOWN
+}
+
 enum ConnectionType {
   ETHERNET
   FIBER
@@ -210,6 +217,7 @@ model Device {
   fiberRunsFrom   FiberRun[]         @relation("startDevice")
   fiberRunsTo     FiberRun[]         @relation("endDevice")
   circuits        Circuit[]
+  status          DeviceStatus?
 
   @@index([organizationId])
   @@index([organizationId, category])
@@ -399,6 +407,37 @@ model Organization {
   memberProperties      MemberProperty[]
   buildingModels        BuildingModel[]
   buildingModelVersions BuildingModelVersion[]
+  deviceStatuses        DeviceStatus[]
+  monitoringIngestToken MonitoringIngestToken?
+}
+
+model DeviceStatus {
+  id               String            @id @default(uuid())
+  organizationId   String
+  deviceId         String            @unique
+  state            DeviceStatusState @default(UNKNOWN)
+  latencyMs        Float?
+  consecutiveFails Int               @default(0)
+  lastCheckAt      DateTime?
+  lastOkAt         DateTime?
+  lastChangeAt     DateTime?
+  source           String?
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model MonitoringIngestToken {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  tokenHash      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model OrganizationDomain {
