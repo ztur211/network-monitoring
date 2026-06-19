@@ -10,7 +10,7 @@ import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { readBcfZip } from './bcf-zip';
 import { deriveDeviceLinks } from './device-links';
-import { toIfcGuid } from '../export/ifc-guid';
+import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
 
 /** BCF import result. */

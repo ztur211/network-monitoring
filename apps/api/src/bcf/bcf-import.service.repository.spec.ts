@@ -21,7 +21,7 @@ import { PropertiesService } from '../properties/properties.service';
 import { DevicesRepository } from '../devices/devices.repository';
 import { DeviceCategory } from '@prisma/client';
 import { writeBcfZip, ParsedTopic } from './bcf-zip';
-import { toIfcGuid } from '../export/ifc-guid';
+import { toIfcGuid } from '@nodescope/shared';
 import type { OrgMemberContext } from '../organizations/org-context.types';
 
 // Minimal valid 1×1 PNG (67 bytes)
