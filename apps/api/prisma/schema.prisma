@@ -452,6 +452,7 @@ model Organization {
   agentEnrollmentCodes  AgentEnrollmentCode[]
   snmpCredentials       SnmpCredential[]
   oidProfiles           OidProfile[]
+  bcfTopics             BcfTopic[]
 }
 
 model DeviceStatus {
@@ -786,6 +787,80 @@ model OidEntry {
   profile OidProfile @relation(fields: [oidProfileId], references: [id], onDelete: Cascade)
 
   @@unique([oidProfileId, oid])
+}
+
+// ─── BCF (BIM Collaboration Format) Models (Spec 6) ─────────────────────────
+
+model BcfTopic {
+  id             String    @id @default(uuid())
+  organizationId String
+  propertyId     String
+  guid           String
+  title          String
+  topicType      String?
+  topicStatus    String?
+  priority       String?
+  labels         String[]  @default([])
+  creationAuthor String
+  creationDate   DateTime
+  modifiedAuthor String?
+  modifiedDate   DateTime?
+  assignedTo     String?
+  dueDate        DateTime?
+  description    String?
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  comments     BcfComment[]
+  viewpoints   BcfViewpoint[]
+  devices      BcfTopicDevice[]
+
+  @@unique([organizationId, guid])
+  @@index([organizationId, propertyId])
+}
+
+model BcfComment {
+  id             String   @id @default(uuid())
+  organizationId String
+  topicId        String
+  guid           String
+  comment        String
+  author         String
+  date           DateTime
+  viewpointGuid  String?
+
+  topic BcfTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+}
+
+model BcfViewpoint {
+  id              String   @id @default(uuid())
+  organizationId  String
+  topicId         String
+  guid            String
+  camera          Json
+  components      Json
+  clippingPlanes  Json
+  snapshotKey     String?
+  isPrimary       Boolean  @default(false)
+
+  topic BcfTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+}
+
+model BcfTopicDevice {
+  id      String @id @default(uuid())
+  topicId String
+  deviceId String
+
+  topic BcfTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, deviceId])
+  @@index([deviceId])
 }
 
 // ─── Post-MVP Models — Commented Out, Do Not Uncomment Until Relevant Priority Ships ───
