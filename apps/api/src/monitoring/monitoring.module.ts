@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { DevicesModule } from '../devices/devices.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
+import { AgentModule } from '../agents/agents.module';
 import { MonitoringRepository } from './monitoring.repository';
 import { IngestService, MONITORING_EMITTER } from './ingest/ingest.service';
 import { MonitoringGatewayEmitter } from './ingest/monitoring-gateway.emitter';
@@ -20,7 +21,7 @@ import { IngestController } from './ingest/ingest.controller';
  * HTTP ingest endpoint + per-org token.
  */
 @Module({
-  imports: [PrismaModule, DevicesModule, PermissionsModule, ConflictResolutionModule],
+  imports: [PrismaModule, DevicesModule, PermissionsModule, ConflictResolutionModule, AgentModule],
   controllers: [MonitoringController, IngestController],
   providers: [
     MonitoringRepository,
