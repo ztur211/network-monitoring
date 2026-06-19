@@ -13,8 +13,8 @@ export class SnmpRepository {
   countCredentialAssignments(id: string): Promise<number> {
     return this.prisma.$transaction([this.prisma.network.count({ where: { snmpCredentialId: id } }), this.prisma.device.count({ where: { snmpCredentialId: id } })]).then(([n, d]) => n + d);
   }
-  createProfile(data: { organizationId: string; name: string; includeInterfaceMetrics: boolean }, entries: { oid: string; metric: string }[]): Promise<OidProfile> {
-    return this.prisma.oidProfile.create({ data: { ...data, entries: { create: entries } } });
+  createProfile(data: { organizationId: string; name: string; includeInterfaceMetrics: boolean }, entries: { oid: string; metric: string }[]): Promise<OidProfile & { entries: OidEntry[] }> {
+    return this.prisma.oidProfile.create({ data: { ...data, entries: { create: entries } }, include: { entries: true } });
   }
   findProfile(organizationId: string, id: string): Promise<(OidProfile & { entries: OidEntry[] }) | null> {
     return this.prisma.oidProfile.findFirst({ where: { id, organizationId }, include: { entries: true } });

@@ -85,9 +85,7 @@ export class SnmpService {
       },
       dto.entries ?? [],
     );
-    // createProfile returns OidProfile without entries populated; re-fetch for full DTO
-    const full = await this.repo.findProfile(organizationId, row.id);
-    return this.toProfileDto(full!);
+    return this.toProfileDto(row);
   }
 
   async getProfile(organizationId: string, id: string): Promise<OidProfileDto> {

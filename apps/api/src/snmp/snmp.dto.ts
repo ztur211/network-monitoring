@@ -1,4 +1,5 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsDefined, IsEnum, IsNotEmpty, IsOptional, IsString, ValidateIf, ValidateNested } from 'class-validator';
 
 export type AssignTargetType = 'network' | 'device';
 
@@ -10,13 +11,17 @@ export class AssignSnmpDto {
   @IsNotEmpty()
   targetId!: string;
 
-  @IsOptional()
+  /** Required to be present (but may be null to explicitly unassign). */
+  @IsDefined()
+  @ValidateIf((o, v) => v !== null)
   @IsString()
-  snmpCredentialId?: string;
+  snmpCredentialId!: string | null;
 
-  @IsOptional()
+  /** Required to be present (but may be null to explicitly unassign). */
+  @IsDefined()
+  @ValidateIf((o, v) => v !== null)
   @IsString()
-  oidProfileId?: string;
+  oidProfileId!: string | null;
 }
 
 export class CreateSnmpCredentialBodyDto {
@@ -56,14 +61,27 @@ export class CreateSnmpCredentialBodyDto {
   privKey?: string;
 }
 
+export class CreateOidEntryDto {
+  @IsString()
+  @IsNotEmpty()
+  oid!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  metric!: string;
+}
+
 export class CreateOidProfileBodyDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
 
   @IsOptional()
+  @IsBoolean()
   includeInterfaceMetrics?: boolean;
 
   @IsOptional()
-  entries?: Array<{ oid: string; metric: string }>;
+  @ValidateNested({ each: true })
+  @Type(() => CreateOidEntryDto)
+  entries?: CreateOidEntryDto[];
 }
