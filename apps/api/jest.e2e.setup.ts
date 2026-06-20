@@ -35,3 +35,6 @@ process.env.STORAGE_ENDPOINT ??= 'http://localhost:9100';
 process.env.STORAGE_BUCKET ??= 'nodescope-test';
 process.env.STORAGE_ACCESS_KEY ??= 'minioadmin';
 process.env.STORAGE_SECRET_KEY ??= 'minioadmin';
+// SNMP credential crypto (crypto.module.ts) requires a valid 32-byte key at
+// AppModule init; tests don't need a real secret, just a correctly-sized one.
+process.env.SECRET_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
