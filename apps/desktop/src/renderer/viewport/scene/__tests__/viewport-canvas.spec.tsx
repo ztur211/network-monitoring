@@ -17,6 +17,7 @@ function fakeModel(): ParsedModel {
     root,
     categories: new Map([['IfcWall', root]]),
     elementIndex: new Map([[1, mesh]]),
+    guidIndex: new Map(),
     bbox: new THREE.Box3().setFromObject(root),
     frame: { recenter: new THREE.Vector3(), upConversion: 'Z_UP_TO_Y_UP' },
     getProperties: async () => ({

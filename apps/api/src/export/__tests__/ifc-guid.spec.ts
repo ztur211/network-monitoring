@@ -1,4 +1,4 @@
-import { toIfcGuid, IFC_B64 } from '../ifc-guid';
+import { toIfcGuid, IFC_B64 } from '@nodescope/shared';
 
 describe('toIfcGuid', () => {
   const uuid = '12345678-1234-5678-1234-567812345678';
