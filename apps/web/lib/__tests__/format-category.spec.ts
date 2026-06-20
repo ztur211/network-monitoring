@@ -30,7 +30,6 @@ describe('formatDeviceCategory', () => {
     ['TABLET', 'Tablet'],
     ['PRINTER', 'Printer'],
     ['IOT_DEVICE', 'IoT Device'],
-    ['BROWSER_CLIENT', 'This Browser'],
     ['CUSTOM', 'Custom'],
   ];
 

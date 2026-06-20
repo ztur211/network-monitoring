@@ -23,7 +23,6 @@ const CATEGORY_COLORS: Record<DeviceCategory, string> = {
   TABLET: '#0891b2',
   PRINTER: '#0891b2',
   IOT_DEVICE: '#0891b2',
-  BROWSER_CLIENT: '#2563eb',
   CUSTOM: '#6b7280',
 };
 
@@ -47,7 +46,6 @@ const CATEGORY_ABBR: Record<DeviceCategory, string> = {
   TABLET: 'TAB',
   PRINTER: 'PRN',
   IOT_DEVICE: 'IoT',
-  BROWSER_CLIENT: 'WEB',
   CUSTOM: 'DEV',
 };
 
