@@ -1,0 +1,231 @@
+name: Release
+
+# Tag-triggered release pipeline for the shippable CLIENT artifacts that the main
+# CI (ci.yml) does NOT build: the cross-platform `nodescope-agent` single
+# executables (Node SEA) and the desktop Windows installer. On a `vX.Y.Z` tag it:
+#   1. builds the agent SEA binary on Linux, macOS, and Windows runners,
+#   2. builds the desktop Windows installer,
+#   3. creates a GitHub Release with auto-generated notes, and
+#   4. publishes the agent binaries to the DigitalOcean Spaces bucket that the
+#      agent install scripts download from (apps/agent/scripts/install-*).
+#
+# Trigger:  git tag v0.1.0 && git push origin v0.1.0
+# Or run manually (workflow_dispatch) — a manual run builds + uploads workflow
+# artifacts so you can smoke-test the binaries, but skips the GitHub Release and
+# the Spaces publish (those require a tag).
+#
+# ── Required repo SECRETS (Settings → Secrets and variables → Actions → Secrets) ─
+#   DO_SPACES_KEY        DigitalOcean Spaces access key
+#   DO_SPACES_SECRET     DigitalOcean Spaces secret key
+# ── Required repo VARIABLES (… → Variables) ─────────────────────────────────────
+#   DO_SPACES_BUCKET     bucket name, e.g. nodescope-artifacts
+#   DO_SPACES_REGION     region slug,  e.g. nyc3  (→ <region>.digitaloceanspaces.com)
+# GITHUB_TOKEN (auto-provided) creates the Release — no secret needed.
+# If the Spaces secrets/vars are absent the publish step warns and no-ops, so the
+# Release still succeeds before Spaces is provisioned.
+#
+# macOS note: the SEA binary is ad-hoc signed (`codesign --sign -`) so it RUNS,
+# but it is NOT notarized. The install-macos.sh script fetches it with curl
+# (curl downloads are not quarantined), so the launchd daemon starts fine; a copy
+# downloaded via a browser would need `xattr -d com.apple.quarantine`. To ship a
+# notarized binary, replace the ad-hoc sign with a Developer ID sign + notarytool
+# step (see the marked block below).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # create releases + upload assets
+
+env:
+  # Must match apps/agent/package.json's build:bin sentinel fuse.
+  SEA_FUSE: NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+jobs:
+  agent:
+    name: Agent binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            binary: nodescope-agent
+            asset: nodescope-agent-linux-x64
+          - os: macos-latest
+            target: macos-arm64
+            binary: nodescope-agent
+            asset: nodescope-agent-macos-arm64
+          - os: windows-latest
+            target: windows-x64
+            binary: nodescope-agent.exe
+            asset: nodescope-agent-windows-x64.exe
+    defaults:
+      run:
+        # GitHub's windows-latest ships Git Bash, so one bash script runs on all
+        # three OSes ($(...), cp, etc. work everywhere — no per-OS shell forks).
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps (postinstall builds @nodescope/shared + probe that the agent bundles)
+        run: npm ci
+
+      - name: Set agent version from tag
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            npm version "$VERSION" --no-git-tag-version --allow-same-version --workspace=apps/agent
+            echo "Building agent $VERSION"
+          else
+            echo "No tag — building with the package.json version (dispatch/dev build)"
+          fi
+
+      - name: Bundle (esbuild → single CJS) + generate the SEA blob
+        working-directory: apps/agent
+        run: |
+          npm run build:bundle
+          node --experimental-sea-config sea-config.json
+
+      # ── Assemble the platform executable (Node Single Executable Application) ──
+      - name: Assemble executable (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: apps/agent
+        run: |
+          cp "$(command -v node)" "dist/${{ matrix.binary }}"
+          npx postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/nodescope-agent.blob \
+            --sentinel-fuse "$SEA_FUSE"
+
+      - name: Assemble executable (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: apps/agent
+        run: |
+          cp "$(command -v node)" "dist/${{ matrix.binary }}"
+          codesign --remove-signature "dist/${{ matrix.binary }}"
+          npx postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/nodescope-agent.blob \
+            --sentinel-fuse "$SEA_FUSE" \
+            --macho-segment-name NODE_SEA
+          # Ad-hoc re-sign so macOS will execute the modified binary.
+          codesign --sign - "dist/${{ matrix.binary }}"
+          # ── NOTARIZED build (optional): import a Developer ID cert via
+          #    apple-actions/import-codesign-certs, replace the line above with
+          #    `codesign --sign "Developer ID Application: …" --options runtime`,
+          #    then `xcrun notarytool submit … --wait` + `xcrun stapler staple`. ──
+
+      - name: Assemble executable (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: apps/agent
+        run: |
+          node -e "require('fs').copyFileSync(process.execPath, 'dist/${{ matrix.binary }}')"
+          npx postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/nodescope-agent.blob \
+            --sentinel-fuse "$SEA_FUSE"
+          # Unsigned: SmartScreen warns on first run. To sign, add a signtool step
+          # with your code-signing cert here (remove node.exe's signature first).
+
+      - name: Smoke-test the binary (--version must print)
+        working-directory: apps/agent
+        run: |
+          chmod +x "dist/${{ matrix.binary }}" || true
+          out="$(./dist/${{ matrix.binary }} --version)"
+          echo "agent --version → $out"
+          test -n "$out"
+
+      - name: Stage asset under its release name
+        run: |
+          mkdir -p out
+          cp "apps/agent/dist/${{ matrix.binary }}" "out/${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop installer (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set desktop version from tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version --workspace=apps/desktop
+          fi
+      - run: npm run package:win --workspace=apps/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodescope-desktop-win
+          path: apps/desktop/release/*.exe
+          if-no-files-found: error
+
+  publish:
+    name: GitHub Release + Spaces publish
+    runs-on: ubuntu-latest
+    needs: [agent, desktop]
+    if: github.ref_type == 'tag' # only real tags get a Release + Spaces upload
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts into release-assets/
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name 'nodescope-agent-*' -o -name '*.exe' \) \
+            -exec cp {} release-assets/ \;
+          echo "Release assets:"; ls -la release-assets
+
+      - name: Create GitHub Release (auto-generated notes)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Publish agent binaries to DigitalOcean Spaces
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+          BUCKET: ${{ vars.DO_SPACES_BUCKET }}
+          REGION: ${{ vars.DO_SPACES_REGION }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          # All four are required. A partial config (e.g. REGION unset → a
+          # malformed "https://.digitaloceanspaces.com" endpoint) would otherwise
+          # fail every cp AFTER the Release was already created. If Spaces isn't
+          # provisioned yet, skip cleanly — the Release + attached assets stand.
+          if [[ -z "$BUCKET" || -z "$REGION" || -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" ]]; then
+            echo "::warning::DO Spaces secrets/vars incomplete — skipping publish (Release still created). See workflow header."
+            exit 0
+          fi
+          shopt -s nullglob
+          agents=(release-assets/nodescope-agent-*)
+          if [[ ${#agents[@]} -eq 0 ]]; then
+            echo "::error::No nodescope-agent-* binaries in release-assets/ — the agent build matrix produced nothing to publish."
+            exit 1
+          fi
+          endpoint="https://${REGION}.digitaloceanspaces.com"
+          for f in "${agents[@]}"; do
+            name="$(basename "$f")"
+            # Versioned path + a stable latest/ alias the install scripts point --binary-url at.
+            aws s3 cp "$f" "s3://${BUCKET}/agent/${VERSION}/${name}" \
+              --endpoint-url "$endpoint" --acl public-read
+            aws s3 cp "$f" "s3://${BUCKET}/agent/latest/${name}" \
+              --endpoint-url "$endpoint" --acl public-read
+          done
+          echo "Published ${#agents[@]} agent binaries to ${endpoint}/${BUCKET}/agent/${VERSION}/"
