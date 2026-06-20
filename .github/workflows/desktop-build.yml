@@ -1,12 +1,11 @@
 name: Desktop Build
 
-# The Windows NSIS installer is heavy, so build it on demand (manual) or on a release tag —
-# not on every push. Unit/lint/e2e for the desktop run in the main CI.
+# On-demand Windows installer build. The Windows NSIS installer is heavy, so it's
+# manual-only here. Tag releases (`v*`) build + attach the installer via release.yml
+# (which also builds the agent binaries and creates the GitHub Release) — keeping
+# the tag trigger here too would double-build it. Unit/lint/e2e run in the main CI.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build-windows:
