@@ -10,7 +10,6 @@ import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useRealtimeStore } from '../../store/realtime.store';
 import { api } from '../../lib/api.service';
-import { getBrowserDeviceId } from '../../lib/browser-device-id';
 import { createDeviceMarkerElement, updateDeviceMarkerSelected } from './DeviceMarker';
 import { createLiveMarkerElement, LiveMarkerInfo } from './LiveMarker';
 import { FloorSelector } from './FloorSelector';
@@ -74,15 +73,6 @@ export function MapView({
     useUiStore();
   const user = useAuthStore((s) => s.user);
   const metrics = useRealtimeStore((s) => s.metrics);
-
-  // Persistent identifier of this browser as a Device row. Generated once on
-  // first read, cached in localStorage thereafter. Used below to bind the
-  // live marker to the matching Device once onboarding has created it.
-  const browserDeviceId = useMemo(() => getBrowserDeviceId(), []);
-  const browserDevice = useMemo(
-    () => devices.find((d) => d.browserDeviceId === browserDeviceId) ?? null,
-    [devices, browserDeviceId],
-  );
 
   // Inject MapLibre CSS once
   useEffect(() => {
@@ -199,12 +189,15 @@ export function MapView({
   useEffect(() => {
     if (!mapRef.current || !mapReady || !livePosition) return;
 
+    // The live marker is this browser's geolocation + connection-quality pulse.
+    // It is no longer bound to a Device row (browser-as-device was retired in
+    // F2 Phase B), so it carries no name or click target.
     const info: LiveMarkerInfo = {
-      name: browserDevice?.name ?? null,
+      name: null,
       latencyMs: metrics?.latency ?? null,
       downMbps: metrics?.bandwidthDown ?? null,
       upMbps: metrics?.bandwidthUp ?? null,
-      onClick: browserDevice ? () => onDeviceClick(browserDevice) : undefined,
+      onClick: undefined,
     };
 
     liveMarkerRef.current?.remove();
@@ -212,7 +205,7 @@ export function MapView({
     liveMarkerRef.current = new maplibregl.Marker({ element: el })
       .setLngLat(livePosition)
       .addTo(mapRef.current);
-  }, [mapReady, livePosition, browserDevice, metrics, onDeviceClick]);
+  }, [mapReady, livePosition, metrics]);
 
   const scheduleViewportLoad = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

@@ -19,9 +19,9 @@ import { toIfcGuid } from '@nodescope/shared';
 export interface CapturedViewpoint {
   camera: {
     kind: 'perspective';
-    position: number[];
-    direction: number[];
-    up: number[];
+    position: [number, number, number];
+    direction: [number, number, number];
+    up: [number, number, number];
     fieldOfView: number;
   };
   components: {

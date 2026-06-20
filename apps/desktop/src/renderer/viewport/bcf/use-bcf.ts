@@ -71,18 +71,23 @@ export function useBcf(): void {
     const isMine = (p: { propertyId?: string }) => p?.propertyId === buildingId;
 
     // Server emits { topic } — unwrap it; guard with isMine (Fix 2).
-    const onCreated = (payload: { topic: BcfTopicDto }) => {
-      if (isMine(payload.topic)) applyBcfEvent('created', payload.topic);
+    // Handlers take `unknown` to match the realtime client's on/off signature
+    // (payload: unknown) and narrow internally, as in use-device-load.ts.
+    const onCreated = (p: unknown) => {
+      const { topic } = p as { topic: BcfTopicDto };
+      if (isMine(topic)) applyBcfEvent('created', topic);
     };
-    const onUpdated = (payload: { topic: BcfTopicDto }) => {
-      if (isMine(payload.topic)) applyBcfEvent('updated', payload.topic);
+    const onUpdated = (p: unknown) => {
+      const { topic } = p as { topic: BcfTopicDto };
+      if (isMine(topic)) applyBcfEvent('updated', topic);
     };
 
     // Fix 1: handle live comment additions; guard: topic must already be in the store
     // (the store is building-scoped from the initial load).
-    const onCommentAdded = (payload: { topicId: string; comment: BcfCommentDto }) => {
-      const inStore = useBcfStore.getState().topics.some((t) => t.id === payload.topicId);
-      if (inStore) useBcfStore.getState().addComment(payload.topicId, payload.comment);
+    const onCommentAdded = (p: unknown) => {
+      const { topicId, comment } = p as { topicId: string; comment: BcfCommentDto };
+      const inStore = useBcfStore.getState().topics.some((t) => t.id === topicId);
+      if (inStore) useBcfStore.getState().addComment(topicId, comment);
     };
 
     rt.on(WS_EVENTS.BCF_TOPIC_CREATED, onCreated);
