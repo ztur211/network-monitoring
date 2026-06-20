@@ -23,6 +23,8 @@ export interface ParsedModel {
   root: THREE.Group; // recentered, Y-up; add directly to a scene
   categories: Map<IfcType, THREE.Group>; // one child group per IFC class
   elementIndex: Map<ExpressId, THREE.Mesh>; // one merged mesh per element
+  /** BCF Spec 6: IFC GlobalId (22-char base-64) → expressID reverse-lookup. */
+  guidIndex: Map<string, ExpressId>;
   bbox: THREE.Box3; // in recentered (post-transform) space
   frame: { recenter: THREE.Vector3; upConversion: 'Z_UP_TO_Y_UP' }; // Spec 4 maps stored x/y/z via this
   getProperties(expressID: ExpressId): Promise<ElementProperties>;

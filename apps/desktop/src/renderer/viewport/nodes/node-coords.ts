@@ -27,3 +27,23 @@ export function toModel(point: THREE.Vector3, frame: Frame): Xyz {
   const v = point.clone().applyMatrix4(frameMatrix(frame).invert());
   return { x: v.x, y: v.y, z: v.z };
 }
+
+const ROT_MAT = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+const ROT_MAT_INV = new THREE.Matrix4().makeRotationX(-Math.PI / 2).invert();
+
+/**
+ * Native direction vector (Z-up) → viewport direction (Y-up).
+ * Rotation-only: no recentering. Use for camera direction and up vectors.
+ */
+export function toViewportDir(v: Xyz, _frame: Frame): THREE.Vector3 {
+  return new THREE.Vector3(v.x, v.y, v.z).applyMatrix4(ROT_MAT);
+}
+
+/**
+ * Viewport direction (Y-up) → native direction vector (Z-up).
+ * Rotation-only: no recentering. Use for camera direction and up vectors.
+ */
+export function toModelDir(v: THREE.Vector3, _frame: Frame): Xyz {
+  const r = v.clone().applyMatrix4(ROT_MAT_INV);
+  return { x: r.x, y: r.y, z: r.z };
+}
