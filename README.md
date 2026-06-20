@@ -8,6 +8,8 @@ MVP scope is browser-only, personal-use, single-network. See `docs/PRD.md` for f
 
 ## Local Setup
 
+> 📘 **For the complete, tested walkthrough — including the desktop 3D BIM viewer — see [`SETUP.md`](./SETUP.md).** The steps below are the quick reference.
+
 ### 1. Install dependencies
 
 ```bash
@@ -24,12 +26,13 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and set:
-- `ANTHROPIC_API_KEY` — your Anthropic key (only required to test AI assistant)
-- `BETTER_AUTH_SECRET` — minimum 32 characters; the placeholder works for local dev
-- `SEED_PASSWORD` — password for the seeded dev user
+Every value has a working local default **except `SECRET_ENCRYPTION_KEY`**, which you must set or the API won't start. Generate one and paste it into `.env` as `SECRET_ENCRYPTION_KEY=…`:
 
-`.env` is read by the backend. The web app reads its config from environment variables at build/start time — `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_MAP_TILE_STYLE_URL`. Local defaults (in `.env.example`) point at `http://localhost:3000` and OpenFreeMap respectively, which is what `npm run dev --workspace=apps/web` expects.
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # or: openssl rand -base64 32
+```
+
+(`ANTHROPIC_API_KEY` is only needed for the AI assistant; `BETTER_AUTH_SECRET` and `SEED_PASSWORD` ship with working dev placeholders.) `.env` is read by the backend; the web app reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_MAP_TILE_STYLE_URL`, whose defaults (`http://localhost:3000`, OpenFreeMap) are what `npm run dev:web` expects.
 
 ### 3. Start local services
 
@@ -37,33 +40,43 @@ Edit `.env` and set:
 docker compose up -d
 ```
 
-This starts PostgreSQL 16 + TimescaleDB + PostGIS (timescaledb-ha image) and Redis on the default ports (5432, 6379).
+Starts PostgreSQL 16 + TimescaleDB + PostGIS (timescaledb-ha image), Redis, and MinIO (S3-compatible object storage for IFC models) on their default ports (5432, 6379, 9000/9001).
 
 ### 4. Apply database migrations
 
 ```bash
-npx prisma migrate dev --schema=apps/api/prisma/schema.prisma
+npm run db:migrate
 ```
 
-The initial migration enables the `postgis` extension, creates all MVP tables, adds the PostGIS geometry column + `device_location_sync` trigger to `Device`, and applies the `ChangeLog` `entityType` check constraint. TimescaleDB hypertable conversion and retention policies are applied at API startup via `TimescaleModule` — no manual step.
+Applies all migrations to `nodescope_dev` (enables `postgis`, creates the tables, adds the `Device` geometry column + `device_location_sync` trigger, the `ChangeLog` check constraint, and the 3D `BuildingModel` tables). TimescaleDB hypertable conversion and retention run at API startup via `TimescaleModule` — no manual step.
 
-### 5. Seed the dev user
+### 5. Seed demo data
 
 ```bash
-npx prisma db seed --schema=apps/api/prisma/schema.prisma
+npm run db:seed
 ```
 
-Creates `dev@nodescope.io` with the password from `SEED_PASSWORD`, plus 5 sample devices, 2 connections, 1 fiber run, and 1 circuit.
+Creates the **Acme Networks** org, the org owner **`owner@acme.test`** (password = `SEED_PASSWORD`, default `devpassword123`) and super-admin `admin@nodescope.test`, a property tree (HQ → Main Building → floors), 5 devices with connections, and a **placeholder** "Main Building" 3D model.
 
-### 6. Run the API and web app
+### 6. Run the apps
 
 ```bash
-npm run dev --workspace=apps/api
-npm run dev --workspace=apps/web
+npm run dev:api       # http://localhost:3000
+npm run dev:web       # http://localhost:8081
+npm run dev:desktop   # Electron — the 3D BIM viewer
 ```
 
-- API: http://localhost:3000
-- Web: http://localhost:8081
+Sign in as `owner@acme.test` / `devpassword123` (on the web, or via the desktop app's browser-based sign-in — which needs `dev:web` running to serve the login page).
+
+### 7. Load a real 3D model
+
+The seeded model is an empty placeholder, so the 3D viewport opens blank. Load a real building:
+
+```bash
+npm run load-sample-model
+```
+
+Downloads a small public sample IFC and uploads + activates it on the Main Building. See **[`SETUP.md`](./SETUP.md)** for the full walkthrough (Windows + Docker, desktop login flow, troubleshooting).
 
 ### Tests
 
@@ -166,7 +179,8 @@ nodescope/
   apps/
     api/         NestJS backend (TypeScript, strict)
     web/         React Native + Expo Web (TypeScript, strict)
-    agent/       Cross-platform monitoring daemon (enrolls + polls + pushes; Phase B–D planned)
+    desktop/     Electron 3D BIM viewer (electron-vite; IFC viewport + node placement)
+    agent/       Cross-platform monitoring daemon (enrolls + polls + pushes)
   packages/
     shared/      Types shared between api and web (incl. agent DTOs added in Spec 8)
     probe/       @nodescope/probe — shared TCP/ICMP reachability primitives (extracted Spec 8)
