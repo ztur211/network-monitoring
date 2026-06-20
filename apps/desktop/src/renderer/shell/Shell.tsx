@@ -6,9 +6,9 @@ import { ViewportHost } from './ViewportHost';
 export function Shell() {
   useBootstrap();
   return (
-    <div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <TopBar />
-      <div style={{ display: 'flex', flex: 1 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Sidebar />
         <ViewportHost />
       </div>
