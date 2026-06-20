@@ -1,6 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Readable } from 'node:stream';
-import { randomUUID } from 'node:crypto';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { PermissionsService } from '../permissions/permissions.service';

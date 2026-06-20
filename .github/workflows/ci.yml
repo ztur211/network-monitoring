@@ -115,6 +115,10 @@ jobs:
       STORAGE_BUCKET: nodescope-test
       STORAGE_ACCESS_KEY: minioadmin
       STORAGE_SECRET_KEY: minioadmin
+      # Spec 9 CryptoModule throws at app boot if this is unset / not 32 bytes
+      # base64-decoded; every e2e suite boots AppModule, so without it the whole
+      # tier mass-fails. Test-only value (base64 of a throwaway 32-byte string).
+      SECRET_ENCRYPTION_KEY: Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

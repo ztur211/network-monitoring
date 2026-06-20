@@ -21,7 +21,6 @@ const TEST_KEY_B64 = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
 
 describe('SnmpService.resolveTarget (integration)', () => {
   let svc: SnmpService;
-  let crypto: CryptoService;
   let prisma: PrismaService;
   let orgId: string;
   let networkId: string;
@@ -41,7 +40,6 @@ describe('SnmpService.resolveTarget (integration)', () => {
     }).compile();
 
     svc = ref.get(SnmpService);
-    crypto = ref.get(CryptoService);
     prisma = ref.get(PrismaService);
     await prisma.$connect();
   });

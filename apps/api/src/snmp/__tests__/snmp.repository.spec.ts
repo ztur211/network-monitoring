@@ -14,7 +14,7 @@ describe('SnmpRepository (integration)', () => {
     expect((await repo.findCredential(orgId, cred.id))?.communityEnc).toBe('BLOB');
     const prof = await repo.createProfile({ organizationId: orgId, name: 'std', includeInterfaceMetrics: true }, [{ oid: '1.3.6.1.2.1.1.5.0', metric: 'sysname' }]);
     expect((await repo.findProfile(orgId, prof.id))?.entries).toHaveLength(1);
-    const net = await prisma.network.create({ data: { organizationId: orgId, name: 'N', snmpCredentialId: cred.id } });
+    await prisma.network.create({ data: { organizationId: orgId, name: 'N', snmpCredentialId: cred.id } });
     expect(await repo.countCredentialAssignments(cred.id)).toBe(1);
   });
 
