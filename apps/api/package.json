@@ -10,7 +10,8 @@
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.unit.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB",
     "test:integration": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.integration.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB",
-    "test:e2e": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.e2e.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB"
+    "test:e2e": "cross-env NODE_OPTIONS=\"--experimental-vm-modules --no-warnings\" jest --config jest.e2e.config.ts --maxWorkers=2 --workerIdleMemoryLimit=512MB",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
@@ -66,6 +67,6 @@
     "typescript": "^5.4.0"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node -r ./prisma/seed-env.cjs prisma/seed.ts"
   }
 }
