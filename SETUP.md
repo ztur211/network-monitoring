@@ -5,8 +5,9 @@ the API, the web app, and the desktop **3D BIM viewer** — using Docker Desktop
 for the backing services.
 
 Written for **Windows + PowerShell**; macOS/Linux differences are called out
-inline (there are only two, both in step 2). Every command below was run through
-on a clean database before publishing.
+inline (there are only two, both in step 2). The setup steps below (schema →
+seed → run → load a real model) were verified end-to-end against the Postgres +
+Redis + MinIO services this `docker-compose.yml` defines.
 
 > The "Local Setup" section in [`README.md`](./README.md) predates the 3D BIM
 > pivot (it still references the network-mapping MVP, `dev@nodescope.io`, and
