@@ -1,8 +1,8 @@
 # NodeScope
 
-Browser-based network mapping & management platform. Users document their physical network — devices, connections, circuits — on a GIS map, and the app provides real-time metrics, AI-assisted troubleshooting, and multi-floor support.
+Enterprise platform for documenting and operating physical network infrastructure. Teams map their devices, connections, circuits, and fiber runs on a GIS map **and inside per-building 3D BIM models (IFC)**, with real-time metrics, AI-assisted troubleshooting, agent-based monitoring, multi-floor support, and team/site permissions.
 
-MVP scope is browser-only, personal-use, single-network. See `docs/PRD.md` for full requirements.
+The stack spans a NestJS API, an Expo / React-Native-Web app (GIS + management UI), an Electron desktop client (the 3D BIM viewport), and a cross-platform monitoring agent. See `docs/PRD.md` for full requirements.
 
 ---
 
