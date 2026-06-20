@@ -1,4 +1,4 @@
-import { CryptoService, CRYPTO_KEY } from '../crypto.service';
+import { CryptoService } from '../crypto.service';
 import { randomBytes } from 'node:crypto';
 
 const svc = () => new CryptoService(randomBytes(32)); // 32-byte key
