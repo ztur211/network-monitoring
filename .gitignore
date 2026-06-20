@@ -42,3 +42,6 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
+
+# Local-only demo recordings (kept on disk, not committed)
+demo/
