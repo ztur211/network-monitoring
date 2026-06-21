@@ -81,6 +81,27 @@ describe('device.store', () => {
     resetStore();
   });
 
+  describe('upsertManyDevices()', () => {
+    it('inserts new + updates existing in a single merge', () => {
+      useDeviceStore.setState({ devices: [freshDevice({ id: 'a', name: 'A' })] });
+      useDeviceStore.getState().upsertManyDevices([
+        freshDevice({ id: 'a', name: 'A2' }), // update
+        freshDevice({ id: 'b', name: 'B' }), // insert
+      ]);
+      const devices = useDeviceStore.getState().devices;
+      expect(devices).toHaveLength(2);
+      expect(devices.find((d) => d.id === 'a')?.name).toBe('A2');
+      expect(devices.find((d) => d.id === 'b')?.name).toBe('B');
+    });
+
+    it('an empty batch leaves the devices array reference unchanged (no re-render)', () => {
+      useDeviceStore.setState({ devices: [freshDevice({ id: 'a' })] });
+      const before = useDeviceStore.getState().devices;
+      useDeviceStore.getState().upsertManyDevices([]);
+      expect(useDeviceStore.getState().devices).toBe(before);
+    });
+  });
+
   describe('loadDevices()', () => {
     it('populates `devices` from GET /devices items[]', async () => {
       const d1 = freshDevice({ id: 'd1' });
