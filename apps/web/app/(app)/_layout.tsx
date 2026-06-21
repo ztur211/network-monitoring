@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { TabIcon } from '../../components/TabIcon';
 import { authClient } from '../../lib/auth-client';
 import { useAuthStore } from '../../store/auth.store';
 import { websocketService } from '../../lib/websocket.service';
@@ -135,7 +135,7 @@ export default function AppLayout() {
           options={{
             title: 'Map',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="map-outline" size={size} color={color} />
+              <TabIcon name="map" size={size} color={color} />
             ),
           }}
         />
@@ -144,7 +144,7 @@ export default function AppLayout() {
           options={{
             title: 'Clients',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="hardware-chip-outline" size={size} color={color} />
+              <TabIcon name="clients" size={size} color={color} />
             ),
           }}
         />
@@ -153,7 +153,7 @@ export default function AppLayout() {
           options={{
             title: 'Equipment',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="server-outline" size={size} color={color} />
+              <TabIcon name="equipment" size={size} color={color} />
             ),
           }}
         />
@@ -162,7 +162,7 @@ export default function AppLayout() {
           options={{
             title: 'Circuits',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="git-branch-outline" size={size} color={color} />
+              <TabIcon name="circuits" size={size} color={color} />
             ),
           }}
         />
@@ -171,7 +171,7 @@ export default function AppLayout() {
           options={{
             title: 'AI',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />
+              <TabIcon name="ai-assistant" size={size} color={color} />
             ),
           }}
         />
@@ -180,7 +180,7 @@ export default function AppLayout() {
           options={{
             title: 'Settings',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="settings-outline" size={size} color={color} />
+              <TabIcon name="settings" size={size} color={color} />
             ),
           }}
         />
