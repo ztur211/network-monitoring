@@ -211,23 +211,42 @@ export class SnmpService {
    * The returned DTO must NEVER be persisted or logged.
    */
   async resolveTarget(organizationId: string, deviceId: string): Promise<SnmpTargetDto | null> {
+    const ref = await this.resolveCredProf(organizationId, deviceId);
+    return ref ? this.buildTarget(organizationId, ref.credId, ref.profId) : null;
+  }
+
+  /**
+   * Resolve which credential + OID profile a device effectively uses, applying
+   * override-wins (device-level beats network-level). Returns null when the device
+   * is missing or no credential is assigned anywhere in the chain.
+   */
+  private async resolveCredProf(
+    organizationId: string,
+    deviceId: string,
+  ): Promise<{ credId: string; profId: string | null } | null> {
     const device = await this.repo.deviceWithSnmp(organizationId, deviceId);
     if (!device) return null;
-
-    // Override-wins: device credential takes precedence over network credential
     const credId = device.snmpCredentialId ?? device.network?.snmpCredentialId ?? null;
     if (!credId) return null;
+    const profId = device.oidProfileId ?? device.network?.oidProfileId ?? null;
+    return { credId, profId };
+  }
 
+  /**
+   * Fetch the credential + profile and assemble the target. The ONLY place encrypted
+   * secrets are decrypted; the returned DTO must NEVER be persisted or logged.
+   */
+  private async buildTarget(
+    organizationId: string,
+    credId: string,
+    profId: string | null,
+  ): Promise<SnmpTargetDto | null> {
     const cred = await this.repo.findCredential(organizationId, credId);
     if (!cred) return null;
-
-    // Override-wins: device OID profile takes precedence over network OID profile
-    const profId = device.oidProfileId ?? device.network?.oidProfileId ?? null;
     const profile = profId ? await this.repo.findProfile(organizationId, profId) : null;
-
     const dec = (b: string | null): string | undefined => (b ? this.crypto.decrypt(b) : undefined);
 
-    const target: SnmpTargetDto = {
+    return {
       version: cred.snmpVersion as 'V2C' | 'V3',
       community: dec(cred.communityEnc),
       securityName: cred.securityName ?? undefined,
@@ -239,19 +258,30 @@ export class SnmpService {
       oids: profile ? profile.entries.map((e) => ({ oid: e.oid, metric: e.metric })) : [],
       interfaceMetrics: profile ? profile.includeInterfaceMetrics : false,
     };
-
-    return target;
   }
 
   /**
    * Attach the resolved SNMP target to each device in the list, returning a new
    * array with `snmp` populated where a credential is resolved (or omitted if null).
    * Designed for use in the agent device-sync payload (Phase C Task 3).
+   *
+   * A credential+profile pair shared by many devices is fetched + decrypted ONCE per
+   * call — the assembled target is memoized by id (promise-cached so concurrent devices
+   * sharing a key dedupe to a single fetch/decrypt). Decryption is the costly part.
    */
   async attachTargets(organizationId: string, devices: AgentDeviceDto[]): Promise<AgentDeviceDto[]> {
+    const targetCache = new Map<string, Promise<SnmpTargetDto | null>>();
     return Promise.all(
       devices.map(async (d) => {
-        const snmp = await this.resolveTarget(organizationId, d.id);
+        const ref = await this.resolveCredProf(organizationId, d.id);
+        if (!ref) return { ...d };
+        const key = `${ref.credId}:${ref.profId ?? ''}`;
+        let pending = targetCache.get(key);
+        if (!pending) {
+          pending = this.buildTarget(organizationId, ref.credId, ref.profId);
+          targetCache.set(key, pending);
+        }
+        const snmp = await pending;
         return snmp ? { ...d, snmp } : { ...d };
       }),
     );
