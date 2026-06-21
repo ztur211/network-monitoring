@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FiberRun, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { updateOrNull } from '../common/prisma/update-or-null';
 
 type CreateFiberRunData = {
   organizationId: string;
@@ -82,12 +83,12 @@ export class FiberRunsRepository {
     data: Prisma.FiberRunUpdateInput,
     expectedVersion: number,
   ): Promise<FiberRun | null> {
-    const result = await this.prisma.fiberRun.updateMany({
-      where: { id: fiberRunId, organizationId, version: expectedVersion },
-      data: { ...data, version: { increment: 1 } },
-    });
-    if (result.count === 0) return null;
-    return this.prisma.fiberRun.findUnique({ where: { id: fiberRunId } });
+    return updateOrNull(() =>
+      this.prisma.fiberRun.update({
+        where: { id: fiberRunId, organizationId, version: expectedVersion },
+        data: { ...data, version: { increment: 1 } },
+      }),
+    );
   }
 
   async deleteByIdAndOrgId(fiberRunId: string, organizationId: string): Promise<void> {

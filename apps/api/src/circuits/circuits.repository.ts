@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { Circuit, Prisma } from '@prisma/client';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { PrismaService } from '../prisma/prisma.service';
+import { updateOrNull } from '../common/prisma/update-or-null';
 
 type CreateCircuitData = {
   organizationId: string;
@@ -113,12 +114,12 @@ export class CircuitsRepository {
     data: Prisma.CircuitUpdateInput,
     expectedVersion: number,
   ): Promise<Circuit | null> {
-    const result = await this.prisma.circuit.updateMany({
-      where: { id: circuitId, organizationId, version: expectedVersion },
-      data: { ...data, version: { increment: 1 } },
-    });
-    if (result.count === 0) return null;
-    return this.prisma.circuit.findUnique({ where: { id: circuitId } });
+    return updateOrNull(() =>
+      this.prisma.circuit.update({
+        where: { id: circuitId, organizationId, version: expectedVersion },
+        data: { ...data, version: { increment: 1 } },
+      }),
+    );
   }
 
   async deleteByIdAndOrgId(circuitId: string, organizationId: string): Promise<void> {
