@@ -77,10 +77,11 @@ export class BuildingModelsController {
     @OrgMember() member: OrgMemberContext,
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
   ): Promise<StreamableFile> {
-    const { stream, fileName } = await this.service.getActiveFile(member, propertyId);
+    const { stream, fileName, sizeBytes } = await this.service.getActiveFile(member, propertyId);
     return new StreamableFile(stream, {
       type: 'application/octet-stream',
       disposition: `attachment; filename="${fileName}"`,
+      length: sizeBytes,
     });
   }
 
@@ -90,10 +91,11 @@ export class BuildingModelsController {
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
     @Param('versionId', ParseUUIDPipe) versionId: string,
   ): Promise<StreamableFile> {
-    const { stream, fileName } = await this.service.getVersionFile(member, propertyId, versionId);
+    const { stream, fileName, sizeBytes } = await this.service.getVersionFile(member, propertyId, versionId);
     return new StreamableFile(stream, {
       type: 'application/octet-stream',
       disposition: `attachment; filename="${fileName}"`,
+      length: sizeBytes,
     });
   }
 }
