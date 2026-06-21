@@ -178,8 +178,13 @@ node scripts/load-sample-model.mjs path\to\your-model.ifc
 
 ```powershell
 npm run test:unit  --workspace=apps/api          # no services needed
-npm run test:integration --workspace=apps/api    # needs Postgres + MinIO (above)
-npm test --workspace=apps/desktop                # vitest (main + renderer)
+
+# integration + e2e use a SEPARATE test stack (Postgres :5433, Redis :6380, MinIO :9100):
+docker compose -f docker-compose.test.yml up -d
+npm run test:integration --workspace=apps/api
+npm run test:e2e --workspace=apps/api
+
+npm test --workspace=apps/desktop                # desktop unit tests (vitest)
 ```
 
 ## Troubleshooting
