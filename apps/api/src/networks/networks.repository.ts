@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Network, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { updateOrNull } from '../common/prisma/update-or-null';
 
 type CreateNetworkData = {
   organizationId: string;
@@ -109,12 +110,12 @@ export class NetworksRepository {
     data: Prisma.NetworkUpdateInput,
     expectedVersion: number,
   ): Promise<Network | null> {
-    const result = await this.prisma.network.updateMany({
-      where: { id: networkId, organizationId, version: expectedVersion },
-      data: { ...data, version: { increment: 1 } },
-    });
-    if (result.count === 0) return null;
-    return this.prisma.network.findUnique({ where: { id: networkId } });
+    return updateOrNull(() =>
+      this.prisma.network.update({
+        where: { id: networkId, organizationId, version: expectedVersion },
+        data: { ...data, version: { increment: 1 } },
+      }),
+    );
   }
 
   async deleteByIdAndOrgId(networkId: string, organizationId: string): Promise<void> {
