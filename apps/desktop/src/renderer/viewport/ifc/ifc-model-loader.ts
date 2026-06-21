@@ -103,6 +103,12 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
     recenterGroup.position.set(-recenter.x, -recenter.y, -recenter.z);
     root.rotation.x = -Math.PI / 2;
     root.updateMatrixWorld(true);
+    // The building is static after recentering — it's never transformed again. Freeze
+    // per-object matrices (matrices are already baked by updateMatrixWorld above) so the
+    // render loop stops recomputing world matrices for thousands of meshes every frame.
+    root.traverse((o) => {
+      o.matrixAutoUpdate = false;
+    });
     const bbox = new THREE.Box3().setFromObject(root);
 
     async function getProperties(expressID: ExpressId): Promise<ElementProperties> {

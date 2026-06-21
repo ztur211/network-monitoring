@@ -23,7 +23,13 @@ export function applyModelState(model: ParsedModel, s: ModelViewState): void {
     mesh.visible = isMeshVisible(mesh, s);
     const mat = mesh.material as THREE.MeshLambertMaterial;
     mat.emissive.setHex(id === selectedExpressId ? HIGHLIGHT : 0x000000);
+    // Only a change in the *number* of clipping planes (null <-> [plane]) alters the
+    // compiled shader and needs a recompile. Emissive/visible/plane-position are uniform
+    // or flag changes that do NOT. Flagging `needsUpdate` on every material on every call
+    // recompiled the entire model on each selection/hover/section move — O(n) shader
+    // rebuilds for a one-element highlight. Only dirty the material when clipping toggles.
+    const hadPlanes = (mat.clippingPlanes?.length ?? 0) > 0;
     mat.clippingPlanes = planes;
-    mat.needsUpdate = true;
+    if (hadPlanes !== (planes !== null)) mat.needsUpdate = true;
   }
 }
