@@ -117,7 +117,10 @@ export function MapView({
       scheduleViewportLoad();
     });
 
-    mapRef.current.on('zoom', () => {
+    // Update on zoomEND, not on every zoom frame: `currentZoom` drives marker
+    // visibility (visibleDevices) and MapControls, so the per-frame `zoom` event
+    // re-rendered the map and recomputed markers continuously during every gesture.
+    mapRef.current.on('zoomend', () => {
       setCurrentZoom(mapRef.current!.getZoom());
     });
 
