@@ -52,9 +52,19 @@ export async function probeDevice(
     const r = await icmpProbe(ip, opts.timeoutMs);
     if (r.ok) return r;
   }
-  for (const port of opts.ports) {
-    const r = await tcpProbe(ip, port, opts.timeoutMs);
-    if (r.ok) return r;
-  }
-  return { ok: false };
+  if (opts.ports.length === 0) return { ok: false };
+  // Race the TCP ports concurrently: resolve on the FIRST successful connect, or once
+  // every port has failed. Trying ports serially made a down device pay
+  // ports.length × timeoutMs (e.g. 3 × 2s = 6s) while holding a concurrency slot; racing
+  // bounds it to ~1 × timeoutMs. tcpProbe never rejects, so we can't use Promise.any
+  // (which would resolve on the first *failure*); count failures down instead.
+  return new Promise<ProbeResult>((resolve) => {
+    let pending = opts.ports.length;
+    for (const port of opts.ports) {
+      void tcpProbe(ip, port, opts.timeoutMs).then((r) => {
+        if (r.ok) resolve(r);
+        else if (--pending === 0) resolve({ ok: false });
+      });
+    }
+  });
 }
