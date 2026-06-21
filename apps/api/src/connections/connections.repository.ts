@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConnectionType, DeviceConnection, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { updateOrNull } from '../common/prisma/update-or-null';
 
 type CreateConnectionData = {
   organizationId: string;
@@ -80,12 +81,12 @@ export class ConnectionsRepository {
     data: Prisma.DeviceConnectionUpdateInput,
     expectedVersion: number,
   ): Promise<DeviceConnection | null> {
-    const result = await this.prisma.deviceConnection.updateMany({
-      where: { id: connectionId, organizationId, version: expectedVersion },
-      data: { ...data, version: { increment: 1 } },
-    });
-    if (result.count === 0) return null;
-    return this.prisma.deviceConnection.findUnique({ where: { id: connectionId } });
+    return updateOrNull(() =>
+      this.prisma.deviceConnection.update({
+        where: { id: connectionId, organizationId, version: expectedVersion },
+        data: { ...data, version: { increment: 1 } },
+      }),
+    );
   }
 
   async deleteByIdAndOrgId(connectionId: string, organizationId: string): Promise<void> {

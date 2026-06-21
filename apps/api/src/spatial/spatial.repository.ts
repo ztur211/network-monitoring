@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { updateOrNull } from '../common/prisma/update-or-null';
 
 /**
  * DB access for device 3D spatial coordinates and property-tree traversal (Spec 1).
@@ -42,11 +43,11 @@ export class SpatialRepository {
   ): Promise<Device | null> {
     // updateMany + re-read is non-atomic (mirrors DevicesRepository.updateWithVersion);
     // acceptable for non-critical coordinate writes.
-    const result = await this.prisma.device.updateMany({
-      where: { id: deviceId, organizationId },
-      data: { x, y, z, version: { increment: 1 } },
-    });
-    if (result.count === 0) return null;
-    return this.prisma.device.findFirstOrThrow({ where: { id: deviceId, organizationId } });
+    return updateOrNull(() =>
+      this.prisma.device.update({
+        where: { id: deviceId, organizationId },
+        data: { x, y, z, version: { increment: 1 } },
+      }),
+    );
   }
 }
