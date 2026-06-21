@@ -68,7 +68,9 @@ export function MapView({
   const [tileError, setTileError] = useState(false);
   const [livePosition, setLivePosition] = useState<[number, number] | null>(null);
 
-  const { devices, upsertDevice } = useDeviceStore();
+  // Narrow selectors: re-render only when `devices` changes, not on any device-store field.
+  const devices = useDeviceStore((s) => s.devices);
+  const upsertManyDevices = useDeviceStore((s) => s.upsertManyDevices);
   const { mapCenter, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
     useUiStore();
   const user = useAuthStore((s) => s.user);
@@ -238,12 +240,12 @@ export function MapView({
         }),
       ]);
 
-      devRes.data.data.items.forEach((d) => upsertDevice(d));
+      upsertManyDevices(devRes.data.data.items);
       setFiberRuns(fiberRes.data.data.items);
     } catch (err: unknown) {
       if ((err as { name?: string })?.name === 'CanceledError') return;
     }
-  }, [selectedFloor, upsertDevice]);
+  }, [selectedFloor, upsertManyDevices]);
 
   // Compute which devices to display
   const visibleDevices = useMemo(() => {

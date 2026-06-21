@@ -56,6 +56,7 @@ interface DeviceStore {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   upsertDevice: (device: DeviceDto) => void;
+  upsertManyDevices: (devices: DeviceDto[]) => void;
   removeDevice: (deviceId: string) => void;
   clearOfflineSyncError: () => void;
 
@@ -127,6 +128,15 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
 
     upsertDevice: (device) =>
       set((state) => ({ devices: upsertById(state.devices, device) })),
+
+    // Merge many devices in ONE state update (one render). The map's viewport load
+    // previously called upsertDevice per device — a React render per returned device.
+    upsertManyDevices: (incoming) =>
+      set((state) =>
+        incoming.length === 0
+          ? {}
+          : { devices: incoming.reduce((acc, d) => upsertById(acc, d), state.devices) },
+      ),
 
     removeDevice: (deviceId) =>
       set((state) => ({ devices: state.devices.filter((d) => d.id !== deviceId) })),
