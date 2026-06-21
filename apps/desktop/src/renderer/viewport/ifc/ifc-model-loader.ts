@@ -10,6 +10,7 @@ import type {
   PropertyEntry,
 } from './ifc-types';
 import { defaultWasmPath } from './wasm-path';
+import './bvh-setup'; // patches THREE prototypes for BVH-accelerated raycasting (picking)
 
 export interface LoaderOpts {
   wasmPath?: { path: string; absolute: boolean };
@@ -80,6 +81,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
       bg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
       bg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       bg.setIndex(idx);
+      bg.computeBoundsTree(); // build the BVH once at load → fast picking raycasts
       const mesh = new THREE.Mesh(
         bg,
         new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
@@ -116,6 +118,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
     }
     function dispose(): void {
       for (const mesh of elementIndex.values()) {
+        mesh.geometry.disposeBoundsTree?.();
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
         mesh.geometry.deleteAttribute('position');
