@@ -26,25 +26,7 @@ export class IngestController {
   @HttpCode(202)
   async ingestBatch(@Req() req: { ingestOrgId: string; ingestSource?: string }, @Body() body: IngestBatchDto) {
     const organizationId = req.ingestOrgId;
-    for (const c of body.checks ?? []) {
-      await this.ingest.reportStatusCheck({
-        organizationId,
-        deviceId: c.deviceId,
-        ok: c.ok,
-        latencyMs: c.latencyMs,
-        source: req.ingestSource ?? c.source ?? 'agent',
-      });
-    }
-    for (const m of body.metrics ?? []) {
-      await this.ingest.reportMetric({
-        organizationId,
-        deviceId: m.deviceId,
-        metric: m.metric,
-        value: m.value,
-        source: req.ingestSource ?? m.source ?? 'agent',
-        ts: m.ts ? new Date(m.ts) : undefined,
-      });
-    }
+    await this.ingest.ingestBatch(organizationId, body.checks ?? [], body.metrics ?? [], req.ingestSource);
     const accepted = (body.checks?.length ?? 0) + (body.metrics?.length ?? 0);
     return { success: true, data: { accepted }, timestamp: new Date().toISOString() };
   }
