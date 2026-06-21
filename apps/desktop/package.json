@@ -20,6 +20,7 @@
     "react-dom": "19.2.6",
     "react-router-dom": "^6.26.0",
     "three": "^0.184.0",
+    "three-mesh-bvh": "^0.8.3",
     "web-ifc": "^0.0.77",
     "zustand": "^5.0.0"
   },

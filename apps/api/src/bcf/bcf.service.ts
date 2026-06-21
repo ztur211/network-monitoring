@@ -37,7 +37,21 @@ type TopicWithRelations = BcfTopicRow & {
   devices: BcfTopicDeviceRow[];
 };
 
+// Accepts either the full topic (comments array loaded) or the lighter summary shape
+// (just the comment _count + device ids), so toSummaryDto serves both read paths.
+type TopicSummarySource = BcfTopicRow & {
+  devices: { deviceId: string }[];
+  comments?: unknown[];
+  _count?: { comments: number };
+};
+
 const TOPIC_INCLUDE = { comments: true, viewpoints: true, devices: true } as const;
+// The summary list needs only the comment COUNT and the linked device ids — not comment
+// bodies or the (heavy) viewpoint JSON blobs. Fetching those for every topic was waste.
+const SUMMARY_INCLUDE = {
+  _count: { select: { comments: true } },
+  devices: { select: { deviceId: true } },
+} as const;
 
 /**
  * BcfService — Phase C of Spec 6. Topic/comment CRUD with F3 scope enforcement
@@ -68,7 +82,7 @@ export class BcfService {
     const topics = await this.prisma.bcfTopic.findMany({
       where: { organizationId: member.organizationId, propertyId: buildingPropertyId },
       orderBy: { createdAt: 'desc' },
-      include: TOPIC_INCLUDE,
+      include: SUMMARY_INCLUDE,
     });
     return topics.map((t) => this.toSummaryDto(t));
   }
@@ -314,7 +328,7 @@ export class BcfService {
 
   // ─── DTO mappers ─────────────────────────────────────────────────────────────
 
-  private toSummaryDto(t: TopicWithRelations): BcfTopicSummaryDto {
+  private toSummaryDto(t: TopicSummarySource): BcfTopicSummaryDto {
     return {
       id: t.id,
       organizationId: t.organizationId,
@@ -333,7 +347,7 @@ export class BcfService {
       dueDate: t.dueDate ? t.dueDate.toISOString() : null,
       description: t.description,
       version: t.version,
-      commentCount: t.comments.length,
+      commentCount: t._count?.comments ?? t.comments?.length ?? 0,
       deviceIds: t.devices.map((d) => d.deviceId),
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),

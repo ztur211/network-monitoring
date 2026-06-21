@@ -10,6 +10,7 @@ import type {
   PropertyEntry,
 } from './ifc-types';
 import { defaultWasmPath } from './wasm-path';
+import './bvh-setup'; // patches THREE prototypes for BVH-accelerated raycasting (picking)
 
 export interface LoaderOpts {
   wasmPath?: { path: string; absolute: boolean };
@@ -80,6 +81,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
       bg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
       bg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       bg.setIndex(idx);
+      bg.computeBoundsTree(); // build the BVH once at load → fast picking raycasts
       const mesh = new THREE.Mesh(
         bg,
         new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
@@ -103,6 +105,12 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
     recenterGroup.position.set(-recenter.x, -recenter.y, -recenter.z);
     root.rotation.x = -Math.PI / 2;
     root.updateMatrixWorld(true);
+    // The building is static after recentering — it's never transformed again. Freeze
+    // per-object matrices (matrices are already baked by updateMatrixWorld above) so the
+    // render loop stops recomputing world matrices for thousands of meshes every frame.
+    root.traverse((o) => {
+      o.matrixAutoUpdate = false;
+    });
     const bbox = new THREE.Box3().setFromObject(root);
 
     async function getProperties(expressID: ExpressId): Promise<ElementProperties> {
@@ -110,6 +118,7 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
     }
     function dispose(): void {
       for (const mesh of elementIndex.values()) {
+        mesh.geometry.disposeBoundsTree?.();
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
         mesh.geometry.deleteAttribute('position');
