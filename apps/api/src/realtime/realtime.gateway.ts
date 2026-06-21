@@ -136,6 +136,9 @@ export class RealtimeGateway
           : await this.permissionsService.effectiveRoots(client.data.orgId as string, permMember.id))
       : [];
 
+    // Join the rooms mirroring this socket's scope so scoped events reach it by room.
+    await this.syncScopeRooms(client);
+
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
 
     const requestIp = extractRequestIp(client.handshake.address);
@@ -213,31 +216,42 @@ export class RealtimeGateway
   }
 
   /**
-   * Returns true iff the socket's cached effective roots overlap with the
-   * ancestor set for the event's governing site.
-   * null roots = OWNER (unscoped) → always true.
-   * [] roots = no org membership / no access → always false.
+   * Join the socket to the rooms that mirror its F3 scope, so scoped events can be
+   * addressed by room instead of fetching + filtering every org socket per event:
+   *   effectiveRoots === null → `owner:<org>` (OWNER — sees every org event)
+   *   effectiveRoots [...]     → `scope:<rootId>` for each root
+   *   effectiveRoots []        → no scope rooms (no access)
+   * Idempotent: leaves any previously-joined scope/owner rooms first, so it also applies
+   * a scope change on resync. (Property ids are globally-unique UUIDs, so `scope:<id>`
+   * rooms never collide across orgs; the owner room is org-scoped.)
    */
-  private socketSeesSite(roots: unknown, ancestorSet: Set<string>): boolean {
-    if (roots === null) return true; // OWNER unscoped
-    return Array.isArray(roots) && roots.some((r) => ancestorSet.has(r as string));
+  private async syncScopeRooms(client: Socket): Promise<void> {
+    for (const room of client.rooms) {
+      if (room.startsWith('scope:') || room.startsWith('owner:')) await client.leave(room);
+    }
+    const orgId = client.data.orgId as string | null | undefined;
+    if (!orgId) return;
+    const roots = client.data.effectiveRoots as string[] | null;
+    if (roots === null) {
+      await client.join(`owner:${orgId}`);
+    } else {
+      for (const rootId of roots) await client.join(`scope:${rootId}`);
+    }
+  }
+
+  /** Rooms covering everyone who can see any of the given governing-site ancestor ids. */
+  private scopeRooms(orgId: string, ancestorIds: string[]): string[] {
+    return [`owner:${orgId}`, ...new Set(ancestorIds.map((a) => `scope:${a}`))];
   }
 
   async emitScoped(orgId: string, governingSiteId: string, event: string, payload: unknown): Promise<void> {
-    const ancestorSet = new Set(await this.permissionsRepo.ancestorPropertyIds(orgId, governingSiteId));
-    const sockets = await this.server.in(`org:${orgId}`).fetchSockets();
-    for (const s of sockets) {
-      if (this.socketSeesSite(s.data.effectiveRoots, ancestorSet)) s.emit(event, payload);
-    }
+    const ancestors = await this.permissionsRepo.ancestorPropertyIds(orgId, governingSiteId);
+    this.server.to(this.scopeRooms(orgId, ancestors)).emit(event, payload);
   }
 
   async emitScopedMulti(orgId: string, governingSiteIds: string[], event: string, payload: unknown): Promise<void> {
     const lists = await Promise.all(governingSiteIds.map((id) => this.permissionsRepo.ancestorPropertyIds(orgId, id)));
-    const ancestorSet = new Set(lists.flat());
-    const sockets = await this.server.in(`org:${orgId}`).fetchSockets();
-    for (const s of sockets) {
-      if (this.socketSeesSite(s.data.effectiveRoots, ancestorSet)) s.emit(event, payload);
-    }
+    this.server.to(this.scopeRooms(orgId, lists.flat())).emit(event, payload);
   }
 
   notifyAccessChanged(orgId: string, userId: string): void {
@@ -259,6 +273,8 @@ export class RealtimeGateway
           ? null
           : await this.permissionsService.effectiveRoots(orgId, member.id))
       : [];
+    // Re-join scope rooms to match the refreshed roots.
+    await this.syncScopeRooms(client);
   }
 
   private async runPushScheduler(): Promise<void> {
