@@ -13,6 +13,7 @@ import { ProberService } from './prober/prober.service';
 import { IngestTokenService } from './ingest/ingest-token.service';
 import { IngestTokenGuard } from './ingest/ingest-token.guard';
 import { IngestController } from './ingest/ingest.controller';
+import { MonitoringCaggService } from './monitoring-cagg.service';
 
 /**
  * Monitoring pipeline. Phase A: storage + ingest seam. Phase B (this): the
@@ -25,6 +26,7 @@ import { IngestController } from './ingest/ingest.controller';
   controllers: [MonitoringController, IngestController],
   providers: [
     MonitoringRepository,
+    MonitoringCaggService,
     IngestService,
     MonitoringService,
     MonitoringGatewayEmitter,
