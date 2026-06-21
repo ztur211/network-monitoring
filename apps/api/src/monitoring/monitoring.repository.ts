@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DeviceStatus, DeviceStatusState } from '@prisma/client';
+import { DeviceStatus, DeviceStatusState, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -77,6 +77,32 @@ export class MonitoringRepository {
   }): Promise<unknown> {
     return this.prisma.$executeRaw`INSERT INTO "DeviceStatusEvent" ("time","organizationId","deviceId","state","source")
       VALUES (${new Date()}, ${d.organizationId}, ${d.deviceId}, ${d.state}, ${d.source})`;
+  }
+
+  /** Bulk variant of insertMetric — one multi-row INSERT for an entire ingest batch. */
+  insertMetrics(
+    rows: { organizationId: string; deviceId: string; metric: string; value: number; source: string; ts?: Date }[],
+  ): Promise<unknown> {
+    if (rows.length === 0) return Promise.resolve(0);
+    const now = new Date();
+    const values = rows.map(
+      (r) => Prisma.sql`(${r.ts ?? now}, ${r.organizationId}, ${r.deviceId}, ${r.metric}, ${r.value}, ${r.source})`,
+    );
+    return this.prisma
+      .$executeRaw`INSERT INTO "MonitoringMetric" ("time","organizationId","deviceId","metric","value","source") VALUES ${Prisma.join(values)}`;
+  }
+
+  /** Bulk variant of insertStatusEvent — one multi-row INSERT for all transitions in a batch. */
+  insertStatusEvents(
+    rows: { organizationId: string; deviceId: string; state: DeviceStatusState; source: string }[],
+  ): Promise<unknown> {
+    if (rows.length === 0) return Promise.resolve(0);
+    const now = new Date();
+    const values = rows.map(
+      (r) => Prisma.sql`(${now}, ${r.organizationId}, ${r.deviceId}, ${r.state}, ${r.source})`,
+    );
+    return this.prisma
+      .$executeRaw`INSERT INTO "DeviceStatusEvent" ("time","organizationId","deviceId","state","source") VALUES ${Prisma.join(values)}`;
   }
 
   queryMetric(
