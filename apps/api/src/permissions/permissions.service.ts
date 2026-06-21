@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
 import { PermissionsRepository } from './permissions.repository';
 import { CreateTeamDto } from './permissions.dto';
+import { scopeCacheAls } from './scope-cache.als';
 
 function toTeamDto(team: Team): TeamDto {
   return {
@@ -41,8 +42,27 @@ export class PermissionsService {
     return this.repo.effectiveRootPropertyIds(organizationId, memberId);
   }
 
-  /** Every property id the member is scoped to: the union of each assigned root's subtree. */
-  async scopePropertyIds(organizationId: string, memberId: string): Promise<string[]> {
+  /**
+   * Every property id the member is scoped to: the union of each assigned root's subtree.
+   *
+   * Memoized per request via scopeCacheAls — this runs on every read and several times per
+   * write (inScope is called in loops), each time doing a roots query + a per-root
+   * recursive-CTE fan-out. Caching the Promise for the request collapses the redundant work.
+   * No store (non-HTTP caller / no middleware) ⇒ computed directly, unchanged behavior.
+   */
+  scopePropertyIds(organizationId: string, memberId: string): Promise<string[]> {
+    const cache = scopeCacheAls.getStore();
+    if (!cache) return this.computeScopePropertyIds(organizationId, memberId);
+    const key = `${organizationId}:${memberId}`;
+    let scope = cache.get(key);
+    if (!scope) {
+      scope = this.computeScopePropertyIds(organizationId, memberId);
+      cache.set(key, scope);
+    }
+    return scope;
+  }
+
+  private async computeScopePropertyIds(organizationId: string, memberId: string): Promise<string[]> {
     const roots = await this.repo.effectiveRootPropertyIds(organizationId, memberId);
     const subtrees = await Promise.all(
       roots.map((root) => this.repo.subtreePropertyIds(organizationId, root)),
