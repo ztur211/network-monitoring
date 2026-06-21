@@ -4,6 +4,7 @@ import { OrganizationMember } from '@prisma/client';
 import { PermissionsService } from '../permissions.service';
 import { PermissionsRepository } from '../permissions.repository';
 import { AuditService } from '../../audit/audit.service';
+import { scopeCacheAls } from '../scope-cache.als';
 
 describe('PermissionsService', () => {
   let service: PermissionsService;
@@ -47,6 +48,19 @@ describe('PermissionsService', () => {
       repo.subtreePropertyIds.mockResolvedValue(['rootA', 'a1', 'a2']);
       expect(await service.inScope('org', 'm1', 'a2')).toBe(true);
       expect(await service.inScope('org', 'm1', 'zzz')).toBe(false);
+    });
+
+    it('memoizes scopePropertyIds within a request-scoped store', async () => {
+      repo.effectiveRootPropertyIds.mockResolvedValue(['rootA']);
+      repo.subtreePropertyIds.mockResolvedValue(['rootA', 'a1']);
+      await scopeCacheAls.run(new Map(), async () => {
+        const first = await service.scopePropertyIds('org', 'm1');
+        const second = await service.scopePropertyIds('org', 'm1');
+        expect(second).toEqual(first);
+      });
+      // computed once despite two calls inside the same store
+      expect(repo.effectiveRootPropertyIds).toHaveBeenCalledTimes(1);
+      expect(repo.subtreePropertyIds).toHaveBeenCalledTimes(1);
     });
   });
 

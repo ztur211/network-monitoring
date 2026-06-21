@@ -42,6 +42,7 @@ import { AgentModule } from './agents/agents.module';
 import { SnmpModule } from './snmp/snmp.module';
 import { BcfModule } from './bcf/bcf.module';
 import { AuditContextMiddleware } from './audit/audit-context.middleware';
+import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
 
 @Module({
   imports: [
@@ -111,6 +112,6 @@ import { AuditContextMiddleware } from './audit/audit-context.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(AuditContextMiddleware).forRoutes('*');
+    consumer.apply(AuditContextMiddleware, ScopeCacheMiddleware).forRoutes('*');
   }
 }
