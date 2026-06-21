@@ -240,6 +240,8 @@ describe('RealtimeGateway — service interface', () => {
           joinedRooms.push(room);
           return Promise.resolve();
         }),
+        leave: jest.fn().mockResolvedValue(undefined),
+        rooms: new Set<string>(),
         disconnect: jest.fn(),
         _joinedRooms: joinedRooms,
       } as unknown as Parameters<RealtimeGateway['handleConnection']>[0] & { _joinedRooms: string[] };
