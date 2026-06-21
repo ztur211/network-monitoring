@@ -17,6 +17,20 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/** Run an async fn over items with at most `limit` in flight; results preserve input order. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const run = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
 /**
  * BcfExportService — Phase C of Spec 6.
  *
@@ -55,15 +69,27 @@ export class BcfExportService {
       },
     });
 
+    // Pre-fetch every viewpoint snapshot from object storage with bounded concurrency.
+    // This was a serial nested loop — one blocking round-trip per snapshot before the zip
+    // could be written (e.g. 50 topics x 3 snapshots = 150 sequential fetches).
+    const snapshotKeys = [
+      ...new Set(
+        topics.flatMap((t) => t.viewpoints.map((vp) => vp.snapshotKey).filter((k): k is string => k != null)),
+      ),
+    ];
+    const snapshots = new Map<string, Buffer>(
+      await mapWithConcurrency(
+        snapshotKeys,
+        8,
+        async (key) => [key, await streamToBuffer(await this.storage.getObjectStream(key))] as const,
+      ),
+    );
+
     const parsedTopics: ParsedTopic[] = [];
     for (const topic of topics) {
       const viewpoints: ParsedViewpoint[] = [];
       for (const vp of topic.viewpoints) {
-        let snapshotPng: Buffer | undefined;
-        if (vp.snapshotKey) {
-          const stream = await this.storage.getObjectStream(vp.snapshotKey);
-          snapshotPng = await streamToBuffer(stream);
-        }
+        const snapshotPng = vp.snapshotKey ? snapshots.get(vp.snapshotKey) : undefined;
         viewpoints.push({
           guid: vp.guid,
           isPrimary: vp.isPrimary,
