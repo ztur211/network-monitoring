@@ -8,6 +8,7 @@ import { createBuffer } from './buffer.js';
 import { probeFromConfig } from './poller.js';
 import { runCycle } from './runtime.js';
 import { netSnmpSessionFactory } from './net-snmp-session.js';
+import { cachedFetch } from './device-sync-cache.js';
 
 // Injected by esbuild at bundle time via --define:__AGENT_VERSION__='"x.y.z"'.
 // In non-bundled (dev/test) mode this declaration resolves to undefined at runtime.
@@ -122,7 +123,13 @@ async function runDaemon(): Promise<void> {
     saveCredentials(credPath, creds);
   }
   if (!creds) throw new Error('Not enrolled: provide NODESCOPE_AGENT_ENROLL_CODE or run `nodescope-agent enroll`');
-  const client = createAgentClient({ apiUrl: cfg.apiUrl, token: creds.token });
+  const baseClient = createAgentClient({ apiUrl: cfg.apiUrl, token: creds.token });
+  // The device list changes rarely and each sync forces a server-side SNMP-credential
+  // decrypt, so fetch it on the slower syncIntervalMs cadence rather than every probe cycle.
+  const client = {
+    ...baseClient,
+    syncDevices: cachedFetch(() => baseClient.syncDevices(), cfg.syncIntervalMs),
+  };
   const buffer = createBuffer({ path: process.env.NODESCOPE_AGENT_QUEUE ?? '/var/lib/nodescope-agent/queue.jsonl', maxItems: 5000 });
   const probe = probeFromConfig(cfg);
   const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency, snmpFactory: netSnmpSessionFactory }).catch((e) => console.error('[agent] cycle error', e));
