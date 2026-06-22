@@ -39,4 +39,10 @@ describe('createIfcWorkerCore', () => {
     expect(p.props.tag).toBe('WALL-001');
     await core.handle({ type: 'dispose', jobId: 2 }); // must not throw
   });
+
+  it('returns propertiesError for an unknown jobId', async () => {
+    const { posts, core } = drive();
+    await core.handle({ type: 'getProperties', jobId: 999, reqId: 1, expressID: 30 });
+    expect(posts[0]).toMatchObject({ type: 'propertiesError', jobId: 999, reqId: 1 });
+  });
 });

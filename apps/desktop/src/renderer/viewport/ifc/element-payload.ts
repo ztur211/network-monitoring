@@ -1,3 +1,5 @@
+import type { ElementProperties } from './ifc-types';
+
 export interface ElementPayload {
   expressID: number;
   ifcType: string;
@@ -7,8 +9,6 @@ export interface ElementPayload {
   color: Float32Array;    // [r,g,b]* per vertex
   index: Uint32Array;     // triangle indices, base-offset accumulated
 }
-
-import type { ElementProperties } from './ifc-types';
 
 export type WorkerRequest =
   | { type: 'parse'; jobId: number; bytes: ArrayBuffer; wasm: { path: string; absolute: boolean } }
