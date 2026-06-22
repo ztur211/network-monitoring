@@ -1,7 +1,7 @@
 import type { ElementProperties } from './ifc-types';
 
 export interface ElementPayload {
-  expressID: number;
+  expressID: number; // corresponds to the ExpressId alias in ifc-types.ts; kept as bare number so this transferable payload has no THREE/type-module dependency
   ifcType: string;
   guid?: string;
   position: Float32Array; // [x,y,z]* world-transformed

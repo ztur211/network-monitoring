@@ -72,6 +72,14 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
     pendingProps.clear();
   }
 
+  // Terminate and drop the worker reference. Called after degrading so the dead worker
+  // thread and its web-ifc WASM instance do not leak for the loader's lifetime.
+  // Safe to call even if the worker already crashed (guarded try/catch).
+  function killWorker(): void {
+    try { worker?.terminate(); } catch { /* already dead */ }
+    worker = null;
+  }
+
   // Obtain (or create) the shared worker. Returns null if construction fails.
   function ensureWorker(): WorkerLike | null {
     if (worker) return worker;
@@ -89,6 +97,8 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
         jobs.clear();
         // Also settle any in-flight getProperties so their promises don't leak.
         drainAllPendingProps(workerErr);
+        // Terminate and drop the dead worker so its WASM instance doesn't leak.
+        killWorker();
       };
       worker = w;
       return w;
@@ -124,6 +134,8 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
         jobs.clear();
         // Settle any pending getProperties so their promises don't leak.
         drainAllPendingProps(initErr);
+        // Terminate and drop the dead worker so its WASM instance doesn't leak.
+        killWorker();
         break;
       }
       case 'parseError': {

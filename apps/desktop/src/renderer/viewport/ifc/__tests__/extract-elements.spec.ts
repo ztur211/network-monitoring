@@ -35,6 +35,7 @@ describe('extractElements', () => {
       expect(p.position.length).toBeGreaterThan(0);
       expect(p.position.length).toBe(p.normal.length);
       expect(p.position.length).toBe(p.color.length);
+      expect(p.index.length).toBeGreaterThan(0); // non-empty index: vertices without indices render nothing
       expect(typeof p.ifcType).toBe('string');
     }
   });

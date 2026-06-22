@@ -45,6 +45,26 @@ function fakeInitErrorWorker(message = 'init failed') {
   };
 }
 
+// Like fakeInitErrorWorker but records terminate() calls for leak-detection tests.
+function fakeInitErrorWorkerWithTerminateTracking(message = 'init failed') {
+  let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
+  let terminated = false;
+  const worker = {
+    get onmessage() { return onmessage; },
+    set onmessage(fn: ((e: { data: WorkerResponse }) => void) | null) { onmessage = fn; },
+    onerror: null as ((e: unknown) => void) | null,
+    postMessage(m: WorkerRequest) {
+      if (m.type === 'parse') {
+        const jobId = m.jobId;
+        queueMicrotask(() => onmessage?.({ data: { type: 'initError', jobId, message } }));
+      }
+    },
+    terminate() { terminated = true; },
+    get wasTerminated() { return terminated; },
+  };
+  return worker;
+}
+
 // A fake WorkerLike that FAITHFULLY simulates transfer detachment (like a real Worker)
 // AND delivers an initError, letting us detect if bytes were transferred before fallback.
 function fakeDetachingInitErrorWorker(message = 'init failed') {
@@ -129,6 +149,28 @@ describe('createWorkerIfcModelLoader', () => {
     // We swap the factory to a throw so we'd know if the worker was re-created.
     const model2 = await loader.loadModel(buf());
     expect(model2.elementIndex.size).toBeGreaterThan(0); // still via fallback
+
+    model1.dispose();
+    model2.dispose();
+  });
+
+  it('terminates the worker after an initError so the WASM instance does not leak', async () => {
+    const fallback = createIfcModelLoader({ wasmPath: { path: wasmDir, absolute: true } });
+    const fakeW = fakeInitErrorWorkerWithTerminateTracking('init failed');
+    const loader = createWorkerIfcModelLoader({
+      createWorker: () => fakeW,
+      fallback,
+      wasmPath: { path: wasmDir, absolute: true },
+    });
+
+    // First call — worker posts initError, loader falls back via fallback.
+    const model1 = await loader.loadModel(buf());
+    expect(model1.elementIndex.size).toBeGreaterThan(0); // fallback produced a real model
+    expect(fakeW.wasTerminated).toBe(true);             // dead worker must be terminated
+
+    // Second call — loader is degraded; must use fallback without re-creating the worker.
+    const model2 = await loader.loadModel(buf());
+    expect(model2.elementIndex.size).toBeGreaterThan(0);
 
     model1.dispose();
     model2.dispose();
