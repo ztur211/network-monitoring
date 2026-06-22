@@ -32,6 +32,7 @@ interface JobState {
 
 // Pending getProperties request.
 interface PendingProps {
+  jobId: number;
   resolve(props: ElementProperties): void;
   reject(err: unknown): void;
 }
@@ -53,6 +54,24 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
   const jobs = new Map<number, JobState>();
   const pendingProps = new Map<number, PendingProps>();
 
+  // Drain all pending getProperties entries for a specific job, rejecting each.
+  function drainPendingPropsForJob(jobId: number, err: Error): void {
+    for (const [reqId, pending] of pendingProps) {
+      if (pending.jobId === jobId) {
+        pendingProps.delete(reqId);
+        pending.reject(err);
+      }
+    }
+  }
+
+  // Drain ALL pending getProperties entries, rejecting each.
+  function drainAllPendingProps(err: Error): void {
+    for (const pending of pendingProps.values()) {
+      pending.reject(err);
+    }
+    pendingProps.clear();
+  }
+
   // Obtain (or create) the shared worker. Returns null if construction fails.
   function ensureWorker(): WorkerLike | null {
     if (worker) return worker;
@@ -63,10 +82,13 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
       w.onerror = (err: unknown) => {
         // Worker-level error — treat like an initError for all active jobs.
         degraded = true;
+        const workerErr = err instanceof Error ? err : new Error(String(err));
         for (const job of jobs.values()) {
-          job.onError(err);
+          job.onError(workerErr);
         }
         jobs.clear();
+        // Also settle any in-flight getProperties so their promises don't leak.
+        drainAllPendingProps(workerErr);
       };
       worker = w;
       return w;
@@ -93,13 +115,15 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
         break;
       }
       case 'initError': {
-        // Worker is broken — degrade and redirect this job + all future ones.
+        // Worker is broken — degrade and drain ALL in-flight jobs (not just the triggering one).
         degraded = true;
-        const job = jobs.get(msg.jobId);
-        if (job) {
-          jobs.delete(msg.jobId);
-          job.onError(new Error(msg.message));
+        const initErr = new Error(msg.message);
+        for (const job of jobs.values()) {
+          job.onError(initErr);
         }
+        jobs.clear();
+        // Settle any pending getProperties so their promises don't leak.
+        drainAllPendingProps(initErr);
         break;
       }
       case 'parseError': {
@@ -143,7 +167,10 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
 
     const jobId = nextJobId++;
 
-    return new Promise<ParsedModel>((resolve, reject) => {
+    // workerResult resolves/rejects based on what the worker delivers.
+    // If the worker signals initError, degraded will already be true by the time
+    // onError fires, so we can transparently redirect to the fallback below.
+    const workerResult = new Promise<ParsedModel>((resolve, reject) => {
       const payloads: ElementPayload[] = [];
 
       const onResponse = async (msg: WorkerResponse) => {
@@ -153,14 +180,16 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
         function getProperties(expressID: ExpressId): Promise<ElementProperties> {
           return new Promise((res, rej) => {
             const reqId = nextReqId++;
-            pendingProps.set(reqId, { resolve: res, reject: rej });
+            pendingProps.set(reqId, { jobId, resolve: res, reject: rej });
             w.postMessage({ type: 'getProperties', jobId, reqId, expressID });
           });
         }
 
-        // dispose posts 'dispose' to the worker and tears down THREE objects (via assembleModel's dispose).
+        // dispose posts 'dispose' to the worker, tears down THREE objects (via assembleModel's
+        // dispose), and settles any in-flight getProperties for this job.
         function disposeHook(): void {
           w.postMessage({ type: 'dispose', jobId });
+          drainPendingPropsForJob(jobId, new Error('IFC model disposed'));
         }
 
         try {
@@ -181,6 +210,13 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
 
       // Send bytes to the worker — transfer the ArrayBuffer (zero-copy).
       w.postMessage({ type: 'parse', jobId, bytes, wasm }, [bytes]);
+    });
+
+    // If the worker is now degraded (initError path), transparently fall back.
+    // A parseError does NOT set degraded, so its rejection propagates normally.
+    return workerResult.catch((err) => {
+      if (degraded) return fallback.loadModel(bytes);
+      throw err;
     });
   }
 
