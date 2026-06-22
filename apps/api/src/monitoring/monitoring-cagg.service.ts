@@ -3,9 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Creates the 5-minute continuous aggregate over MonitoringMetric (+ its refresh policy)
- * idempotently at boot. Continuous aggregates cannot be created inside a transaction, so
- * this runs as autocommit DDL here rather than in a Prisma migration — the same reason
- * TimescaleService sets up the legacy DeviceMetric hypertable at boot.
+ * idempotently at boot. Continuous aggregates cannot be created inside a transaction, so —
+ * unlike the rest of the TimescaleDB setup, which now lives in migrations — this must run as
+ * autocommit DDL at boot rather than in a Prisma migration.
  *
  * MonitoringRepository.queryMetric reads from this aggregate for chart buckets >= 5 min
  * (re-bucketing the pre-aggregated sums), falling back to the raw hypertable otherwise.
