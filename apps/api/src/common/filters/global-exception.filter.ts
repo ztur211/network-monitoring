@@ -20,6 +20,18 @@ export class NodeScopeException extends HttpException {
   }
 }
 
+/**
+ * Express body-parser / http-errors throw plain errors (not Nest HttpExceptions) that carry a
+ * numeric HTTP status — e.g. 400 for invalid JSON or a Z_DATA_ERROR from a bad Content-Encoding,
+ * 413 for an oversized body. Returns that status when it is a 4xx, otherwise null.
+ */
+function clientErrorStatus(exception: unknown): number | null {
+  if (typeof exception !== 'object' || exception === null) return null;
+  const status =
+    (exception as { status?: unknown }).status ?? (exception as { statusCode?: unknown }).statusCode;
+  return typeof status === 'number' && status >= 400 && status < 500 ? status : null;
+}
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -62,6 +74,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
 
       this.sendError(response, status, 'GEN_003', 'INTERNAL_ERROR');
+      return;
+    }
+
+    // Express body-parser / http-errors errors (malformed JSON, a bad Content-Encoding →
+    // Z_DATA_ERROR, oversized body) are thrown before the route handler and are NOT Nest
+    // HttpExceptions, but carry a numeric 4xx status. Surface it instead of masking a client
+    // mistake as a 500.
+    const clientStatus = clientErrorStatus(exception);
+    if (clientStatus !== null) {
+      this.sendError(response, clientStatus, 'GEN_001', 'MALFORMED_REQUEST');
       return;
     }
 
