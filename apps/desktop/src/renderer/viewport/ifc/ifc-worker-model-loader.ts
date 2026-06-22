@@ -158,12 +158,14 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
     // If already degraded, always use fallback.
     if (degraded) return fallback.loadModel(bytes);
 
-    const w = ensureWorker();
-    if (!w) {
+    const wOrNull = ensureWorker();
+    if (!wOrNull) {
       // Construction failed — mark degraded and use fallback.
       degraded = true;
       return fallback.loadModel(bytes);
     }
+    // Narrow to non-null for closure capture; TS loses narrowing across async closure boundaries.
+    const w: WorkerLike = wOrNull;
 
     const jobId = nextJobId++;
 
