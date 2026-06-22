@@ -7,7 +7,6 @@ import { HealthModule } from './health/health.module';
 import { BandwidthModule } from './bandwidth/bandwidth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
-import { TimescaleModule } from './timescale/timescale.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/guards/auth.guard';
 import { TierGuard } from './auth/guards/tier.guard';
@@ -69,7 +68,6 @@ import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
     ]),
     PrismaModule,
     RedisModule,
-    TimescaleModule,
     HealthModule,
     BandwidthModule,
     AuthModule,
