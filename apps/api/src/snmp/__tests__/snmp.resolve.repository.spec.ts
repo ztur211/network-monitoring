@@ -25,6 +25,7 @@ describe('SnmpService.resolveTarget (integration)', () => {
   let orgId: string;
   let networkId: string;
   let siteId: string;
+  let crypto: CryptoService;
 
   beforeAll(async () => {
     const ref = await Test.createTestingModule({
@@ -40,6 +41,7 @@ describe('SnmpService.resolveTarget (integration)', () => {
     }).compile();
 
     svc = ref.get(SnmpService);
+    crypto = ref.get(CryptoService);
     prisma = ref.get(PrismaService);
     await prisma.$connect();
   });
@@ -225,5 +227,42 @@ describe('SnmpService.resolveTarget (integration)', () => {
     expect(result[0].snmp!.community).toBe('attach-comm');
     // Second device: snmp absent
     expect(result[1].snmp).toBeUndefined();
+  });
+
+  // ─── 5. attachTargets decrypts a shared credential once, not per device ────
+  it('attachTargets fetches+decrypts a shared credential once across many devices', async () => {
+    const cred = await svc.createCredential(orgId, {
+      name: 'shared-cred',
+      snmpVersion: 'V2C',
+      community: 'shared-comm',
+    });
+    await prisma.network.update({ where: { id: networkId }, data: { snmpCredentialId: cred.id } });
+
+    // Three devices all inheriting the same network credential (distinct names to satisfy
+    // the per-org case-insensitive name uniqueness under concurrent create).
+    const devs = await Promise.all(
+      ['10.1.0.1', '10.1.0.2', '10.1.0.3'].map((ipAddress, i) =>
+        prisma.device.create({
+          data: {
+            organizationId: orgId,
+            networkId,
+            propertyId: siteId,
+            name: `Dev-shared-${i}`,
+            category: 'SWITCH',
+            ipAddress,
+          },
+        }),
+      ),
+    );
+    const dtos = devs.map((d) => ({ id: d.id, name: d.name, ipAddress: d.ipAddress! }));
+
+    const decryptSpy = jest.spyOn(crypto, 'decrypt');
+    const result = await svc.attachTargets(orgId, dtos);
+
+    // All three resolve to the same community...
+    expect(result.map((r) => r.snmp?.community)).toEqual(['shared-comm', 'shared-comm', 'shared-comm']);
+    // ...but the credential is decrypted ONCE, not once per device.
+    expect(decryptSpy).toHaveBeenCalledTimes(1);
+    decryptSpy.mockRestore();
   });
 });
