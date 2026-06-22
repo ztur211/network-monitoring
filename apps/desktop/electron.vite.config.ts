@@ -37,5 +37,9 @@ export default defineConfig({
       outDir: 'out/renderer',
       commonjsOptions: { include: [/packages\//, /node_modules/] },
     },
+    // iife format instead of es: ES-module workers fail to load under the packaged file:// origin
+    // because Chromium enforces a strict CORS/same-origin check for type:'module' workers on
+    // file:// URLs. Classic (iife) workers have no such restriction and load fine under file://.
+    worker: { format: 'iife' as const },
   },
 });
