@@ -45,6 +45,26 @@ function fakeInitErrorWorker(message = 'init failed') {
   };
 }
 
+// A fake WorkerLike that FAITHFULLY simulates transfer detachment (like a real Worker)
+// AND delivers an initError, letting us detect if bytes were transferred before fallback.
+function fakeDetachingInitErrorWorker(message = 'init failed') {
+  let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
+  return {
+    get onmessage() { return onmessage; },
+    set onmessage(fn: ((e: { data: WorkerResponse }) => void) | null) { onmessage = fn; },
+    onerror: null as ((e: unknown) => void) | null,
+    postMessage(m: WorkerRequest, transfer?: Transferable[]) {
+      // Faithfully simulate transfer detachment, just like a real Worker would.
+      if (transfer?.length) structuredClone(m, { transfer });
+      if (m.type === 'parse') {
+        const jobId = m.jobId;
+        queueMicrotask(() => onmessage?.({ data: { type: 'initError', jobId, message } }));
+      }
+    },
+    terminate() {},
+  };
+}
+
 // A fake WorkerLike that delivers a parseError response for any parse request.
 function fakeParseErrorWorker(message = 'bad model') {
   let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
@@ -112,6 +132,26 @@ describe('createWorkerIfcModelLoader', () => {
 
     model1.dispose();
     model2.dispose();
+  });
+
+  it('initError fallback receives un-detached bytes and parses a real model', async () => {
+    // This test guards against re-introducing [bytes] in the postMessage transfer list.
+    // The fakeDetachingInitErrorWorker faithfully detaches any transferred ArrayBuffers
+    // (just like a real Worker), then fires initError.  With the fix, bytes is never
+    // transferred, so the fallback receives the intact buffer and produces a real model.
+    // If someone re-adds `[bytes]`, structuredClone detaches the buffer → byteLength=0 →
+    // fallback gets an empty buffer → parse fails (or produces empty model) → test fails.
+    const fallback = createIfcModelLoader({ wasmPath: { path: wasmDir, absolute: true } });
+    const loader = createWorkerIfcModelLoader({
+      createWorker: () => fakeDetachingInitErrorWorker('init failed'),
+      fallback,
+      wasmPath: { path: wasmDir, absolute: true },
+    });
+
+    const model = await loader.loadModel(buf());
+    expect(model.elementIndex.size).toBeGreaterThan(0);
+    expect(model.guidIndex.get('2bjLUVfTLCM9P4iN8sefM6')).toBe(30);
+    model.dispose();
   });
 
   it('rejects on parseError and does NOT degrade (subsequent normal load still succeeds)', async () => {
