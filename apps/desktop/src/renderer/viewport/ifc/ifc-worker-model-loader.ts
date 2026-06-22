@@ -208,8 +208,12 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
 
       jobs.set(jobId, { payloads, onResponse, onError });
 
-      // Send bytes to the worker — transfer the ArrayBuffer (zero-copy).
-      w.postMessage({ type: 'parse', jobId, bytes, wasm }, [bytes]);
+      // Send bytes to the worker via structured-clone (NOT transfer).
+      // The file buffer must remain valid on the main side so the initError→fallback
+      // redirect can re-parse it.  The expensive zero-copy transfers are the per-element
+      // geometry buffers sent worker→main (unaffected); this one-time clone of the file
+      // buffer is negligible (a few MB, off the multi-second parse critical path).
+      w.postMessage({ type: 'parse', jobId, bytes, wasm });
     });
 
     // If the worker is now degraded (initError path), transparently fall back.
