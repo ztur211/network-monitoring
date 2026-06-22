@@ -34,6 +34,30 @@ Redis + MinIO services this `docker-compose.yml` defines.
 
 ---
 
+## Quick start (one command)
+
+On **Linux / macOS / WSL**, if you just want everything running, use the launcher
+script — it performs every numbered step below in order, **idempotently** (anything
+already up is detected and skipped), then opens the desktop viewer:
+
+```bash
+./scripts/run-desktop.sh
+```
+
+It starts infra (Docker), writes `.env` and generates `SECRET_ENCRYPTION_KEY`, runs
+the migrations + seed, loads the FZK-Haus sample model, starts the API (`:3000`) and
+web (`:8081`), and launches the Electron 3D viewer. Sign in with `owner@acme.test` /
+`devpassword123`; close the window (or `Ctrl-C`) to stop what the script started.
+
+Handy flags: `--reset` (clean DB), `--no-model`, `--desktop-only` (backend already
+up elsewhere), `--backend-only` (no GUI), `--stop`.
+
+> Requires Node ≥ 20, Docker, and a **real display** (WSLg or native X/Wayland) — the
+> 3D viewport and the browser PKCE sign-in can't run headless. On **native Windows
+> PowerShell**, run it from WSL or follow the numbered steps below.
+
+---
+
 ## 1. Install dependencies
 
 ```powershell
@@ -203,6 +227,10 @@ npm test --workspace=apps/desktop                # desktop unit tests (vitest)
 ---
 
 ## Quick reference — full setup from scratch
+
+**Linux / macOS / WSL — one command:** `./scripts/run-desktop.sh` does all of this (see
+*Quick start* near the top). The manual equivalent — and the path for **native Windows
+PowerShell**:
 
 ```powershell
 npm install
