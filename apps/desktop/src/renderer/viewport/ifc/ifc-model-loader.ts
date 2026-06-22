@@ -8,6 +8,7 @@ import { defaultWasmPath } from './wasm-path';
 import { extractElements } from './extract-elements';
 import { assembleModel } from './scene-assembly';
 import { readProperties } from './read-properties';
+export { readProperties, asText } from './read-properties';
 
 export interface LoaderOpts {
   wasmPath?: { path: string; absolute: boolean };
