@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useViewportStore } from '../stores/viewport-store';
 import { useViewportLoader } from '../viewport/use-viewport-loader';
 import { useModelRealtime } from '../viewport/use-model-realtime';
@@ -8,9 +9,15 @@ import { Toolbar } from '../viewport/ui/Toolbar';
 import { Inspector } from '../viewport/ui/Inspector';
 import { NodePanel } from '../viewport/ui/NodePanel';
 import { IssuesPanel } from '../viewport/bcf/ui/IssuesPanel';
+import { createWorkerIfcModelLoader } from '../viewport/ifc/ifc-worker-model-loader';
+import type { IfcModelLoader } from '../viewport/ifc/ifc-types';
 
 export function ViewportHost() {
-  useViewportLoader();
+  // Stable loader identity across re-renders — a fresh identity each render would
+  // retrigger the loader effect and cause a React #185-style update loop.
+  const loaderRef = useRef<IfcModelLoader | null>(null);
+  loaderRef.current ??= createWorkerIfcModelLoader();
+  useViewportLoader(loaderRef.current);
   useModelRealtime();
   useDeviceLoad();
   const { status, error, model, updateAvailable, reload } = useViewportStore();
