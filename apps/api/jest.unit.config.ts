@@ -4,7 +4,7 @@ const config: Config = {
   moduleFileExtensions: ['js', 'mjs', 'json', 'ts'],
   rootDir: 'src',
   testRegex: [
-    '.*\\.(service|provider|state-machine|guard|interceptor|validator|cursor|adapter|config)\\.spec\\.ts$',
+    '.*\\.(service|provider|state-machine|guard|interceptor|validator|cursor|adapter|config|filter)\\.spec\\.ts$',
     // Spec 5: the export module's pure IFC primitives (ifc-guid, ifc2x3-writer) are unit tests.
     '.*/export/__tests__/.*\\.spec\\.ts$',
     // Spec 6: the bcf module's pure .bcfzip codec (bcf-zip) is a unit test.
