@@ -1,4 +1,8 @@
+import { gzipSync } from 'node:zlib';
 import type { AgentDeviceDto, IngestBatchDto } from '@nodescope/shared';
+
+// Gzip ingest bodies at/above this size; smaller payloads aren't worth the ~20-byte overhead.
+const INGEST_GZIP_MIN_BYTES = 1024;
 
 export class AgentHttpError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -23,7 +27,15 @@ export function createAgentClient(o: { apiUrl: string; token: string; fetchImpl?
   };
   return {
     async syncDevices() { return (await call('/v1/monitoring/agent/devices')).data as AgentDeviceDto[]; },
-    async ingest(batch) { await call('/v1/monitoring/ingest', { method: 'POST', body: JSON.stringify(batch) }); },
+    async ingest(batch) {
+      const json = JSON.stringify(batch);
+      // Compress larger batches on the wire; the API auto-inflates (express.json inflate:true).
+      const init: RequestInit =
+        Buffer.byteLength(json) >= INGEST_GZIP_MIN_BYTES
+          ? { method: 'POST', body: gzipSync(json), headers: { 'content-encoding': 'gzip' } }
+          : { method: 'POST', body: json };
+      await call('/v1/monitoring/ingest', init);
+    },
     async heartbeat() { await call('/v1/monitoring/agent/heartbeat', { method: 'POST', body: '{}' }); },
   };
 }

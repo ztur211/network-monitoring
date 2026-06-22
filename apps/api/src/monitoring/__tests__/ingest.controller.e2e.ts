@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { gzipSync } from 'node:zlib';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -160,5 +161,29 @@ describe('IngestController (e2e)', () => {
     const row = await prisma.deviceStatus.findFirst({ where: { deviceId, source: `agent:${agentId}` } });
     expect(row).not.toBeNull();
     expect(row?.source).toBe(`agent:${agentId}`);
+  });
+
+  it('accepts a gzip-compressed ingest body (Content-Encoding: gzip)', async () => {
+    const mint = await request(app.getHttpServer())
+      .post('/api/v1/monitoring/ingest-token')
+      .set('Cookie', ownerCookie)
+      .expect(201);
+    const token = mint.body.data.token as string;
+    const gzipped = gzipSync(JSON.stringify({ metrics: [{ deviceId, metric: 'latency_ms', value: 7 }] }));
+
+    await request(app.getHttpServer())
+      .post('/api/v1/monitoring/ingest')
+      .set('x-ingest-token', token)
+      .set('Content-Type', 'application/json')
+      .set('Content-Encoding', 'gzip')
+      // Send the raw gzip Buffer as-is — bypass superagent's JSON serializer.
+      .serialize((d) => d as unknown as string)
+      .send(gzipped)
+      .expect(202);
+
+    const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*) AS n FROM "MonitoringMetric"
+      WHERE "deviceId" = ${deviceId} AND "metric" = 'latency_ms' AND "value" = 7`;
+    expect(Number(rows[0].n)).toBeGreaterThan(0);
   });
 });
