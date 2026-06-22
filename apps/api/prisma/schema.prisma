@@ -258,6 +258,9 @@ model Device {
   @@index([organizationId, floor])
   @@index([organizationId, networkId])
   @@index([organizationId, propertyId])
+  // Serves the device-list query: WHERE organizationId ORDER BY createdAt DESC
+  // (index provides the sort order, eliminating the in-memory sort).
+  @@index([organizationId, createdAt])
 }
 
 model Network {
