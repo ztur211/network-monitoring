@@ -80,18 +80,13 @@ if [ "$DO_INFRA" = 1 ]; then command -v docker >/dev/null || die "docker not fou
 # ── deps ──────────────────────────────────────────────────────────────────────
 [ -d node_modules ] || { log "installing dependencies (first run — a few minutes) ..."; npm install; }
 
-# ── .env + SECRET_ENCRYPTION_KEY ──────────────────────────────────────────────
+# ── .env + SECRET_ENCRYPTION_KEY (regenerate UNLESS it base64-decodes to 32 bytes) ──
+# The API requires a 32-byte key (crypto.module.ts); an empty/placeholder/garbage
+# value must be replaced, not just "any non-empty string". Node does the check so
+# the logic is identical + CRLF-safe on every platform.
 [ -f .env ] || { log "creating .env from .env.example"; cp .env.example .env; }
-need_key=0
-grep -Eq '^SECRET_ENCRYPTION_KEY=..*' .env || need_key=1          # missing/empty
-if grep -Eq '^SECRET_ENCRYPTION_KEY=CHANGE_ME' .env; then need_key=1; fi   # placeholder
-if [ "$need_key" = 1 ]; then
-  key="$(node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))')"
-  if grep -q '^SECRET_ENCRYPTION_KEY=' .env; then
-    KEY="$key" node -e 'const fs=require("fs");let s=fs.readFileSync(".env","utf8");s=s.replace(/^SECRET_ENCRYPTION_KEY=.*$/m,"SECRET_ENCRYPTION_KEY="+process.env.KEY);fs.writeFileSync(".env",s)'
-  else printf '\nSECRET_ENCRYPTION_KEY=%s\n' "$key" >>.env; fi
-  log "generated SECRET_ENCRYPTION_KEY"
-fi
+log "checking SECRET_ENCRYPTION_KEY ..."
+node -e 'const fs=require("fs");let s=fs.readFileSync(".env","utf8");const m=s.match(/^SECRET_ENCRYPTION_KEY=(.*)$/m);let v=m?m[1].trim():"";let ok=false;try{ok=v.length>0&&Buffer.from(v,"base64").length===32}catch(e){}if(!ok){const k=require("crypto").randomBytes(32).toString("base64");s=m?s.replace(/^SECRET_ENCRYPTION_KEY=.*$/m,"SECRET_ENCRYPTION_KEY="+k):s.replace(/\s*$/,"")+"\nSECRET_ENCRYPTION_KEY="+k+"\n";fs.writeFileSync(".env",s);console.log("  generated a new 32-byte SECRET_ENCRYPTION_KEY");}else{console.log("  SECRET_ENCRYPTION_KEY ok");}'
 
 # ── infra ─────────────────────────────────────────────────────────────────────
 if [ "$DO_INFRA" = 1 ]; then
@@ -107,7 +102,12 @@ fi
 if [ "$DO_DB" = 1 ]; then
   if [ "$RESET" = 1 ]; then log "resetting DB (drop + migrate + seed) ..."; npm run db:reset; DO_MODEL=1
   else
-    log "applying migrations ..."; npm run db:migrate
+    log "applying migrations ..."
+    if ! npm run db:migrate; then
+      warn "db:migrate failed. If this is P3018 / a failed migration on a stale dev DB,"
+      warn "reset it:   ./scripts/run-desktop.sh --reset      (or: docker compose down -v)"
+      die "migrate failed — see the hint above"
+    fi
     log "seeding demo data ..."; npm run db:seed || warn "db:seed reported an issue (usually: already seeded) — continuing"
   fi
 fi

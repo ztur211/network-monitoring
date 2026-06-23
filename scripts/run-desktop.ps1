@@ -101,19 +101,13 @@ if (-not (Test-Path 'node_modules')) {
   if ($LASTEXITCODE -ne 0) { Die "npm install failed" }
 }
 
-# --- .env + SECRET_ENCRYPTION_KEY ---
+# --- .env + SECRET_ENCRYPTION_KEY (regenerate UNLESS it base64-decodes to 32 bytes) ---
+# The API requires a 32-byte key (crypto.module.ts); an empty/placeholder/garbage
+# value must be replaced, not just "any non-empty string". Node does the check so
+# the logic is identical + CRLF-safe with the .sh version.
 if (-not (Test-Path '.env')) { Log "creating .env from .env.example"; Copy-Item '.env.example' '.env' }
-$envText = Get-Content '.env' -Raw
-if ($envText -notmatch '(?m)^SECRET_ENCRYPTION_KEY=(?!CHANGE_ME).+$') {
-  $key = (node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))')
-  if ($envText -match '(?m)^SECRET_ENCRYPTION_KEY=') {
-    $envText = [regex]::Replace($envText, '(?m)^SECRET_ENCRYPTION_KEY=.*$', "SECRET_ENCRYPTION_KEY=$key")
-  } else {
-    $envText = $envText.TrimEnd() + "`r`nSECRET_ENCRYPTION_KEY=$key`r`n"
-  }
-  Set-Content -Path '.env' -Value $envText -NoNewline
-  Log "generated SECRET_ENCRYPTION_KEY"
-}
+Log "checking SECRET_ENCRYPTION_KEY ..."
+node -e 'const fs=require("fs");let s=fs.readFileSync(".env","utf8");const m=s.match(/^SECRET_ENCRYPTION_KEY=(.*)$/m);let v=m?m[1].trim():"";let ok=false;try{ok=v.length>0&&Buffer.from(v,"base64").length===32}catch(e){}if(!ok){const k=require("crypto").randomBytes(32).toString("base64");s=m?s.replace(/^SECRET_ENCRYPTION_KEY=.*$/m,"SECRET_ENCRYPTION_KEY="+k):s.replace(/\s*$/,"")+"\nSECRET_ENCRYPTION_KEY="+k+"\n";fs.writeFileSync(".env",s);console.log("  generated a new 32-byte SECRET_ENCRYPTION_KEY");}else{console.log("  SECRET_ENCRYPTION_KEY ok");}'
 
 # --- infra ---
 if ($doInfra) {
@@ -134,7 +128,11 @@ if (-not $DesktopOnly) {
     $NoModel = $false
   } else {
     Log "applying migrations ..."; npm run db:migrate
-    if ($LASTEXITCODE -ne 0) { Die "db:migrate failed" }
+    if ($LASTEXITCODE -ne 0) {
+      Warn "db:migrate failed. If this is P3018 / a failed migration on a stale dev DB,"
+      Warn "reset it:   .\scripts\run-desktop.ps1 -Reset      (or: docker compose down -v)"
+      Die "migrate failed - see the hint above"
+    }
     Log "seeding demo data ..."; npm run db:seed
     if ($LASTEXITCODE -ne 0) { Warn "db:seed reported an issue (usually: already seeded) - continuing" }
   }
