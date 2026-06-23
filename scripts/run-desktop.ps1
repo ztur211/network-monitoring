@@ -89,6 +89,11 @@ if ($Stop) {
 foreach ($exe in 'node', 'npm') {
   if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { Die "$exe not found (need Node >= 20)" }
 }
+$nodeVer = (node -v) -replace '^v', ''
+$nodeMajor = [int]($nodeVer.Split('.')[0])
+if ($nodeMajor -lt 20 -or $nodeMajor -gt 22) {
+  Die "Node $nodeMajor detected - this project needs Node 20-22 (vite 5 / electron-vite 2 don't support 23+). Install Node 22 LTS: https://nodejs.org/en/download  (or nvm-windows)."
+}
 $doInfra = -not $DesktopOnly
 if ($doInfra -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
   Die "docker not found (Docker Desktop needed; or use -DesktopOnly)"

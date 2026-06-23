@@ -22,7 +22,7 @@
     "postinstall": "patch-package && prisma generate --schema=apps/api/prisma/schema.prisma && npm run build --workspace=packages/shared && npm run build --workspace=packages/client && npm run build --workspace=packages/probe"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.0.0 <23.0.0",
     "npm": ">=10.0.0"
   },
   "devDependencies": {

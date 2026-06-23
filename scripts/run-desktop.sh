@@ -75,6 +75,10 @@ trap cleanup EXIT INT TERM
 # ── preconditions ─────────────────────────────────────────────────────────────
 command -v node >/dev/null || die "Node.js not found (need ≥20)"
 command -v npm  >/dev/null || die "npm not found"
+node_major=$(node -v | sed 's/^v\([0-9]*\).*/\1/')
+if [ "$node_major" -lt 20 ] || [ "$node_major" -gt 22 ]; then
+  die "Node $node_major detected — this project needs Node 20–22 (vite 5 / electron-vite 2 don't support 23+). With nvm: 'nvm install 22 && nvm use 22'."
+fi
 if [ "$DO_INFRA" = 1 ]; then command -v docker >/dev/null || die "docker not found (needed for infra; or pass --desktop-only)"; fi
 
 # ── deps ──────────────────────────────────────────────────────────────────────
