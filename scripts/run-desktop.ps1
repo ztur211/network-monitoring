@@ -102,12 +102,27 @@ if (-not (Test-Path 'node_modules')) {
 }
 
 # --- .env + SECRET_ENCRYPTION_KEY (regenerate UNLESS it base64-decodes to 32 bytes) ---
-# The API requires a 32-byte key (crypto.module.ts); an empty/placeholder/garbage
-# value must be replaced, not just "any non-empty string". Node does the check so
-# the logic is identical + CRLF-safe with the .sh version.
+# The API requires a 32-byte key (crypto.module.ts). Implemented in PURE PowerShell
+# (no `node -e`): Windows PowerShell mangles the double quotes when passing an inline
+# script to node.exe, which silently wrote an EMPTY key. .NET RNG avoids that entirely.
 if (-not (Test-Path '.env')) { Log "creating .env from .env.example"; Copy-Item '.env.example' '.env' }
 Log "checking SECRET_ENCRYPTION_KEY ..."
-node -e 'const fs=require("fs");let s=fs.readFileSync(".env","utf8");const m=s.match(/^SECRET_ENCRYPTION_KEY=(.*)$/m);let v=m?m[1].trim():"";let ok=false;try{ok=v.length>0&&Buffer.from(v,"base64").length===32}catch(e){}if(!ok){const k=require("crypto").randomBytes(32).toString("base64");s=m?s.replace(/^SECRET_ENCRYPTION_KEY=.*$/m,"SECRET_ENCRYPTION_KEY="+k):s.replace(/\s*$/,"")+"\nSECRET_ENCRYPTION_KEY="+k+"\n";fs.writeFileSync(".env",s);console.log("  generated a new 32-byte SECRET_ENCRYPTION_KEY");}else{console.log("  SECRET_ENCRYPTION_KEY ok");}'
+$envLines = @(Get-Content '.env')
+$cur = $envLines | Where-Object { $_ -match '^SECRET_ENCRYPTION_KEY=' } | Select-Object -First 1
+$val = if ($cur) { ($cur -replace '^SECRET_ENCRYPTION_KEY=', '').Trim() } else { '' }
+$valid = $false
+if ($val) { try { $valid = ([Convert]::FromBase64String($val)).Length -eq 32 } catch { $valid = $false } }
+if (-not $valid) {
+  $rngBytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($rngBytes)
+  $key = [Convert]::ToBase64String($rngBytes)
+  if ($cur) { $envLines = $envLines | ForEach-Object { if ($_ -match '^SECRET_ENCRYPTION_KEY=') { "SECRET_ENCRYPTION_KEY=$key" } else { $_ } } }
+  else      { $envLines += "SECRET_ENCRYPTION_KEY=$key" }
+  Set-Content -Path '.env' -Value $envLines
+  Log "generated a new 32-byte SECRET_ENCRYPTION_KEY"
+} else {
+  Log "SECRET_ENCRYPTION_KEY ok"
+}
 
 # --- infra ---
 if ($doInfra) {
