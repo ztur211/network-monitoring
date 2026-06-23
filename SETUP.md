@@ -44,6 +44,12 @@ already up is detected and skipped), then opens the desktop viewer:
 ./scripts/run-desktop.sh
 ```
 
+On **Windows (PowerShell)**, use the equivalent script:
+
+```powershell
+.\scripts\run-desktop.ps1
+```
+
 It starts infra (Docker), writes `.env` and generates `SECRET_ENCRYPTION_KEY`, runs
 the migrations + seed, loads the FZK-Haus sample model, starts the API (`:3000`) and
 web (`:8081`), and launches the Electron 3D viewer. Sign in with `owner@acme.test` /
@@ -53,8 +59,10 @@ Handy flags: `--reset` (clean DB), `--no-model`, `--desktop-only` (backend alrea
 up elsewhere), `--backend-only` (no GUI), `--stop`.
 
 > Requires Node ≥ 20, Docker, and a **real display** (WSLg or native X/Wayland) — the
-> 3D viewport and the browser PKCE sign-in can't run headless. On **native Windows
-> PowerShell**, run it from WSL or follow the numbered steps below.
+> 3D viewport and the browser PKCE sign-in can't run headless. The flags are the same
+> on the `.ps1` (`-Reset`, `-NoModel`, `-DesktopOnly`, `-BackendOnly`, `-Stop`). If
+> PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+> once, or launch it via `powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop.ps1`.
 
 ---
 
@@ -228,9 +236,8 @@ npm test --workspace=apps/desktop                # desktop unit tests (vitest)
 
 ## Quick reference — full setup from scratch
 
-**Linux / macOS / WSL — one command:** `./scripts/run-desktop.sh` does all of this (see
-*Quick start* near the top). The manual equivalent — and the path for **native Windows
-PowerShell**:
+**One command:** `./scripts/run-desktop.sh` (Linux/macOS/WSL) or `.\scripts\run-desktop.ps1`
+(Windows PowerShell) does all of this — see *Quick start* near the top. The manual steps:
 
 ```powershell
 npm install
