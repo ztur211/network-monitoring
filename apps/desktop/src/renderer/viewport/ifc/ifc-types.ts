@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { MeshBVH } from 'three-mesh-bvh';
 
 export type IfcType = string; // web-ifc class name, e.g. 'IfcWallStandardCase'
 export type ExpressId = number;
@@ -48,4 +49,31 @@ export interface ParsedModel {
 
 export interface IfcModelLoader {
   loadModel(bytes: ArrayBuffer): Promise<ParsedModel>;
+}
+
+export interface ElementRef {
+  mesh: THREE.Mesh | null; // merged category mesh (null only for an all-empty category)
+  ifcType: IfcType;
+  indexStart: number;
+  indexCount: number; // 0 = zero-geometry element
+}
+export interface CategoryRender {
+  ifcType: IfcType;
+  mesh: THREE.Mesh;
+  fullIndex: Uint32Array;
+  ranges: SortedRanges;
+  pickBVH: MeshBVH | null;
+}
+export interface ModelRender {
+  categories: Map<IfcType, CategoryRender>;
+  meshes: THREE.Mesh[]; // category meshes + overlay, for assembleModel to add to the scene
+  overlay: THREE.Mesh;
+  elementIndex: Map<ExpressId, ElementRef>;
+  applyVisibility(state: VisibilityState): void;
+  applyHighlight(expressID: ExpressId | null): void;
+  /** Nearest VISIBLE element under the ray + its world hit-point (for selection picking and device placement). */
+  pick(ray: THREE.Raycaster, vis: VisibilityState): { expressID: ExpressId; point: THREE.Vector3 } | null;
+  /** World-space bounding box of one element (for focus/frame). */
+  elementBox(expressID: ExpressId): THREE.Box3 | null;
+  dispose(): void;
 }
