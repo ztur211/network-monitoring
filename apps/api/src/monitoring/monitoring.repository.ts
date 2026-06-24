@@ -128,7 +128,7 @@ export class MonitoringRepository {
     deviceId: string,
     limit: number,
   ): Promise<{ time: Date; state: DeviceStatusState; source: string }[]> {
-    return this.prisma.$queryRaw`
+    return this.prisma.$queryRaw<{ time: Date; state: DeviceStatusState; source: string }[]>`
       SELECT "time", "state", "source" FROM "DeviceStatusEvent"
       WHERE "organizationId" = ${organizationId} AND "deviceId" = ${deviceId}
       ORDER BY "time" DESC LIMIT ${limit}`;
