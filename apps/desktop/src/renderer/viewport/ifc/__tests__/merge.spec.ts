@@ -90,4 +90,28 @@ describe('sliceElementGeometry', () => {
     expect(s.normal).toHaveLength(9);
     expect(s.color).toHaveLength(9);
   });
+
+  it('dedups shared vertices, re-bases the index, and preserves normal/color values', () => {
+    // One element: 2 triangles sharing verts 5 and 7 → indices [5,6,7,5,7,8]; 4 UNIQUE verts (5,6,7,8).
+    const position = new Float32Array(9 * 3);
+    position.set([50, 0, 0], 5 * 3);
+    position.set([60, 0, 0], 6 * 3);
+    position.set([70, 0, 0], 7 * 3);
+    position.set([80, 0, 0], 8 * 3);
+    const normal = new Float32Array(9 * 3); // all zero except vertex 5
+    normal.set([0, 1, 0], 5 * 3);
+    const color = new Float32Array(9 * 3).fill(1); // all 1 except vertex 7
+    color.set([0.5, 0.5, 0.5], 7 * 3);
+    const src = { position, normal, color, index: new Uint32Array([5, 6, 7, 5, 7, 8]) };
+    const s = sliceElementGeometry(src, 0, 6);
+    // 4 unique vertices despite 6 index entries → dedup proven
+    expect(s.position).toHaveLength(12);
+    // first-seen remap 5→0,6→1,7→2,8→3 → index re-based to [0,1,2,0,2,3]
+    expect(Array.from(s.index)).toEqual([0, 1, 2, 0, 2, 3]);
+    // compact vertex 0 == source vertex 5
+    expect(Array.from(s.position.slice(0, 3))).toEqual([50, 0, 0]);
+    expect(Array.from(s.normal.slice(0, 3))).toEqual([0, 1, 0]);
+    // compact vertex 2 == source vertex 7 (color preserved)
+    expect(Array.from(s.color.slice(6, 9))).toEqual([0.5, 0.5, 0.5]);
+  });
 });
