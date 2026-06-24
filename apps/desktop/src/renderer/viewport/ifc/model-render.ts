@@ -22,7 +22,12 @@ export function createModelRender(merged: MergedCategory[]): ModelRender {
 
     let pickBVH: MeshBVH | null = null;
     if (m.index.length > 0) {
-      geom.computeBoundsTree();
+      // indirect:true is REQUIRED — a non-indirect build reorders geometry.index in place, and that
+      // array is aliased as cat.fullIndex. Reordering would desync fullIndex from cat.ranges, breaking
+      // faceIndexToExpressId (picking) and buildVisibleIndex (visibility). Indirect keeps the index in
+      // concat order and stores the permutation inside the BVH, so raycast faceIndex stays original-order.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      geom.computeBoundsTree({ indirect: true } as any);
       pickBVH = (geom as unknown as { boundsTree: MeshBVH }).boundsTree;
     }
 
@@ -77,6 +82,8 @@ export function createModelRender(merged: MergedCategory[]): ModelRender {
       const geom = cat.mesh.geometry as THREE.BufferGeometry;
       const want = vi === 'all' ? cat.fullIndex : vi;
       const cur = geom.getIndex();
+      // pick() raycasts the BVH over cat.fullIndex, never this swapped render index — so replacing the
+      // render index with a visible subset here cannot corrupt picking.
       if (!cur || cur.array !== want) geom.setIndex(new THREE.BufferAttribute(want, 1));
     }
   }
@@ -93,6 +100,7 @@ export function createModelRender(merged: MergedCategory[]): ModelRender {
     }
     const cat = categories.get(ref.ifcType)!;
     const g = cat.mesh.geometry as THREE.BufferGeometry;
+    // slice by cat.fullIndex (the stable full index), not the live render index, which may be a subset.
     const sliced = sliceElementGeometry(
       {
         position: g.getAttribute('position').array as Float32Array,

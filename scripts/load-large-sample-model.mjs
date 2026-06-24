@@ -3,7 +3,7 @@
  * load-large-sample-model.mjs — load a LARGE public IFC to benchmark geometry merging.
  *
  * Same upload→activate flow as load-sample-model.mjs; only the default model differs.
- * Default: the Schependomlaan model (~62 MB, IFC2x3, thousands of elements) — a well-known public
+ * Default: the Schependomlaan model (~10 MB, IFC2x3, thousands of elements) — a well-known public
  * BIM dataset (design model by ROOT bv, gathered in S. van Schaijk's TU/e thesis; openBIMstandards),
  * mirrored as a normal (non-LFS) file in the ibpsa/project1-wp-2-2-bim repo. Override with a path:
  *   node scripts/load-large-sample-model.mjs ./my-big-model.ifc
@@ -21,7 +21,7 @@ const EMAIL = process.env.SEED_EMAIL || 'owner@acme.test';
 const PASSWORD = process.env.SEED_PASSWORD || 'devpassword123';
 const BUILDING_NAME = process.env.BUILDING_NAME || 'Main Building';
 
-// Schependomlaan — a large public IFC (~62 MB, non-LFS) mirrored in ibpsa/project1-wp-2-2-bim.
+// Schependomlaan — a large public IFC (~10 MB, non-LFS) mirrored in ibpsa/project1-wp-2-2-bim.
 // The raw endpoint returns the actual bytes. If it ever 404s/moves, substitute another large
 // public IFC (e.g. from openBIMstandards/DataSetSchependomlaan) and update both constants.
 const SAMPLE_NAME = 'Schependomlaan.ifc';

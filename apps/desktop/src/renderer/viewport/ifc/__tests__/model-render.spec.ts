@@ -123,4 +123,40 @@ describe('createModelRender', () => {
     expect(r.overlay.geometry).not.toBe(first); // replaced, not accumulated
     expect(r.overlay.geometry.getAttribute('position').count).toBe(3); // just element 2
   });
+
+  it('pick + visibility stay correct on a multi-triangle, spatially-shuffled category (BVH must not reorder the shared index)', () => {
+    // 6 quad elements (2 tris each = 12 tris total → forces a multi-leaf BVH).
+    // expressID ASCENDING is laid out at X DESCENDING, so a spatial BVH sort reorders triangles
+    // away from concat order — which corrupts faceIndex→expressID unless the BVH is built indirect.
+    const ids = [10, 20, 30, 40, 50, 60];
+    const position: number[] = [];
+    const index: number[] = [];
+    const ranges = ids.map((expressID, i) => {
+      const bx = (ids.length - 1 - i) * 5; // id 10→X25, 20→X20, ... 60→X0
+      const vb = i * 4;
+      position.push(bx, 0, 0, bx + 2, 0, 0, bx + 2, 2, 0, bx, 2, 0);
+      const indexStart = index.length;
+      index.push(vb, vb + 1, vb + 2, vb, vb + 2, vb + 3);
+      return { expressID, indexStart, indexCount: 6 };
+    });
+    const merged = {
+      ifcType: 'IfcWall',
+      position: new Float32Array(position),
+      normal: new Float32Array(position.length),
+      color: new Float32Array(position.length).fill(1),
+      index: new Uint32Array(index),
+      ranges,
+    };
+    const r = createModelRender([merged]);
+    const all = { hiddenCategories: new Set<string>(), hiddenElements: new Set<number>(), isolated: null };
+    const rayAt = (x: number) => new THREE.Raycaster(new THREE.Vector3(x + 1, 1, 5), new THREE.Vector3(0, 0, -1));
+    // Each id sits at X=(5-i)*5: id 10→X25, 40→X10, 60→X0. Pick must return the geometrically-correct id.
+    expect(r.pick(rayAt(25), all)?.expressID).toBe(10);
+    expect(r.pick(rayAt(10), all)?.expressID).toBe(40);
+    expect(r.pick(rayAt(0), all)?.expressID).toBe(60);
+    // Hiding element 10 must remove ELEMENT 10's triangles → a ray at X25 now misses (null),
+    // while a different element is unaffected.
+    expect(r.pick(rayAt(25), { ...all, hiddenElements: new Set([10]) })).toBeNull();
+    expect(r.pick(rayAt(0), { ...all, hiddenElements: new Set([10]) })?.expressID).toBe(60);
+  });
 });
