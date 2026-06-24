@@ -82,6 +82,9 @@ describe('DeviceFocusContextProvider', () => {
 
       expect(result).toBe('');
       expect(mockMonitoringRepo.listStatus).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.metricNames).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.recentStatusEvents).not.toHaveBeenCalled();
+      expect(mockPrisma.deviceConnection.findMany).not.toHaveBeenCalled();
     });
 
     it('returns empty string when non-member requests a device', async () => {
@@ -92,6 +95,9 @@ describe('DeviceFocusContextProvider', () => {
 
       expect(result).toBe('');
       expect(mockMonitoringRepo.listStatus).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.metricNames).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.recentStatusEvents).not.toHaveBeenCalled();
+      expect(mockPrisma.deviceConnection.findMany).not.toHaveBeenCalled();
     });
 
     it('returns empty string when ADMIN is not in scope', async () => {
@@ -103,6 +109,9 @@ describe('DeviceFocusContextProvider', () => {
 
       expect(result).toBe('');
       expect(mockMonitoringRepo.listStatus).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.metricNames).not.toHaveBeenCalled();
+      expect(mockMonitoringRepo.recentStatusEvents).not.toHaveBeenCalled();
+      expect(mockPrisma.deviceConnection.findMany).not.toHaveBeenCalled();
     });
 
     it('returns a section for OWNER without calling inScope', async () => {
@@ -246,14 +255,17 @@ describe('DeviceFocusContextProvider', () => {
 
     it('renders events with time, state, and source', async () => {
       mockMonitoringRepo.recentStatusEvents.mockResolvedValue([
-        { time: new Date('2026-06-24T09:55:00Z'), state: 'DOWN', source: 'icmp' },
         { time: new Date('2026-06-24T10:00:00Z'), state: 'UP', source: 'icmp' },
+        { time: new Date('2026-06-24T09:55:00Z'), state: 'DOWN', source: 'icmp' },
       ]);
 
       const result = await provider.getContext(ORG, USER, DEVICE_ID);
 
       expect(result).toContain('DOWN');
+      expect(result).toContain('UP');
       expect(result).toContain('icmp');
+      // Verify newest-first ordering: the 10:00 UP event should appear before the 09:55 DOWN event
+      expect(result.indexOf('10:00')).toBeLessThan(result.indexOf('09:55'));
     });
   });
 
