@@ -51,7 +51,7 @@ export function OpsHud() {
   return (
     <section
       aria-label="ops-hud"
-      style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(20,20,24,0.9)', color: '#fff',
+      style={{ position: 'absolute', top: 44, left: 8, zIndex: 10, background: 'rgba(20,20,24,0.9)', color: '#fff',
                borderRadius: 6, padding: 8, minWidth: 200, maxHeight: '60%', display: 'flex', flexDirection: 'column' }}
     >
       <button

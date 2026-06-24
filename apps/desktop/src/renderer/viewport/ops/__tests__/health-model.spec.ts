@@ -39,4 +39,12 @@ describe('health-model', () => {
     expect(emphasisFor('up')).toEqual({ halo: 1.5, pulse: false });
     expect(emphasisFor('unknown')).toEqual({ halo: 1.5, pulse: false });
   });
+
+  it('byFloor uses a non-null floorLabel and counts per floor', () => {
+    const ds = [dev('x', 'X', 2, 'Mezzanine'), dev('y', 'Y', 2)];
+    const f = byFloor(ds, status([['x', 'warning'], ['y', 'up']]));
+    expect(f).toHaveLength(1);
+    expect(f[0].label).toBe('Mezzanine');
+    expect(f[0].counts).toMatchObject({ warning: 1, up: 1, total: 2 });
+  });
 });

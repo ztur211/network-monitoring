@@ -43,4 +43,14 @@ describe('OpsHud', () => {
     expect(screen.queryByText('Charlie')).toBeNull(); // up → hidden
     expect(screen.getByText('Alpha')).toBeTruthy();
   });
+
+  it('by-floor groups devices worst-floor-first with per-floor counts', () => {
+    render(<OpsHud />);
+    fireEvent.click(screen.getByLabelText('toggle-ops-hud'));
+    fireEvent.click(screen.getByLabelText('by-floor'));
+    const t = document.body.textContent ?? '';
+    expect(t).toContain('Floor 3'); // Alpha (down)
+    expect(t).toContain('Floor 1'); // Bravo (warning) + Charlie (up)
+    expect(t.indexOf('Floor 3')).toBeLessThan(t.indexOf('Floor 1')); // worst-severity floor first
+  });
 });

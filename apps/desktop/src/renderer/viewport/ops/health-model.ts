@@ -49,7 +49,8 @@ export function byFloor(devices: DeviceDto[], ns: Map<string, NodeStatus>): Floo
   const floors: FloorHealth[] = [];
   for (const [floor, nodes] of groups) {
     const counts = healthCounts(nodes.map((n) => n.device), ns);
-    const label = floor === null ? 'Unassigned' : nodes[0].device.floorLabel ?? `Floor ${floor}`;
+    const labelled = nodes.find((n) => n.device.floorLabel != null);
+    const label = floor === null ? 'Unassigned' : labelled?.device.floorLabel ?? `Floor ${floor}`;
     nodes.sort((a, b) => b.severity - a.severity || a.device.name.localeCompare(b.device.name));
     floors.push({ floor, label, counts, nodes });
   }
