@@ -90,6 +90,7 @@ describe('MonitoringController (e2e)', () => {
   afterAll(async () => {
     await prisma.deviceStatus.deleteMany({ where: { organizationId: orgId } });
     await prisma.$executeRaw`DELETE FROM "MonitoringMetric" WHERE "organizationId" = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM "DeviceStatusEvent" WHERE "organizationId" = ${orgId}`;
     await prisma.device.deleteMany({ where: { organizationId: orgId } });
     await prisma.memberProperty.deleteMany({ where: { organizationId: orgId } });
     await prisma.network.deleteMany({ where: { organizationId: orgId } });

@@ -8,6 +8,7 @@ import {
 import { MetricChart } from '../telemetry/MetricChart';
 import { STATUS_COLOR, statusFromState } from '../nodes/node-status';
 import type { NodeStatus } from '../nodes/node-status';
+import type { DeviceStatusState } from '@nodescope/shared';
 
 const ONE_HOUR_MS = 3_600_000;
 
@@ -86,11 +87,11 @@ function TelemetryPanel({ deviceId }: { deviceId: string }) {
         <div style={{ color: '#8a8f98' }}>No recent events</div>
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {events.map((ev, i) => {
-            const mapped = ev.state.toLowerCase() as NodeStatus;
+          {events.map((ev) => {
+            const mapped = statusFromState(ev.state as DeviceStatusState);
             const color = STATUS_COLOR[mapped] ?? STATUS_COLOR.unknown;
             return (
-              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <li key={`${ev.time}-${ev.state}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span
                   style={{
                     display: 'inline-block',
