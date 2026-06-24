@@ -7,6 +7,7 @@ import { useViewportStore } from '../../stores/viewport-store';
 import { toViewport } from './node-coords';
 import { categoryColor } from './category-color';
 import { STATUS_COLOR } from './node-status';
+import { emphasisFor } from '../ops/health-model';
 
 const isPlaced = (d: DeviceDto) => d.x !== null && d.y !== null && d.z !== null;
 
@@ -48,11 +49,12 @@ export function NodeLayer({
         const selected = selection?.kind === 'device' && selection.deviceId === d.id;
         const status = nodeStatus.get(d.id) ?? 'unknown';
         const scale = selected ? 1.6 : 1.1;
+        const emph = emphasisFor(status);
         return (
           <group key={d.id} position={[p.x, p.y, p.z]}>
             {/* status ring behind the marker (also carries deviceId, so a ring hit selects the device) */}
-            <sprite scale={[scale * 1.5, scale * 1.5, 1]} userData={{ deviceId: d.id }}>
-              <spriteMaterial color={STATUS_COLOR[status]} opacity={0.5} transparent depthTest={false} />
+            <sprite scale={[scale * emph.halo, scale * emph.halo, 1]} userData={{ deviceId: d.id }}>
+              <spriteMaterial color={STATUS_COLOR[status]} opacity={emph.pulse ? 0.7 : 0.5} transparent depthTest={false} />
             </sprite>
             {/* category-coloured marker */}
             <sprite scale={[scale, scale, 1]} userData={{ deviceId: d.id }}>
