@@ -4,11 +4,13 @@ import {
   REALTIME_CONTEXT_PROVIDER,
   ACCOUNT_CONTEXT_PROVIDER,
   PRODUCT_CONTEXT_PROVIDER,
+  DEVICE_FOCUS_CONTEXT_PROVIDER,
 } from './context-provider.interface';
 import { NetworkContextProvider } from './network-context.provider';
 import { RealtimeContextProvider } from './realtime-context.provider';
 import { AccountContextProvider } from './account-context.provider';
 import { ProductContextProvider } from './product-context.provider';
+import { DeviceFocusContextProvider } from './device-focus-context.provider';
 
 const SYSTEM_PREAMBLE = `You are the NodeScope AI Assistant. You help users with two things: network troubleshooting and NodeScope usage guidance.
 
@@ -33,12 +35,15 @@ export class ContextBuilderService {
     private readonly accountProvider: AccountContextProvider,
     @Inject(PRODUCT_CONTEXT_PROVIDER)
     private readonly productProvider: ProductContextProvider,
+    @Inject(DEVICE_FOCUS_CONTEXT_PROVIDER)
+    private readonly deviceFocus: DeviceFocusContextProvider,
   ) {}
 
   async buildSystemPrompt(
     organizationId: string,
     userId: string,
     userTier: string,
+    focusDeviceId?: string,
   ): Promise<string> {
     const [network, realtime, account, product] = await Promise.all([
       this.networkProvider.getContext(organizationId, userId),
@@ -47,7 +52,18 @@ export class ContextBuilderService {
       this.productProvider.getContext(),
     ]);
 
-    return [SYSTEM_PREAMBLE, network, '', realtime, '', account, '', product].join('\n');
+    const sections: string[] = [SYSTEM_PREAMBLE, network, ''];
+
+    if (focusDeviceId) {
+      const focus = await this.deviceFocus.getContext(organizationId, userId, focusDeviceId);
+      if (focus) {
+        sections.push(focus, '');
+      }
+    }
+
+    sections.push(realtime, '', account, '', product);
+
+    return sections.join('\n');
   }
 
   estimateTokenCount(text: string): number {
