@@ -9,6 +9,7 @@ import { Toolbar } from '../viewport/ui/Toolbar';
 import { Inspector } from '../viewport/ui/Inspector';
 import { NodePanel } from '../viewport/ui/NodePanel';
 import { IssuesPanel } from '../viewport/bcf/ui/IssuesPanel';
+import { OpsHud } from '../viewport/ui/OpsHud';
 import { createWorkerIfcModelLoader } from '../viewport/ifc/ifc-worker-model-loader';
 import type { IfcModelLoader } from '../viewport/ifc/ifc-types';
 
@@ -33,6 +34,7 @@ export function ViewportHost() {
         <>
           <ViewportCanvas model={model} />
           <Toolbar />
+          <OpsHud />
           <aside
             style={{
               position: 'absolute',
