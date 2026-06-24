@@ -115,6 +115,25 @@ export class MonitoringRepository {
       .$executeRaw`INSERT INTO "DeviceStatusEvent" ("time","organizationId","deviceId","state","source") VALUES ${Prisma.join(values)}`;
   }
 
+  async metricNames(organizationId: string, deviceId: string, since: Date): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ metric: string }[]>`
+      SELECT DISTINCT "metric" FROM "MonitoringMetric"
+      WHERE "organizationId" = ${organizationId} AND "deviceId" = ${deviceId} AND "time" >= ${since}
+      ORDER BY "metric"`;
+    return rows.map((r) => r.metric);
+  }
+
+  async recentStatusEvents(
+    organizationId: string,
+    deviceId: string,
+    limit: number,
+  ): Promise<{ time: Date; state: DeviceStatusState; source: string }[]> {
+    return this.prisma.$queryRaw<{ time: Date; state: DeviceStatusState; source: string }[]>`
+      SELECT "time", "state", "source" FROM "DeviceStatusEvent"
+      WHERE "organizationId" = ${organizationId} AND "deviceId" = ${deviceId}
+      ORDER BY "time" DESC LIMIT ${limit}`;
+  }
+
   queryMetric(
     organizationId: string,
     deviceId: string,

@@ -2,6 +2,7 @@ import { useEffect, useState, Fragment } from 'react';
 import { useViewportStore } from '../../stores/viewport-store';
 import type { ElementProperties } from '../ifc/ifc-types';
 import { DeviceDetails } from './DeviceDetails';
+import { DeviceTelemetry } from './DeviceTelemetry';
 
 export function Inspector() {
   const { model, selection, isolate, hideElement, requestFocus } = useViewportStore();
@@ -25,7 +26,13 @@ export function Inspector() {
   }, [model, expressID]);
 
   // Spec 4 §7: the unified Inspector switches on selection.kind.
-  if (selection?.kind === 'device') return <DeviceDetails />;
+  if (selection?.kind === 'device')
+    return (
+      <>
+        <DeviceDetails />
+        <DeviceTelemetry />
+      </>
+    );
   if (expressID == null || !props) return null;
   return (
     <aside aria-label="inspector" style={{ overflow: 'auto' }}>

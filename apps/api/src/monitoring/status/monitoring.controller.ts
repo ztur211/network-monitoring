@@ -27,4 +27,22 @@ export class MonitoringController {
     const data = await this.svc.getDeviceMetrics(member, id, metric, new Date(from), new Date(to), bucket);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
+
+  // Spec A: F3-scoped distinct metric names for a device (last 24h).
+  @Get('devices/:id/metric-names')
+  async metricNames(@OrgMember() member: OrgMemberContext, @Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.svc.getDeviceMetricNames(member, id);
+    return { success: true, data, timestamp: new Date().toISOString() };
+  }
+
+  // Spec A: F3-scoped recent status transitions for a device (newest-first, capped).
+  @Get('devices/:id/status-events')
+  async statusEvents(
+    @OrgMember() member: OrgMemberContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit = '50',
+  ) {
+    const data = await this.svc.getDeviceStatusEvents(member, id, Number(limit));
+    return { success: true, data, timestamp: new Date().toISOString() };
+  }
 }

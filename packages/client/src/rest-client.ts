@@ -77,6 +77,15 @@ export function createRestClient(opts: RestClientOptions) {
         'GET',
         `/v1/devices/${encodeURIComponent(id)}/metrics?metric=${encodeURIComponent(metric)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&bucket=${encodeURIComponent(bucket)}`,
       ),
+    // Spec A: metric names seen by a device in the last 24 h (drill-down).
+    getDeviceMetricNames: (deviceId: string): Promise<string[]> =>
+      request<string[]>('GET', `/v1/devices/${encodeURIComponent(deviceId)}/metric-names`),
+    // Spec A: recent status-change events for a device (drill-down timeline).
+    getDeviceStatusEvents: (deviceId: string, limit?: number): Promise<{ time: string; state: string; source: string }[]> =>
+      request<{ time: string; state: string; source: string }[]>(
+        'GET',
+        `/v1/devices/${encodeURIComponent(deviceId)}/status-events${limit !== undefined ? `?limit=${encodeURIComponent(limit)}` : ''}`,
+      ),
     // Spec 6: BCF topic/comment CRUD
     listBcfTopics: (buildingId: string) =>
       request<BcfTopicDto[]>('GET', `/v1/buildings/${buildingId}/bcf/topics`),
