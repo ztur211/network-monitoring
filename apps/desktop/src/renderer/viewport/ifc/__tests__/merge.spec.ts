@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { mergeCategory, faceIndexToExpressId, buildVisibleIndex } from '../merge';
+import { mergeCategory, faceIndexToExpressId, buildVisibleIndex, sliceElementGeometry } from '../merge';
 import type { ElementPayload } from '../element-payload';
 
 const payload = (expressID: number, verts: number[], idx: number[]): ElementPayload => ({
@@ -72,5 +72,22 @@ describe('buildVisibleIndex', () => {
     const out = buildVisibleIndex(full, ranges, (id) => id !== 20);
     expect(out).toBeInstanceOf(Uint32Array);
     expect(Array.from(out as Uint32Array)).toEqual([0, 1, 2, 6, 7, 8]);
+  });
+});
+
+describe('sliceElementGeometry', () => {
+  it('extracts an element into a compact, re-based geometry', () => {
+    // 2 elements × 3 verts; slice the 2nd (index range [3,3))
+    const src = {
+      position: new Float32Array([0,0,0, 1,0,0, 0,1,0,  2,0,0, 3,0,0, 2,1,0]),
+      normal: new Float32Array(18),
+      color: new Float32Array(18).fill(1),
+      index: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+    const s = sliceElementGeometry(src, 3, 3);
+    expect(Array.from(s.position)).toEqual([2,0,0, 3,0,0, 2,1,0]);
+    expect(Array.from(s.index)).toEqual([0, 1, 2]); // re-based to its own 3 verts
+    expect(s.normal).toHaveLength(9);
+    expect(s.color).toHaveLength(9);
   });
 });

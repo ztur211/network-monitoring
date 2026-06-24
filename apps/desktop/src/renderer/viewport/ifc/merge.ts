@@ -81,3 +81,41 @@ export function buildVisibleIndex(
   }
   return out;
 }
+
+export interface SlicedGeometry {
+  position: Float32Array;
+  normal: Float32Array;
+  color: Float32Array;
+  index: Uint32Array;
+}
+
+/** Extract one element's triangles into a standalone, re-based geometry (for the highlight overlay). */
+export function sliceElementGeometry(
+  src: { position: Float32Array; normal: Float32Array; color: Float32Array; index: Uint32Array },
+  indexStart: number,
+  indexCount: number,
+): SlicedGeometry {
+  const remap = new Map<number, number>();
+  const index = new Uint32Array(indexCount);
+  const position: number[] = [];
+  const normal: number[] = [];
+  const color: number[] = [];
+  for (let i = 0; i < indexCount; i++) {
+    const v = src.index[indexStart + i];
+    let nv = remap.get(v);
+    if (nv === undefined) {
+      nv = remap.size;
+      remap.set(v, nv);
+      position.push(src.position[v * 3], src.position[v * 3 + 1], src.position[v * 3 + 2]);
+      normal.push(src.normal[v * 3], src.normal[v * 3 + 1], src.normal[v * 3 + 2]);
+      color.push(src.color[v * 3], src.color[v * 3 + 1], src.color[v * 3 + 2]);
+    }
+    index[i] = nv;
+  }
+  return {
+    position: new Float32Array(position),
+    normal: new Float32Array(normal),
+    color: new Float32Array(color),
+    index,
+  };
+}
