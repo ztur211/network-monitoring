@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { mergeCategory } from '../merge';
+import { mergeCategory, faceIndexToExpressId } from '../merge';
 import type { ElementPayload } from '../element-payload';
 
 const payload = (expressID: number, verts: number[], idx: number[]): ElementPayload => ({
@@ -34,5 +34,23 @@ describe('mergeCategory', () => {
     const m = mergeCategory('IfcWall', [payload(9, [], [])]);
     expect(m.index).toHaveLength(0);
     expect(m.ranges).toEqual([{ expressID: 9, indexStart: 0, indexCount: 0 }]);
+  });
+});
+
+describe('faceIndexToExpressId', () => {
+  const ranges = [
+    { expressID: 10, indexStart: 0, indexCount: 6 }, // faces 0..1
+    { expressID: 20, indexStart: 6, indexCount: 3 }, // face 2
+    { expressID: 30, indexStart: 9, indexCount: 6 }, // faces 3..4
+  ];
+  it('maps a face index to the owning element via its index range', () => {
+    expect(faceIndexToExpressId(ranges, 0)).toBe(10); // pos 0
+    expect(faceIndexToExpressId(ranges, 1)).toBe(10); // pos 3
+    expect(faceIndexToExpressId(ranges, 2)).toBe(20); // pos 6
+    expect(faceIndexToExpressId(ranges, 3)).toBe(30); // pos 9
+    expect(faceIndexToExpressId(ranges, 4)).toBe(30); // pos 12
+  });
+  it('returns null past the end', () => {
+    expect(faceIndexToExpressId(ranges, 5)).toBeNull(); // pos 15, out of range
   });
 });

@@ -1,5 +1,5 @@
 import type { ElementPayload } from './element-payload';
-import type { IfcType, SortedRanges } from './ifc-types';
+import type { IfcType, ExpressId, SortedRanges } from './ifc-types';
 
 export interface MergedCategory {
   ifcType: IfcType;
@@ -37,4 +37,19 @@ export function mergeCategory(ifcType: IfcType, payloads: ElementPayload[]): Mer
     idxOffset += p.index.length;
   }
   return { ifcType, position, normal, color, index, ranges };
+}
+
+/** Binary-search the category ranges for the element owning a raycast faceIndex. */
+export function faceIndexToExpressId(ranges: SortedRanges, faceIndex: number): ExpressId | null {
+  const pos = faceIndex * 3; // index-buffer position of the face's first vertex
+  let lo = 0;
+  let hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = ranges[mid];
+    if (pos < r.indexStart) hi = mid - 1;
+    else if (pos >= r.indexStart + r.indexCount) lo = mid + 1;
+    else return r.expressID;
+  }
+  return null;
 }
