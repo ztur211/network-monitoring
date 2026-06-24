@@ -7,23 +7,6 @@ import {
   useDeviceStatusEvents,
 } from '../use-device-telemetry';
 import * as clientsModule from '../../../data/clients';
-import { WS_EVENTS } from '@nodescope/shared';
-
-function makeFakeRealtime() {
-  const handlers: Record<string, Set<Function>> = {};
-  return {
-    on: vi.fn((event: string, handler: Function) => {
-      if (!handlers[event]) handlers[event] = new Set();
-      handlers[event].add(handler);
-    }),
-    off: vi.fn((event: string, handler: Function) => {
-      handlers[event]?.delete(handler);
-    }),
-    emit(event: string, payload: unknown) {
-      handlers[event]?.forEach((h) => h(payload));
-    },
-  };
-}
 
 beforeEach(() => {
   vi.spyOn(clientsModule, 'getClients').mockReturnValue(null as any);
@@ -32,12 +15,13 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 // ── useDeviceMetricNames ────────────────────────────────────────────────────
 
 describe('useDeviceMetricNames', () => {
-  it('resolves metric names from the REST client', async () => {
+  it('starts with loading=true and resolves metric names from the REST client', async () => {
     const rest = { getDeviceMetricNames: vi.fn().mockResolvedValue(['cpu', 'mem']) };
     vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest } as any);
 
@@ -49,7 +33,7 @@ describe('useDeviceMetricNames', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('returns empty names when no client is set (null-client guard)', () => {
+  it('returns empty names and loading=false when no client is set (null-client guard)', () => {
     vi.spyOn(clientsModule, 'getClients').mockReturnValue(null as any);
     const { result } = renderHook(() => useDeviceMetricNames('d1'));
     expect(result.current.names).toEqual([]);
@@ -70,12 +54,12 @@ describe('useDeviceMetricNames', () => {
 // ── useDeviceMetricSeries ───────────────────────────────────────────────────
 
 describe('useDeviceMetricSeries', () => {
-  it('loads the series from REST and maps {bucket,avg} → {t,v}', async () => {
+  it('loads the series from REST on mount and maps {bucket,avg} → {t,v}', async () => {
     const bucket = new Date(Date.now() - 30_000).toISOString();
     const rest = {
       getDeviceMetrics: vi.fn().mockResolvedValue([{ bucket, avg: 42 }]),
     };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: null } as any);
+    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest } as any);
 
     const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
     await act(async () => {});
@@ -85,95 +69,69 @@ describe('useDeviceMetricSeries', () => {
     expect(result.current.points[0].v).toBe(42);
   });
 
-  it('live-appends a matching METRICS_UPDATE point', async () => {
-    const rt = makeFakeRealtime();
-    const rest = { getDeviceMetrics: vi.fn().mockResolvedValue([]) };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: rt } as any);
-
-    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
-    await act(async () => {});
-
-    const now = Date.now();
-    act(() => {
-      rt.emit(WS_EVENTS.METRICS_UPDATE, { deviceId: 'd1', metric: 'cpu', value: 99, time: new Date(now).toISOString() });
-    });
-
-    expect(result.current.points).toHaveLength(1);
-    expect(result.current.points[0].v).toBe(99);
-  });
-
-  it('ignores a METRICS_UPDATE for a different device', async () => {
-    const rt = makeFakeRealtime();
-    const rest = { getDeviceMetrics: vi.fn().mockResolvedValue([]) };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: rt } as any);
-
-    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
-    await act(async () => {});
-
-    act(() => {
-      rt.emit(WS_EVENTS.METRICS_UPDATE, { deviceId: 'OTHER', metric: 'cpu', value: 99, time: new Date().toISOString() });
-    });
-
-    expect(result.current.points).toHaveLength(0);
-  });
-
-  it('ignores a METRICS_UPDATE for a different metric', async () => {
-    const rt = makeFakeRealtime();
-    const rest = { getDeviceMetrics: vi.fn().mockResolvedValue([]) };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: rt } as any);
-
-    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
-    await act(async () => {});
-
-    act(() => {
-      rt.emit(WS_EVENTS.METRICS_UPDATE, { deviceId: 'd1', metric: 'mem', value: 55, time: new Date().toISOString() });
-    });
-
-    expect(result.current.points).toHaveLength(0);
-  });
-
-  it('drops points older than windowMs on live append', async () => {
-    const rt = makeFakeRealtime();
-    const oldTime = new Date(Date.now() - 10_000).toISOString(); // 10s ago
-    const rest = { getDeviceMetrics: vi.fn().mockResolvedValue([{ bucket: oldTime, avg: 1 }]) };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: rt } as any);
-
-    // windowMs = 5s — the old point (10s) should be trimmed on live append
-    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 5_000));
-    await act(async () => {});
-
-    // Old point is retained during initial load (windowMs is applied when appending)
-    act(() => {
-      rt.emit(WS_EVENTS.METRICS_UPDATE, {
-        deviceId: 'd1',
-        metric: 'cpu',
-        value: 77,
-        time: new Date().toISOString(),
-      });
-    });
-
-    // Only the fresh point should remain (old one outside window is trimmed)
-    const points = result.current.points;
-    expect(points.every((p) => p.t >= Date.now() - 5_000)).toBe(true);
-    expect(points.some((p) => p.v === 77)).toBe(true);
-  });
-
   it('returns empty points when no client is set (null-client guard)', () => {
     vi.spyOn(clientsModule, 'getClients').mockReturnValue(null as any);
     const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
     expect(result.current.points).toEqual([]);
   });
 
-  it('unsubscribes realtime listener on unmount', async () => {
-    const rt = makeFakeRealtime();
-    const rest = { getDeviceMetrics: vi.fn().mockResolvedValue([]) };
-    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest, realtime: rt } as any);
+  it('polls and replaces points on interval tick', async () => {
+    vi.useFakeTimers();
 
-    const { unmount } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000));
+    const bucketA = new Date(Date.now() - 30_000).toISOString();
+    const bucketB = new Date(Date.now() - 10_000).toISOString();
+    const seriesA = [{ bucket: bucketA, avg: 10 }];
+    const seriesB = [{ bucket: bucketB, avg: 99 }];
+
+    const getDeviceMetrics = vi.fn()
+      .mockResolvedValueOnce(seriesA)
+      .mockResolvedValueOnce(seriesB);
+
+    const rest = { getDeviceMetrics };
+    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest } as any);
+
+    const pollMs = 15_000;
+    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000, pollMs));
+
+    // Flush the initial load promise
     await act(async () => {});
+
+    expect(result.current.points).toHaveLength(1);
+    expect(result.current.points[0].v).toBe(10);
+
+    // Advance past poll interval and flush second call
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(pollMs);
+    });
+
+    expect(getDeviceMetrics).toHaveBeenCalledTimes(2);
+    expect(result.current.points).toHaveLength(1);
+    expect(result.current.points[0].v).toBe(99);
+  });
+
+  it('clears interval on unmount (no further calls after unmount)', async () => {
+    vi.useFakeTimers();
+
+    const getDeviceMetrics = vi.fn().mockResolvedValue([]);
+    const rest = { getDeviceMetrics };
+    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest } as any);
+
+    const pollMs = 15_000;
+    const { unmount } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000, pollMs));
+
+    // Flush the initial load promise
+    await act(async () => {});
+
+    expect(getDeviceMetrics).toHaveBeenCalledTimes(1);
+
     unmount();
 
-    expect(rt.off).toHaveBeenCalledWith(WS_EVENTS.METRICS_UPDATE, expect.any(Function));
+    // Advance timers — interval should be cleared so no more calls
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(pollMs * 3);
+    });
+
+    expect(getDeviceMetrics).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { WS_EVENTS } from '@nodescope/shared';
 import { getClients } from '../../data/clients';
 
 export interface MetricPoint {
@@ -17,11 +16,14 @@ export interface StatusEvent {
 
 export function useDeviceMetricNames(deviceId: string): { names: string[]; loading: boolean } {
   const [names, setNames] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const rest = getClients()?.rest;
-    if (!rest) return;
+    if (!rest) {
+      setLoading(false);
+      return;
+    }
 
     let active = true;
     const isCurrent = () => active;
@@ -56,60 +58,43 @@ export function useDeviceMetricSeries(
   deviceId: string,
   metric: string,
   windowMs: number,
+  pollMs = 15000,
 ): { points: MetricPoint[] } {
   const [points, setPoints] = useState<MetricPoint[]>([]);
 
-  // Initial load from REST
   useEffect(() => {
     const rest = getClients()?.rest;
-    if (!rest) return;
+    if (!rest || !deviceId || !metric) {
+      setPoints([]);
+      return;
+    }
 
     let active = true;
-    const isCurrent = () => active;
 
-    const now = new Date();
-    const fromISO = new Date(now.getTime() - windowMs).toISOString();
-    const toISO = now.toISOString();
+    const load = () => {
+      const now = new Date();
+      const fromISO = new Date(now.getTime() - windowMs).toISOString();
+      const toISO = now.toISOString();
 
-    rest
-      .getDeviceMetrics(deviceId, metric, fromISO, toISO)
-      .then((rows) => {
-        if (!isCurrent()) return;
-        setPoints(rows.map((r) => ({ t: new Date(r.bucket).getTime(), v: r.avg })));
-      })
-      .catch(() => {
-        if (isCurrent()) setPoints([]);
-      });
+      rest
+        .getDeviceMetrics(deviceId, metric, fromISO, toISO)
+        .then((rows) => {
+          if (!active) return;
+          setPoints(rows.map((r) => ({ t: new Date(r.bucket).getTime(), v: r.avg })));
+        })
+        .catch(() => {
+          // swallow errors — keep last points
+        });
+    };
+
+    load();
+    const id = setInterval(load, pollMs);
 
     return () => {
       active = false;
+      clearInterval(id);
     };
-  }, [deviceId, metric, windowMs]);
-
-  // Live-append via realtime
-  useEffect(() => {
-    const rt = getClients()?.realtime;
-    if (!rt) return;
-
-    const handler = (payload: unknown) => {
-      const p = payload as { deviceId: string; metric: string; value: number; time: string };
-      if (p.deviceId !== deviceId || p.metric !== metric) return;
-
-      const now = Date.now();
-      const cutoff = now - windowMs;
-      const newPoint: MetricPoint = { t: new Date(p.time).getTime(), v: p.value };
-
-      setPoints((prev) => {
-        const trimmed = prev.filter((pt) => pt.t >= cutoff);
-        return [...trimmed, newPoint];
-      });
-    };
-
-    rt.on(WS_EVENTS.METRICS_UPDATE, handler);
-    return () => {
-      rt.off?.(WS_EVENTS.METRICS_UPDATE, handler);
-    };
-  }, [deviceId, metric, windowMs]);
+  }, [deviceId, metric, windowMs, pollMs]);
 
   return { points };
 }
