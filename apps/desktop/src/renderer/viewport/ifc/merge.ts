@@ -53,3 +53,31 @@ export function faceIndexToExpressId(ranges: SortedRanges, faceIndex: number): E
   }
   return null;
 }
+
+export type VisibleIndex = Uint32Array | 'all' | 'none';
+
+/** Build the rendered index from currently-visible element ranges.
+ *  'all' → reuse the full index (no allocation); 'none' → hide the mesh. */
+export function buildVisibleIndex(
+  fullIndex: Uint32Array,
+  ranges: SortedRanges,
+  isVisible: (expressID: ExpressId) => boolean,
+): VisibleIndex {
+  let visibleCount = 0;
+  let allVisible = true;
+  for (const r of ranges) {
+    if (isVisible(r.expressID)) visibleCount += r.indexCount;
+    else allVisible = false;
+  }
+  if (allVisible) return 'all';
+  if (visibleCount === 0) return 'none';
+  const out = new Uint32Array(visibleCount);
+  let o = 0;
+  for (const r of ranges) {
+    if (r.indexCount > 0 && isVisible(r.expressID)) {
+      out.set(fullIndex.subarray(r.indexStart, r.indexStart + r.indexCount), o);
+      o += r.indexCount;
+    }
+  }
+  return out;
+}

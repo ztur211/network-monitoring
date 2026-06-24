@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { mergeCategory, faceIndexToExpressId } from '../merge';
+import { mergeCategory, faceIndexToExpressId, buildVisibleIndex } from '../merge';
 import type { ElementPayload } from '../element-payload';
 
 const payload = (expressID: number, verts: number[], idx: number[]): ElementPayload => ({
@@ -52,5 +52,25 @@ describe('faceIndexToExpressId', () => {
   });
   it('returns null past the end', () => {
     expect(faceIndexToExpressId(ranges, 5)).toBeNull(); // pos 15, out of range
+  });
+});
+
+describe('buildVisibleIndex', () => {
+  const full = new Uint32Array([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  const ranges = [
+    { expressID: 10, indexStart: 0, indexCount: 3 },
+    { expressID: 20, indexStart: 3, indexCount: 3 },
+    { expressID: 30, indexStart: 6, indexCount: 3 },
+  ];
+  it("returns 'all' when every element is visible", () => {
+    expect(buildVisibleIndex(full, ranges, () => true)).toBe('all');
+  });
+  it("returns 'none' when nothing is visible", () => {
+    expect(buildVisibleIndex(full, ranges, () => false)).toBe('none');
+  });
+  it('returns only the visible ranges concatenated', () => {
+    const out = buildVisibleIndex(full, ranges, (id) => id !== 20);
+    expect(out).toBeInstanceOf(Uint32Array);
+    expect(Array.from(out as Uint32Array)).toEqual([0, 1, 2, 6, 7, 8]);
   });
 });
