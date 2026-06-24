@@ -88,4 +88,39 @@ describe('createModelRender', () => {
     expect(() => r.dispose()).not.toThrow();
     expect((mesh.geometry as THREE.BufferGeometry).attributes.position).toBeUndefined();
   });
+
+  it('pick skips a hidden element in front and returns the visible one behind', () => {
+    // Two triangles under the SAME -Z ray: element 1 @ z=0 (behind), element 2 @ z=2 (in front).
+    const position = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, // element 1 @ z=0
+      0, 0, 2, 1, 0, 2, 0, 1, 2, // element 2 @ z=2
+    ]);
+    const merged = {
+      ifcType: 'IfcWall',
+      position,
+      normal: new Float32Array(position.length),
+      color: new Float32Array(position.length).fill(1),
+      index: new Uint32Array([0, 1, 2, 3, 4, 5]),
+      ranges: [
+        { expressID: 1, indexStart: 0, indexCount: 3 },
+        { expressID: 2, indexStart: 3, indexCount: 3 },
+      ],
+    };
+    const r = createModelRender([merged]);
+    const ray = new THREE.Raycaster(new THREE.Vector3(0.2, 0.2, 5), new THREE.Vector3(0, 0, -1));
+    const all = { hiddenCategories: new Set<string>(), hiddenElements: new Set<number>(), isolated: null };
+    // all visible → nearest to the ray origin (z=5) is element 2 (z=2)
+    expect(r.pick(ray, all)?.expressID).toBe(2);
+    // hide element 2 (the one in front) → pick returns element 1 (behind), NOT null
+    expect(r.pick(ray, { ...all, hiddenElements: new Set([2]) })?.expressID).toBe(1);
+  });
+
+  it('applyHighlight replaces the previous overlay geometry on repeated calls', () => {
+    const r = createModelRender([cat('IfcWall', [1, 2])]);
+    r.applyHighlight(1);
+    const first = r.overlay.geometry;
+    r.applyHighlight(2);
+    expect(r.overlay.geometry).not.toBe(first); // replaced, not accumulated
+    expect(r.overlay.geometry.getAttribute('position').count).toBe(3); // just element 2
+  });
 });
