@@ -9,4 +9,8 @@ export class SendAiMessageDto {
   @IsOptional()
   @IsUUID(4)
   conversationId?: string;
+
+  @IsOptional()
+  @IsUUID(4)
+  deviceId?: string;
 }
