@@ -84,7 +84,7 @@ export function createRestClient(opts: RestClientOptions) {
     getDeviceStatusEvents: (deviceId: string, limit?: number): Promise<{ time: string; state: string; source: string }[]> =>
       request<{ time: string; state: string; source: string }[]>(
         'GET',
-        `/v1/devices/${encodeURIComponent(deviceId)}/status-events${limit !== undefined ? `?limit=${limit}` : ''}`,
+        `/v1/devices/${encodeURIComponent(deviceId)}/status-events${limit !== undefined ? `?limit=${encodeURIComponent(limit)}` : ''}`,
       ),
     // Spec 6: BCF topic/comment CRUD
     listBcfTopics: (buildingId: string) =>
