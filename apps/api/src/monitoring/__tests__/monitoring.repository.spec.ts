@@ -84,4 +84,21 @@ describe('MonitoringRepository (integration)', () => {
     expect(all[0].state).toBe('DOWN');
     expect(all[0].consecutiveFails).toBe(3);
   });
+
+  it('metricNames returns distinct metric names since a cutoff', async () => {
+    await repo.insertMetric({ organizationId: orgId, deviceId, metric: 'cpu', value: 1, source: 'snmp' });
+    await repo.insertMetric({ organizationId: orgId, deviceId, metric: 'cpu', value: 2, source: 'snmp' });
+    await repo.insertMetric({ organizationId: orgId, deviceId, metric: 'mem', value: 3, source: 'snmp' });
+    const names = await repo.metricNames(orgId, deviceId, new Date(Date.now() - 3600_000));
+    expect(names).toEqual(['cpu', 'mem']); // distinct, ORDER BY metric
+  });
+
+  it('recentStatusEvents returns newest-first, capped by limit', async () => {
+    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'DOWN', source: 'prober' });
+    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'UP', source: 'prober' });
+    const events = await repo.recentStatusEvents(orgId, deviceId, 1);
+    expect(events).toHaveLength(1);
+    expect(events[0].state).toBe('UP'); // most recent first
+    expect(events[0].source).toBe('prober');
+  });
 });
