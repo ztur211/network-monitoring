@@ -336,7 +336,7 @@ export class RealtimeGateway
   @SubscribeMessage(WS_EVENTS.AI_MESSAGE)
   async handleAiMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { content?: string; conversationId?: string },
+    @MessageBody() payload: { content?: string; conversationId?: string; deviceId?: string },
   ): Promise<void> {
     const user = client.data.user as { id: string; tier: string } | undefined;
     if (!user) return;
@@ -358,7 +358,7 @@ export class RealtimeGateway
         user.id,
         user.tier,
         ip,
-        { content, conversationId: payload.conversationId },
+        { content, conversationId: payload.conversationId, deviceId: payload.deviceId },
         onToken,
       );
 

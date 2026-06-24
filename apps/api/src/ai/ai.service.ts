@@ -60,7 +60,7 @@ export class AiService {
     const conversationId = dto.conversationId ?? this.conversation.createConversationId();
     const [history, systemPrompt] = await Promise.all([
       this.conversation.getHistory(userId, conversationId),
-      this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier),
+      this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier, dto.deviceId),
     ]);
 
     const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);

@@ -231,6 +231,42 @@ describe('AiService', () => {
       expect(result.tokensUsed).toBe(120);
     });
 
+    it('passes dto.deviceId as 4th arg to buildSystemPrompt', async () => {
+      mockAdapter.stream.mockImplementation(async (_req, onToken) => {
+        onToken('hi');
+        return { content: 'hi', inputTokens: 10, outputTokens: 5 };
+      });
+      mockRateLimiter.getUsageCounts.mockResolvedValue(usageSnapshot);
+
+      await service.sendMessageStream(
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1',
+        { content: 'hello', deviceId: 'device-uuid-1234' },
+        () => {},
+      );
+
+      expect(mockContextBuilder.buildSystemPrompt).toHaveBeenCalledWith(
+        'org-test', 'user-1', 'PERSONAL_FREE', 'device-uuid-1234',
+      );
+    });
+
+    it('passes undefined as 4th arg to buildSystemPrompt when dto has no deviceId', async () => {
+      mockAdapter.stream.mockImplementation(async (_req, onToken) => {
+        onToken('hi');
+        return { content: 'hi', inputTokens: 10, outputTokens: 5 };
+      });
+      mockRateLimiter.getUsageCounts.mockResolvedValue(usageSnapshot);
+
+      await service.sendMessageStream(
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1',
+        { content: 'hello' },
+        () => {},
+      );
+
+      expect(mockContextBuilder.buildSystemPrompt).toHaveBeenCalledWith(
+        'org-test', 'user-1', 'PERSONAL_FREE', undefined,
+      );
+    });
+
     it('reuses existing conversationId and forwards it to onToken', async () => {
       mockConversation.getHistory.mockResolvedValue([
         { role: 'user', content: 'prev q' },
