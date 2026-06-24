@@ -67,8 +67,8 @@ export function ViewCommands({
     if (!focusNonce) return;
     const sel = useViewportStore.getState().selection;
     if (sel?.kind === 'element') {
-      const mesh = model.elementIndex.get(sel.expressID);
-      if (mesh) frame(new THREE.Box3().setFromObject(mesh));
+      const box = model.render.elementBox(sel.expressID);
+      if (box) frame(box);
     } else if (sel?.kind === 'device') {
       const dev = useViewportStore.getState().devices.find((x) => x.id === sel.deviceId);
       if (dev && dev.x !== null) {

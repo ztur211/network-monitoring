@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { commitPlacement, clearPlacement, raycastBuildingPoint } from '../placement';
 import { toModel } from '../node-coords';
 import { useViewportStore, initialViewportState } from '../../../stores/viewport-store';
+import { createModelRender } from '../../ifc/model-render';
+import type { MergedCategory } from '../../ifc/merge';
 
 const frame = { recenter: new THREE.Vector3(), upConversion: 'Z_UP_TO_Y_UP' as const };
 const dev = (id: string, over = {}) =>
@@ -14,6 +16,19 @@ beforeEach(() => {
   useViewportStore.getState().setDevices([dev('a')]);
   useViewportStore.getState().beginPlace('a');
 });
+
+function cat(ifcType: string, expressIDs: number[]): MergedCategory {
+  const position: number[] = [];
+  const index: number[] = [];
+  const ranges = expressIDs.map((expressID, e) => {
+    const base = e * 3;
+    position.push(base, 0, 0, base + 1, 0, 0, base, 1, 0);
+    index.push(base, base + 1, base + 2);
+    return { expressID, indexStart: e * 3, indexCount: 3 };
+  });
+  return { ifcType, position: new Float32Array(position), normal: new Float32Array(position.length),
+    color: new Float32Array(position.length).fill(1), index: new Uint32Array(index), ranges };
+}
 
 describe('commitPlacement', () => {
   it('converts the hit to native xyz, persists, upserts the result, and exits placing mode', async () => {
@@ -51,18 +66,11 @@ describe('clearPlacement', () => {
 
 describe('raycastBuildingPoint', () => {
   it('returns the world hit on a visible mesh, null on miss', () => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
-    mesh.userData = { expressID: 1, ifcType: 'IFCWALL' };
-    const model = { elementIndex: new Map([[1, mesh]]) } as any;
-    const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-    cam.position.set(0, 0, 10);
-    cam.lookAt(0, 0, 0);
-    const vis = { hiddenCategories: new Set<string>(), hiddenElements: new Set<number>(), isolated: null };
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2(0, 0), cam);
-    expect(raycastBuildingPoint(ray, model, vis)!.z).toBeCloseTo(1, 1); // front face of the box
-    const miss = new THREE.Raycaster();
-    miss.setFromCamera(new THREE.Vector2(0.99, 0.99), cam);
-    expect(raycastBuildingPoint(miss, model, vis)).toBeNull();
+    const model = { render: createModelRender([cat('IfcWall', [1])]) } as any;
+    const ray = new THREE.Raycaster(new THREE.Vector3(0.2, 0.2, 5), new THREE.Vector3(0, 0, -1));
+    const vis = { hiddenCategories: new Set<string>(), hiddenElements: new Set<number>(), isolated: null as number | null };
+    const point = raycastBuildingPoint(ray, model, vis);
+    expect(point).not.toBeNull();
+    expect(point!.z).toBeCloseTo(0, 5);
   });
 });

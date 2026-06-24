@@ -27,11 +27,10 @@ describe('IfcModelLoader', () => {
   it('parses elements into an indexed, categorized, Y-up group', () => {
     expect(model.elementIndex.size).toBeGreaterThan(0);
     expect(model.categories.size).toBeGreaterThan(0);
-    for (const [expressID, mesh] of model.elementIndex) {
-      expect(mesh.userData.expressID).toBe(expressID);
-      expect(typeof mesh.userData.ifcType).toBe('string');
-      expect(model.categories.get(mesh.userData.ifcType)?.children).toContain(mesh);
-      expect((mesh.geometry as THREE.BufferGeometry).getAttribute('position').count).toBeGreaterThan(0);
+    for (const [expressID, ref] of model.elementIndex) {
+      expect(ref.ifcType).toEqual(expect.any(String));
+      expect(model.categories.get(ref.ifcType)).toBe(ref.mesh);
+      expect(model.render.elementIndex.get(expressID)).toBe(ref);
     }
   });
 
@@ -61,9 +60,9 @@ describe('IfcModelLoader', () => {
   });
 
   it('disposes without throwing and frees geometries', () => {
-    const sample = [...model.elementIndex.values()][0];
+    const sampleMesh = [...model.categories.values()][0];
     expect(() => model.dispose()).not.toThrow();
-    expect((sample.geometry as THREE.BufferGeometry).attributes.position).toBeUndefined();
+    expect((sampleMesh.geometry as THREE.BufferGeometry).attributes.position).toBeUndefined();
   });
 
   it('getProperties returns type, name/tag and property sets for an element', async () => {
