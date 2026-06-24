@@ -3,7 +3,7 @@ import { useViewportStore, type SectionState } from '../../stores/viewport-store
 export function Toolbar() {
   const { model, section, hiddenCategories, requestFit, showAll, setSection, toggleCategory } =
     useViewportStore();
-  const cats = model ? [...model.categories.entries()] : [];
+  const cats = model ? [...model.render.categories.values()] : [];
   return (
     <div
       aria-label="viewport-toolbar"
@@ -44,15 +44,15 @@ export function Toolbar() {
       )}
       <details>
         <summary>Categories</summary>
-        {cats.map(([type, group]) => (
-          <label key={type} style={{ display: 'block' }}>
+        {cats.map((cat) => (
+          <label key={cat.ifcType} style={{ display: 'block' }}>
             <input
-              aria-label={`toggle ${type}`}
+              aria-label={`toggle ${cat.ifcType}`}
               type="checkbox"
-              checked={!hiddenCategories.has(type)}
-              onChange={() => toggleCategory(type)}
+              checked={!hiddenCategories.has(cat.ifcType)}
+              onChange={() => toggleCategory(cat.ifcType)}
             />
-            {` ${type} (${group.children.length})`}
+            {` ${cat.ifcType} (${cat.ranges.length})`}
           </label>
         ))}
       </details>

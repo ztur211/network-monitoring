@@ -15,7 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const wasmDir = dirname(require.resolve('web-ifc/web-ifc.wasm')) + '/';
 const fixture = readFileSync(join(here, 'fixtures/wall.ifc'));
 
-describe('assembleModel', () => {
+describe('assembleModel (merged)', () => {
   let model: ParsedModel;
 
   beforeAll(async () => {
@@ -28,20 +28,29 @@ describe('assembleModel', () => {
     );
     const payloads = extractElements(api, id);
     api.CloseModel(id);
-
-    model = assembleModel(payloads, {
-      getProperties: async () => ({} as any),
-      dispose: () => {},
-    });
+    model = assembleModel(payloads, { getProperties: async () => ({}) as any, dispose: () => {} });
   });
 
-  it('produces an indexed, categorized, mesh-populated model', () => {
-    expect(model.elementIndex.size).toBeGreaterThan(0);
-    for (const [expressID, mesh] of model.elementIndex) {
-      expect(mesh.userData.expressID).toBe(expressID);
-      expect(typeof mesh.userData.ifcType).toBe('string');
-      expect(model.categories.get(mesh.userData.ifcType)?.children).toContain(mesh);
+  it('merges to one mesh per IFC category (draw-call win)', () => {
+    expect(model.categories.size).toBeGreaterThan(0);
+    // One rendered mesh per category — NOT one per element.
+    const renderedMeshes = model.render.meshes.filter((m) => m.userData.overlay !== true);
+    expect(renderedMeshes.length).toBe(model.categories.size);
+    expect(model.elementIndex.size).toBeGreaterThanOrEqual(model.categories.size);
+    for (const mesh of model.categories.values()) {
+      expect(mesh).toBeInstanceOf(THREE.Mesh);
       expect((mesh.geometry as THREE.BufferGeometry).getAttribute('position').count).toBeGreaterThan(0);
+    }
+  });
+
+  it('every element maps to a valid range in its category mesh', () => {
+    for (const [expressID, ref] of model.elementIndex) {
+      expect(ref.ifcType).toEqual(expect.any(String));
+      expect(model.categories.get(ref.ifcType)).toBe(ref.mesh);
+      const total = (ref.mesh!.geometry as THREE.BufferGeometry).getIndex()!.count;
+      expect(ref.indexStart).toBeGreaterThanOrEqual(0);
+      expect(ref.indexStart + ref.indexCount).toBeLessThanOrEqual(total);
+      expect(model.render.elementIndex.get(expressID)).toBe(ref);
     }
   });
 
@@ -56,7 +65,6 @@ describe('assembleModel', () => {
 
   it('guidIndex maps IFC GlobalIds to expressIDs (Spec 6 BCF)', () => {
     expect(model.guidIndex).toBeInstanceOf(Map);
-    expect(model.guidIndex.size).toBeGreaterThan(0);
     expect(model.guidIndex.get('2bjLUVfTLCM9P4iN8sefM6')).toBe(30);
     expect(model.guidIndex.size).toBe(model.elementIndex.size);
   });

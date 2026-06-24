@@ -1,14 +1,37 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as THREE from 'three';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { Toolbar } from '../Toolbar';
 import { useViewportStore, initialViewportState } from '../../../stores/viewport-store';
+import { createModelRender } from '../../ifc/model-render';
+import type { MergedCategory } from '../../ifc/merge';
+
+function cat(ifcType: string, count: number): MergedCategory {
+  const position: number[] = [];
+  const index: number[] = [];
+  const ranges = Array.from({ length: count }, (_, e) => {
+    const base = e * 3;
+    position.push(base, 0, 0, base + 1, 0, 0, base, 1, 0);
+    index.push(base, base + 1, base + 2);
+    return { expressID: e + 1, indexStart: e * 3, indexCount: 3 };
+  });
+  return {
+    ifcType,
+    position: new Float32Array(position),
+    normal: new Float32Array(position.length),
+    color: new Float32Array(position.length).fill(1),
+    index: new Uint32Array(index),
+    ranges,
+  };
+}
 
 function model() {
-  const wall = new THREE.Group();
-  wall.add(new THREE.Mesh(), new THREE.Mesh());
-  return { categories: new Map([['IfcWall', wall]]) } as any;
+  const render = createModelRender([cat('IfcWall', 2)]);
+  return {
+    categories: new Map([...render.categories].map(([t, c]) => [t, c.mesh])),
+    elementIndex: render.elementIndex,
+    render,
+  } as any;
 }
 beforeEach(() => useViewportStore.setState({ ...initialViewportState(), model: model() }));
 afterEach(() => cleanup());

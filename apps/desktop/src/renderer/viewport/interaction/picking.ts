@@ -1,20 +1,13 @@
 import { useEffect, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
-import type { ParsedModel, ExpressId } from '../ifc/ifc-types';
-import { isMeshVisible, type VisibilityState } from './visibility';
+import type { ParsedModel, ExpressId, VisibilityState } from '../ifc/ifc-types';
 import { pickNode } from '../nodes/picking-nodes';
 import { useViewportStore } from '../../stores/viewport-store';
 
-// Pure: nearest visible mesh's expressID under the ray (or null). Testable without WebGL.
-export function pickExpressId(
-  ray: THREE.Raycaster,
-  model: ParsedModel,
-  vis: VisibilityState,
-): ExpressId | null {
-  const meshes = [...model.elementIndex.values()].filter((m) => isMeshVisible(m, vis));
-  const hits = ray.intersectObjects(meshes, false);
-  return hits.length ? ((hits[0].object.userData.expressID as ExpressId) ?? null) : null;
+// Nearest visible element's expressID under the ray (or null) — delegates to the merged-render pick.
+export function pickExpressId(ray: THREE.Raycaster, model: ParsedModel, vis: VisibilityState): ExpressId | null {
+  return model.render.pick(ray, vis)?.expressID ?? null;
 }
 
 /** Mounts inside <Canvas>: pointer-down → raycast markers first (→ device), else the building (→ element). */
@@ -30,7 +23,7 @@ export function PickingController({
     const el = gl.domElement;
     if (!el) return; // headless (test-renderer) has no canvas element
     const onDown = (e: PointerEvent) => {
-      if (useViewportStore.getState().placingDeviceId) return; // placing → the click is a placement, not a selection
+      if (useViewportStore.getState().placingDeviceId) return; // placing → click is a placement
       const r = el.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((e.clientX - r.left) / r.width) * 2 - 1,
@@ -38,8 +31,7 @@ export function PickingController({
       );
       raycaster.setFromCamera(ndc, camera);
       const s = useViewportStore.getState();
-      // Spec 4 §7: markers take pick priority over the building behind them.
-      const deviceId = pickNode(raycaster, markersRef.current);
+      const deviceId = pickNode(raycaster, markersRef.current); // markers take pick priority
       if (deviceId) {
         s.selectNode(deviceId);
         return;
