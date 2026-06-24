@@ -58,6 +58,20 @@ export class MonitoringService {
     return rows.map((r) => ({ bucket: new Date(r.bucket).toISOString(), avg: Number(r.avg) }));
   }
 
+  /** F3-scoped distinct metric names for a device (last 24h). Out-of-scope → 404. */
+  async getDeviceMetricNames(member: OrgMemberContext, deviceId: string): Promise<string[]> {
+    await this.assertDeviceVisible(member, deviceId);
+    return this.repo.metricNames(member.organizationId, deviceId, new Date(Date.now() - 24 * 3600_000));
+  }
+
+  /** F3-scoped recent status transitions for a device (newest-first, capped). Out-of-scope → 404. */
+  async getDeviceStatusEvents(member: OrgMemberContext, deviceId: string, limit: number) {
+    await this.assertDeviceVisible(member, deviceId);
+    const capped = Math.min(Math.max(1, limit || 50), 200);
+    const rows = await this.repo.recentStatusEvents(member.organizationId, deviceId, capped);
+    return rows.map((r) => ({ time: r.time.toISOString(), state: r.state, source: r.source }));
+  }
+
   private async assertDeviceVisible(member: OrgMemberContext, deviceId: string): Promise<void> {
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, organizationId: member.organizationId },

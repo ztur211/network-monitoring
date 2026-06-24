@@ -5,7 +5,7 @@ import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * E2E for the Spec 7 read APIs (device-status + metrics), F3-scoped.
+ * E2E for the Spec 7 + Spec A read APIs (device-status, metrics, status-events, metric-names), F3-scoped.
  * Requires the test DB stack (:5433 / :6380 / :9100). Run: npm run test:e2e -- monitoring.controller
  */
 describe('MonitoringController (e2e)', () => {
@@ -79,6 +79,10 @@ describe('MonitoringController (e2e)', () => {
     await prisma.$executeRaw`INSERT INTO "MonitoringMetric" ("time","organizationId","deviceId","metric","value","source")
       VALUES (now(), ${orgId}, ${placedDeviceId}, 'latency_ms', 12, 'prober')`;
 
+    // a status event for the placed device (Spec A)
+    await prisma.$executeRaw`INSERT INTO "DeviceStatusEvent" ("time","organizationId","deviceId","state","source")
+      VALUES (now(), ${orgId}, ${placedDeviceId}, 'UP', 'prober')`;
+
     // F3: grant the MEMBER scope at the HQ building only (not the Annex)
     await prisma.memberProperty.create({ data: { organizationId: orgId, memberId: memberMember.id, propertyId: building.id } });
   });
@@ -141,5 +145,69 @@ describe('MonitoringController (e2e)', () => {
       .get(`/api/v1/devices/${outOfScopeDeviceId}/metrics?metric=latency_ms&from=${from}&to=${to}&bucket=5 minutes`)
       .set('Cookie', memberCookie)
       .expect(404);
+  });
+
+  // Spec A: status-events endpoint
+  it('OWNER status-events: returns the seeded UP event with ISO time, state, source', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/status-events`)
+      .set('Cookie', ownerCookie)
+      .expect(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.timestamp).toBeTruthy();
+    expect(res.body.data.length).toBeGreaterThan(0);
+    const event = res.body.data[0];
+    expect(event.state).toBe('UP');
+    expect(event.source).toBe('prober');
+    expect(event.time).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO string
+  });
+
+  it('status-events: out-of-scope MEMBER gets 404', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${outOfScopeDeviceId}/status-events`)
+      .set('Cookie', memberCookie)
+      .expect(404);
+  });
+
+  it('status-events: in-scope MEMBER can read events for their device', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/status-events`)
+      .set('Cookie', memberCookie)
+      .expect(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('status-events: limit query param is respected (limit=1 returns at most 1)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/status-events?limit=1`)
+      .set('Cookie', ownerCookie)
+      .expect(200);
+    expect(res.body.data.length).toBeLessThanOrEqual(1);
+  });
+
+  // Spec A: metric-names endpoint
+  it('OWNER metric-names: returns the seeded latency_ms metric name', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metric-names`)
+      .set('Cookie', ownerCookie)
+      .expect(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.timestamp).toBeTruthy();
+    expect(res.body.data).toContain('latency_ms');
+  });
+
+  it('metric-names: out-of-scope MEMBER gets 404', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${outOfScopeDeviceId}/metric-names`)
+      .set('Cookie', memberCookie)
+      .expect(404);
+  });
+
+  it('metric-names: in-scope MEMBER can read metric names for their device', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metric-names`)
+      .set('Cookie', memberCookie)
+      .expect(200);
+    expect(res.body.data).toContain('latency_ms');
   });
 });
