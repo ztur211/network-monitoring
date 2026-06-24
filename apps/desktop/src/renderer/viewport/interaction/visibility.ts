@@ -1,11 +1,7 @@
 import type * as THREE from 'three';
-import type { IfcType, ExpressId } from '../ifc/ifc-types';
+import type { IfcType, ExpressId, VisibilityState } from '../ifc/ifc-types';
 
-export interface VisibilityState {
-  hiddenCategories: Set<IfcType>;
-  hiddenElements: Set<ExpressId>;
-  isolated: ExpressId | null;
-}
+export type { VisibilityState };
 
 // Pure → testable without WebGL. <ModelView> applies this to mesh.visible.
 export function isMeshVisible(mesh: THREE.Mesh, s: VisibilityState): boolean {

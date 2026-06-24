@@ -2,7 +2,8 @@ import { useEffect, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import type { ParsedModel, ExpressId } from '../ifc/ifc-types';
-import { isMeshVisible, type VisibilityState } from './visibility';
+import { isMeshVisible } from './visibility';
+import type { VisibilityState } from '../ifc/ifc-types';
 import { pickNode } from '../nodes/picking-nodes';
 import { useViewportStore } from '../../stores/viewport-store';
 
