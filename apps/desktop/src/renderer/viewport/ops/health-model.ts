@@ -61,7 +61,7 @@ export function byFloor(devices: DeviceDto[], ns: Map<string, NodeStatus>): Floo
   );
 }
 
-/** Marker ring emphasis per status (NodeLayer multiplies the ring scale by `halo`). */
+/** Marker ring emphasis per status. */
 export function emphasisFor(status: NodeStatus): Emphasis {
   if (status === 'down') return { halo: 2.2, pulse: true };
   if (status === 'warning') return { halo: 1.8, pulse: true };

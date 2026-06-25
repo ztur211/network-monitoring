@@ -9,7 +9,7 @@ import { ModelView } from './ModelView';
 import { CameraRig } from './CameraRig';
 import { PickingController } from '../interaction/picking';
 import { ViewCommands } from './ViewCommands';
-import { NodeLayer } from '../nodes/NodeLayer';
+import { DeviceModelLayer } from '../objects/DeviceModelLayer';
 import { PlacementController } from '../nodes/PlacementController';
 
 function InvalidateOnControls({ controls }: { controls: RefObject<OrbitControlsImpl | null> }) {
@@ -27,7 +27,7 @@ export function Scene({ model }: { model: ParsedModel }) {
       <Lighting />
       <InvalidateOnControls controls={controls} />
       <ModelView model={model} />
-      <NodeLayer model={model} markersRef={markersRef} />
+      <DeviceModelLayer model={model} markersRef={markersRef} />
       <PickingController model={model} markersRef={markersRef} />
       <PlacementController model={model} />
       <CameraRig box={model.bbox} controls={controls} />
