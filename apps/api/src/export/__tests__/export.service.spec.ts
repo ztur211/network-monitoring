@@ -3,6 +3,7 @@ import { ExportService } from '../export.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PropertiesService } from '../../properties/properties.service';
 import { PermissionsService } from '../../permissions/permissions.service';
+import { toIfcGuid } from '@nodescope/shared';
 
 const owner = { id: 'm-owner', organizationId: 'org-1', role: 'OWNER' as const };
 const admin = { id: 'm-admin', organizationId: 'org-1', role: 'ADMIN' as const };
@@ -60,8 +61,8 @@ describe('ExportService', () => {
     );
   });
 
-  // SECURITY REGRESSION: exported IFC must contain zero network-sensitive data
-  it('SECURITY: exported IFC must not contain IP/MAC/network name/device name — only geometry + pointer', async () => {
+  // SECURITY REGRESSION: exported IFC must contain zero network-sensitive data and no NodeScope property set
+  it('SECURITY: exported IFC must not contain IP/MAC/network name/device name/NodeScopeId — only geometry + native GlobalId', async () => {
     mockPrisma.property.findFirst.mockResolvedValue({ id: 'bld', name: 'HQ', type: 'BUILDING' });
     mockProperties.subtreePropertyIds.mockResolvedValue(['bld', 'floor']);
     const sensitiveDeviceId = 'aaaabbbb-cccc-dddd-eeee-ffffffffffff';
@@ -74,9 +75,13 @@ describe('ExportService', () => {
       },
     ]);
     const { ifc } = await svc.getBuildingExport(owner, 'bld');
-    // Pointer must survive for DB re-association
-    expect(ifc).toContain('NodeScopeId');
-    expect(ifc).toContain(sensitiveDeviceId);
+    // Native IFC GlobalId must survive for DB re-association
+    expect(ifc).toContain(toIfcGuid(sensitiveDeviceId));
+    // NodeScope-specific property set must be absent
+    expect(ifc).not.toContain('NodeScopeId');
+    expect(ifc).not.toContain('Pset_NodeScope');
+    expect(ifc).not.toContain('IFCPROPERTYSET');
+    expect(ifc).not.toContain('IFCRELDEFINESBYPROPERTIES');
     // Sensitive property labels must be absent
     expect(ifc).not.toContain('IPAddress');
     expect(ifc).not.toContain('MACAddress');
