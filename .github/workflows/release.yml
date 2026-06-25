@@ -70,7 +70,7 @@ jobs:
         # three OSes ($(...), cp, etc. work everywhere — no per-OS shell forks).
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
@@ -153,7 +153,7 @@ jobs:
     name: Desktop installer (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
