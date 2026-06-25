@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toIfcGuid } from '@nodescope/shared';
 
 /**
  * E2E for GET /api/v1/buildings/:propertyId/export/ifc (Spec 5).
@@ -16,6 +17,7 @@ describe('ExportController (e2e)', () => {
   let orgId: string;
   let buildingId: string; // in scope for the member
   let outOfScopeBuildingId: string; // not assigned to the member
+  let seededDeviceId: string; // device created in beforeAll, used in GlobalId assertion
   const ownerEmail = `e2e-exp-owner-${Date.now()}@example.com`;
   const memberEmail = `e2e-exp-member-${Date.now()}@example.com`;
 
@@ -54,9 +56,10 @@ describe('ExportController (e2e)', () => {
     outOfScopeBuildingId = otherBuilding.id;
 
     const net = await prisma.network.create({ data: { organizationId: orgId, name: 'Core' } });
-    await prisma.device.create({
+    const sw1 = await prisma.device.create({
       data: { organizationId: orgId, name: 'SW1', category: 'SWITCH', propertyId: floor.id, networkId: net.id, x: 1, y: 2, z: 3, ipAddress: '10.0.0.5', macAddress: '00:11:22:33:44:55' },
     });
+    seededDeviceId = sw1.id;
     await prisma.device.create({
       data: { organizationId: orgId, name: 'Unplaced', category: 'SWITCH', propertyId: floor.id, networkId: net.id },
     });
@@ -99,8 +102,13 @@ describe('ExportController (e2e)', () => {
     expect(body).not.toContain('10.0.0.5'); // ipAddress
     expect(body).not.toContain('00:11:22:33:44:55'); // macAddress
     expect(body).not.toContain('SW1'); // device name is identifying
-    // Assert the device pointer survives (deidentification, not deletion)
-    expect(body).toContain('NodeScopeId');
+    // NodeScope property set must be absent — only native GlobalId survives
+    expect(body).not.toContain('NodeScopeId');
+    expect(body).not.toContain('Pset_NodeScope');
+    expect(body).not.toContain('IFCPROPERTYSET');
+    expect(body).not.toContain('IFCRELDEFINESBYPROPERTIES');
+    // The native IFC GlobalId derived from the device id must appear (DB holds the association)
+    expect(body).toContain(toIfcGuid(seededDeviceId));
   });
 
   it('an in-scope MEMBER may export', async () => {
