@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import type { ParsedModel, ExpressId, VisibilityState } from '../ifc/ifc-types';
@@ -21,6 +21,13 @@ export function PickingController({
 }) {
   const { gl, camera, raycaster } = useThree();
   const guidByExpressId = useMemo(() => buildGuidByExpressId(model), [model]);
+  // The guid→device index only changes when devices change — memoize it (and read it via a ref in
+  // the handler) so a click is an O(1) Map lookup instead of an O(devices) rebuild, without
+  // re-attaching the pointer listener on every device update.
+  const devices = useViewportStore((s) => s.devices);
+  const linkIndex = useMemo(() => buildIfcLinkIndex(devices), [devices]);
+  const linkIndexRef = useRef(linkIndex);
+  linkIndexRef.current = linkIndex;
   useEffect(() => {
     const el = gl.domElement;
     if (!el) return; // headless (test-renderer) has no canvas element
@@ -50,7 +57,7 @@ export function PickingController({
       }
       // If the clicked BIM element is the network infrastructure a device points at (by GlobalId),
       // select the device — clicking the BIM object surfaces its live network info. Else select the element.
-      const linked = deviceForElement(buildIfcLinkIndex(s.devices), guidByExpressId, id);
+      const linked = deviceForElement(linkIndexRef.current, guidByExpressId, id);
       if (linked) s.selectNode(linked.id);
       else s.selectElement(id);
     };
