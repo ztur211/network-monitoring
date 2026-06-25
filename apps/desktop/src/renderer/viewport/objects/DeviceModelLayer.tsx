@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import type { DeviceDto } from '@nodescope/shared';
