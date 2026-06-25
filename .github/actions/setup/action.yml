@@ -1,0 +1,17 @@
+# Composite action: Node setup + dependency install, shared by every CI/CD job.
+# Run AFTER actions/checkout (a local action needs the repo already checked out).
+# Single source of truth for the Node version and the install command — previously
+# duplicated (setup-node + npm ci) across every job in every workflow.
+name: Setup Node and install
+description: Set up Node with an npm cache and run npm ci.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        # Kept explicit (not node-version-file: .nvmrc) because .nvmrc currently
+        # pins 22 while CI has run on 20; unifying those is a separate, verified change.
+        node-version: '20'
+        cache: npm
+    - run: npm ci
+      shell: bash
