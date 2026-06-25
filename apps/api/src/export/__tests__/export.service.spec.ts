@@ -38,14 +38,9 @@ describe('ExportService', () => {
     mockPrisma.device.findMany.mockResolvedValue([
       {
         id: '11111111-1111-1111-1111-111111111111',
-        name: 'SW1',
-        category: 'SWITCH',
         x: 1,
         y: 2,
         z: 3,
-        ipAddress: '10.0.0.5',
-        macAddress: null,
-        network: { name: 'Core' },
       },
     ]);
     const { filename, ifc } = await svc.getBuildingExport(owner, 'bld');
@@ -61,6 +56,36 @@ describe('ExportService', () => {
           y: { not: null },
           z: { not: null },
         }),
+      }),
+    );
+  });
+
+  // SECURITY REGRESSION: exported IFC must contain zero network-sensitive data
+  it('SECURITY: exported IFC must not contain IP/MAC/network name/device name — only geometry + pointer', async () => {
+    mockPrisma.property.findFirst.mockResolvedValue({ id: 'bld', name: 'HQ', type: 'BUILDING' });
+    mockProperties.subtreePropertyIds.mockResolvedValue(['bld', 'floor']);
+    const sensitiveDeviceId = 'aaaabbbb-cccc-dddd-eeee-ffffffffffff';
+    mockPrisma.device.findMany.mockResolvedValue([
+      {
+        id: sensitiveDeviceId,
+        x: 5,
+        y: 6,
+        z: 7,
+      },
+    ]);
+    const { ifc } = await svc.getBuildingExport(owner, 'bld');
+    // Pointer must survive for DB re-association
+    expect(ifc).toContain('NodeScopeId');
+    expect(ifc).toContain(sensitiveDeviceId);
+    // Sensitive property labels must be absent
+    expect(ifc).not.toContain('IPAddress');
+    expect(ifc).not.toContain('MACAddress');
+    expect(ifc).not.toMatch(/IFCPROPERTYSINGLEVALUE\('Network'/);
+    expect(ifc).not.toContain("'Category'");
+    // DB query must use select (not include network) — defense-in-depth
+    expect(mockPrisma.device.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ id: true, x: true, y: true, z: true }),
       }),
     );
   });

@@ -55,7 +55,7 @@ describe('ExportController (e2e)', () => {
 
     const net = await prisma.network.create({ data: { organizationId: orgId, name: 'Core' } });
     await prisma.device.create({
-      data: { organizationId: orgId, name: 'SW1', category: 'SWITCH', propertyId: floor.id, networkId: net.id, x: 1, y: 2, z: 3, ipAddress: '10.0.0.5' },
+      data: { organizationId: orgId, name: 'SW1', category: 'SWITCH', propertyId: floor.id, networkId: net.id, x: 1, y: 2, z: 3, ipAddress: '10.0.0.5', macAddress: '00:11:22:33:44:55' },
     });
     await prisma.device.create({
       data: { organizationId: orgId, name: 'Unplaced', category: 'SWITCH', propertyId: floor.id, networkId: net.id },
@@ -94,6 +94,13 @@ describe('ExportController (e2e)', () => {
     const body = res.body as string;
     expect(body.startsWith('ISO-10303-21;')).toBe(true);
     expect((body.match(/IFCBUILDINGELEMENTPROXY/g) ?? []).length).toBe(1); // only the placed device
+
+    // Security hardening: assert seeded device sensitive values never appear in exported IFC body
+    expect(body).not.toContain('10.0.0.5'); // ipAddress
+    expect(body).not.toContain('00:11:22:33:44:55'); // macAddress
+    expect(body).not.toContain('SW1'); // device name is identifying
+    // Assert the device pointer survives (deidentification, not deletion)
+    expect(body).toContain('NodeScopeId');
   });
 
   it('an in-scope MEMBER may export', async () => {
