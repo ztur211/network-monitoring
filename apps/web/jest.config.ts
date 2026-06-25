@@ -29,6 +29,10 @@ const config: Config = {
   ],
   moduleNameMapper: {
     '^@nodescope/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+    // Resolve @nodescope/client to source (not its CommonJS dist) so the realtime client and its
+    // @nodescope/shared re-export stay ESM/source under jest's experimental ESM runtime — matching
+    // how @nodescope/shared is resolved above. websocket.service is a thin adapter over this client.
+    '^@nodescope/client$': '<rootDir>/../../packages/client/src/index.ts',
     // Stub the Zustand-backed ui.store so websocket.service tests don't need
     // React/Zustand to load.
     '^(.+)/store/ui\\.store$': '<rootDir>/lib/__tests__/__mocks__/ui.store.ts',
