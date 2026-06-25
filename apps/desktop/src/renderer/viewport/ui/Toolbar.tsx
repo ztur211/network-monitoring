@@ -1,4 +1,5 @@
 import { useViewportStore, type SectionState } from '../../stores/viewport-store';
+import { ImportModelButton } from './ImportModelButton';
 
 export function Toolbar() {
   const { model, section, hiddenCategories, requestFit, showAll, setSection, toggleCategory } =
@@ -10,6 +11,7 @@ export function Toolbar() {
       style={{ position: 'absolute', top: 0, left: 0, right: 300, display: 'flex', gap: 8 }}
     >
       <button onClick={() => requestFit()}>Fit</button>
+      <ImportModelButton />
       <button onClick={() => showAll()}>Show all</button>
       <label>
         <input

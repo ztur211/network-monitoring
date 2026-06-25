@@ -91,4 +91,64 @@ export class SpatialService {
     });
     return dto;
   }
+
+  /**
+   * Link (or clear, when ifcGlobalId is null/empty) the BIM element this device represents, by the
+   * element's native IFC GlobalId. This is the only join key between the BIM model and network data:
+   * the exported IFC carries the GlobalId but no IP/MAC/metrics, so clicking the BIM object can
+   * resolve to the device's live info without the model ever embedding network data. Independent of
+   * x/y/z placement. Same F3 configure-scope + realtime fan-out as setPosition.
+   */
+  async setIfcLink(
+    member: OrgMemberContext,
+    deviceId: string,
+    ifcGlobalId: string | null,
+  ): Promise<DeviceDto> {
+    const device = await this.repo.findDevice(member.organizationId, deviceId);
+    if (!device) {
+      throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+    await this.permissions.assertCanConfigure(member, device.propertyId);
+
+    // Normalize: trim; empty string counts as "clear".
+    const trimmed = typeof ifcGlobalId === 'string' ? ifcGlobalId.trim() : null;
+    const value = trimmed ? trimmed : null;
+
+    // Setting a link (not clearing) requires the device to live under a building with an active
+    // model — there is no element to point at otherwise (mirrors setPosition's SPATIAL_001).
+    if (value) {
+      const buildingPropertyId = await this.repo.resolveGoverningBuildingId(
+        member.organizationId,
+        device.propertyId,
+      );
+      const model = buildingPropertyId
+        ? await this.models.findByProperty(member.organizationId, buildingPropertyId)
+        : null;
+      if (!model) {
+        throw new NodeScopeException(
+          'SPATIAL_001',
+          'DEVICE_NOT_IN_MODELED_BUILDING',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+    }
+
+    const updated = await this.repo.setIfcLink(member.organizationId, deviceId, value);
+    if (!updated) {
+      throw new NodeScopeException('DEVICE_001', 'DEVICE_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+
+    const dto = toDeviceDto(updated);
+    const changes =
+      device.ifcGlobalId !== updated.ifcGlobalId
+        ? [{ field: 'ifcGlobalId', oldValue: device.ifcGlobalId, newValue: updated.ifcGlobalId }]
+        : [];
+    await this.conflict.emitScoped(member.organizationId, updated.propertyId, WS_EVENTS.DEVICE_UPDATED, {
+      deviceId,
+      device: dto,
+      changes,
+      updatedBy: updated.userId ?? '',
+    });
+    return dto;
+  }
 }

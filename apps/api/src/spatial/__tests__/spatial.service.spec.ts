@@ -23,6 +23,7 @@ const fullDevice = (over: Partial<Device> = {}): Device => ({
   name: 'dev',
   category: DeviceCategory.ROUTER,
   mobility: DeviceMobility.UNKNOWN,
+  ifcGlobalId: null,
   latitude: null,
   longitude: null,
   floor: null,
@@ -47,6 +48,7 @@ describe('SpatialService.setPosition (unit)', () => {
     findDevice: jest.fn(),
     resolveGoverningBuildingId: jest.fn(),
     setPosition: jest.fn(),
+    setIfcLink: jest.fn(),
   } as unknown as jest.Mocked<SpatialRepository>;
   const models = {
     findByProperty: jest.fn(),
@@ -152,5 +154,84 @@ describe('SpatialService.setPosition (unit)', () => {
     await expect(
       service.setPosition(owner, 'd', { x: null, y: null, z: null }),
     ).rejects.toMatchObject({ code: 'DEVICE_001' });
+  });
+
+  describe('setIfcLink', () => {
+    it('rejects when device not found (DEVICE_001)', async () => {
+      repo.findDevice.mockResolvedValue(null);
+      await expect(service.setIfcLink(owner, 'd', '1aB$_guid')).rejects.toMatchObject({
+        code: 'DEVICE_001',
+      });
+    });
+
+    it('links the device to an element GUID when building+model resolve', async () => {
+      repo.resolveGoverningBuildingId.mockResolvedValue('b1');
+      models.findByProperty.mockResolvedValue({ id: 'm' } as any);
+      repo.setIfcLink.mockResolvedValue(fullDevice({ ifcGlobalId: '1aB$_guid' }));
+      const dto = await service.setIfcLink(owner, 'd', '1aB$_guid');
+      expect(repo.setIfcLink).toHaveBeenCalledWith('org', 'd', '1aB$_guid');
+      expect(dto).toMatchObject({ id: 'd', ifcGlobalId: '1aB$_guid' });
+    });
+
+    it('trims surrounding whitespace before persisting', async () => {
+      repo.resolveGoverningBuildingId.mockResolvedValue('b1');
+      models.findByProperty.mockResolvedValue({ id: 'm' } as any);
+      repo.setIfcLink.mockResolvedValue(fullDevice({ ifcGlobalId: 'guid' }));
+      await service.setIfcLink(owner, 'd', '  guid  ');
+      expect(repo.setIfcLink).toHaveBeenCalledWith('org', 'd', 'guid');
+    });
+
+    it('rejects setting a link when the device is not under a modeled building (SPATIAL_001)', async () => {
+      repo.resolveGoverningBuildingId.mockResolvedValue(null);
+      await expect(service.setIfcLink(owner, 'd', 'guid')).rejects.toMatchObject({
+        code: 'SPATIAL_001',
+      });
+      expect(repo.setIfcLink).not.toHaveBeenCalled();
+    });
+
+    it('clearing (null) is allowed without a building check', async () => {
+      repo.setIfcLink.mockResolvedValue(fullDevice({ ifcGlobalId: null }));
+      await service.setIfcLink(owner, 'd', null);
+      expect(repo.resolveGoverningBuildingId).not.toHaveBeenCalled();
+      expect(repo.setIfcLink).toHaveBeenCalledWith('org', 'd', null);
+    });
+
+    it('an empty/whitespace string normalizes to a clear (null), no building check', async () => {
+      repo.setIfcLink.mockResolvedValue(fullDevice({ ifcGlobalId: null }));
+      await service.setIfcLink(owner, 'd', '   ');
+      expect(repo.resolveGoverningBuildingId).not.toHaveBeenCalled();
+      expect(repo.setIfcLink).toHaveBeenCalledWith('org', 'd', null);
+    });
+
+    it('authorizes per-site scope (out-of-scope ADMIN → PERM_001, no write)', async () => {
+      permissions.assertCanConfigure.mockRejectedValue(
+        Object.assign(new Error('x'), { code: 'PERM_001' }),
+      );
+      await expect(
+        service.setIfcLink({ id: 'm-admin', organizationId: 'org', role: 'ADMIN' }, 'd', 'guid'),
+      ).rejects.toMatchObject({ code: 'PERM_001' });
+      expect(permissions.assertCanConfigure).toHaveBeenCalledWith(
+        { id: 'm-admin', organizationId: 'org', role: 'ADMIN' },
+        'p',
+      );
+      expect(repo.setIfcLink).not.toHaveBeenCalled();
+    });
+
+    it('emits v1:device:updated (carrying the ifcGlobalId change) scoped to the site', async () => {
+      repo.resolveGoverningBuildingId.mockResolvedValue('b1');
+      models.findByProperty.mockResolvedValue({ id: 'm' } as any);
+      repo.setIfcLink.mockResolvedValue(fullDevice({ ifcGlobalId: 'guid' }));
+      await service.setIfcLink(owner, 'd', 'guid');
+      expect(conflict.emitScoped).toHaveBeenCalledWith(
+        'org',
+        'p',
+        'v1:device:updated',
+        expect.objectContaining({
+          deviceId: 'd',
+          device: expect.objectContaining({ id: 'd', ifcGlobalId: 'guid' }),
+          changes: [{ field: 'ifcGlobalId', oldValue: null, newValue: 'guid' }],
+        }),
+      );
+    });
   });
 });

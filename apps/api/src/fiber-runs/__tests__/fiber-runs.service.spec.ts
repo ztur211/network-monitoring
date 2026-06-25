@@ -35,6 +35,7 @@ const makeDevice = (id: string, propertyId = 'prop-1') => ({
   name: `Device ${id}`,
   category: 'ROUTER' as const,
   mobility: 'UNKNOWN' as const,
+  ifcGlobalId: null,
   latitude: null,
   longitude: null,
   floor: null,

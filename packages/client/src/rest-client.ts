@@ -2,6 +2,7 @@ import type {
   OrganizationDto,
   PropertyDto,
   BuildingModelDto,
+  BuildingModelVersionDto,
   DeviceDto,
   AccessSummaryDto,
   DeviceStatusDto,
@@ -54,6 +55,42 @@ export function createRestClient(opts: RestClientOptions) {
       if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
       return res.arrayBuffer();
     },
+    // In-app IFC import: upload the raw bytes as a new model version (octet-stream body, NOT
+    // multipart — matches the BuildingModelsController upload seam and scripts/load-sample-model.mjs).
+    async uploadModelVersion(
+      propertyId: string,
+      fileName: string,
+      bytes: ArrayBuffer,
+      units?: string,
+    ): Promise<BuildingModelVersionDto> {
+      const token = await opts.getToken();
+      const qs =
+        `fileName=${encodeURIComponent(fileName)}` +
+        (units ? `&units=${encodeURIComponent(units)}` : '');
+      const res = await fetch(
+        `${opts.baseUrl}/v1/buildings/${propertyId}/model/versions?${qs}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: bytes,
+        },
+      );
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        throw new ApiError(
+          json?.error?.code ?? 'UNKNOWN',
+          json?.error?.message ?? res.statusText,
+          res.status,
+        );
+      }
+      return json.data as BuildingModelVersionDto;
+    },
+    // In-app IFC import: make an uploaded version the live model (drives the realtime reload seam).
+    activateModelVersion: (propertyId: string, versionId: string) =>
+      request<BuildingModelDto>('PUT', `/v1/buildings/${propertyId}/model/active`, { versionId }),
     // Spec 4: the active building's devices (F3 scope-filtered, subtree-resolved server-side).
     listDevicesForBuilding: (buildingPropertyId: string) =>
       request<DeviceDto[]>(
@@ -63,6 +100,10 @@ export function createRestClient(opts: RestClientOptions) {
     // Spec 4: place/move (pos) or clear (null) a device's model-local 3D position (Spec 1 endpoint).
     setDevicePosition: (id: string, pos: { x: number; y: number; z: number } | null) =>
       request<DeviceDto>('PATCH', `/v1/devices/${id}/position`, pos ?? { x: null, y: null, z: null }),
+    // Link (or clear with null) the BIM element this device represents, by the element's native IFC
+    // GlobalId. The GUID is the only join between the model and network data.
+    setDeviceIfcLink: (id: string, ifcGlobalId: string | null) =>
+      request<DeviceDto>('PATCH', `/v1/devices/${id}/ifc-link`, { ifcGlobalId }),
     // Spec 4 / F3: the caller's effective access (role + assigned roots) — gates configure affordances (UX only).
     getAccessSummary: () => request<AccessSummaryDto>('GET', '/v1/access/me'),
     // Spec 7: current health status for the building's in-scope devices (Spec 4's initial node-status load).

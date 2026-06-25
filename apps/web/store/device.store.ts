@@ -171,6 +171,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
         longitude: input.longitude ?? null,
         floor: input.floor ?? null,
         floorLabel: input.floorLabel ?? null,
+        ifcGlobalId: null,
         x: null,
         y: null,
         z: null,

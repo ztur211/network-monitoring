@@ -2040,3 +2040,67 @@ The server-side monitoring pipeline that fills Spec 4's status-display seam: an 
 - **Phase D — HTTP ingest + per-org token.** `IngestTokenService` (mint/verify/rotate; sha256-at-rest, secret shown once) + `IngestTokenGuard` (resolves org from `x-ingest-token`/Bearer, **not** a session). `POST /v1/monitoring/ingest` (`@Public` + token guard, 202, batches into `IngestService` — foreign-org device → `ORG_008`) + `POST /v1/monitoring/ingest-token` (OWNER, returns the secret once). This is the seam the Agent spec (Spec 8) pushes to.
 
 **Phase gate (all green against real infra):** api **unit 514** (57 suites; +10: derive-state, emitter, probe, prober, token-guard) · **integration 141** (19 suites; +9: monitoring/ingest/token repository specs) · **e2e 313** (35 suites; +10: device-status/metrics reads + HTTP ingest/token). Desktop **vitest 99** (34 files; +4 status wiring) + client **8** (+2). `nest build`, api `tsc -p tsconfig.jest.json`, desktop `tsc -b`, `electron-vite build` — clean. (One unrelated e2e suite flaked once on a full-suite run and passed clean on re-run; the monitoring suites pass in isolation.) Manual smoke (enable the prober / curl the ingest with a token and watch a marker flip) is the display/live check. **Spec 7 complete → the Agent (Spec 8) is the next spec, pushing to this ingest seam.**
+
+---
+
+## In-App IFC Import (Desktop Viewer) (2026-06-25)
+
+Closed the last "fully working modeller" gap: importing a BIM model previously required the
+`scripts/load-sample-model.mjs` CLI (auth → find building → upload version → activate). The desktop
+viewer could *load* the active model but had no way to *import* one. Added an in-app import flow so an
+OWNER/ADMIN can bring a building's IFC model into the viewer directly.
+
+- **Client (`@nodescope/client`).** Added `uploadModelVersion(propertyId, fileName, bytes, units?)`
+  — raw `application/octet-stream` POST to `/v1/buildings/:propertyId/model/versions?fileName=…`
+  (matches the `BuildingModelsController` upload seam, *not* multipart) — and `activateModelVersion`
+  (PUT `/model/active`). Both reuse the existing bearer/`{data}` envelope handling.
+- **Reload semantics fix (`useViewportLoader`).** The loader's keep-last-1 cache re-served the
+  shown model on a `reload()` (nonce bump), so a freshly-activated version wouldn't appear. A reload
+  now means "fetch fresh": it disposes the shown model and clears that building's cache entry so
+  `loadBuilding` re-downloads. Building **switches** (propertyId change, nonce unchanged) still stash
+  for instant toggle-back. This also fixes the latent staleness on the realtime "model updated → Reload"
+  banner path.
+- **Orchestration (`viewport/ifc/import-model.ts`, pure).** `looksLikeIfc` (ISO-10303-21 header guard,
+  same as the CLI) + `importModel(file, {rest, propertyId, reload})`: validate → upload → activate →
+  reload. The activated model keeps its native IFC GlobalIds (GUIDs) that device network pointers
+  reference (`ifc-guid.ts`) — import changes geometry, not the guid→device linkage.
+- **UI (`ImportModelButton`).** OWNER/ADMIN-only (`canConfigure`, UX gate; server is the authority),
+  hidden `<input accept=".ifc">`. Shown as the primary CTA on the **empty** state ("Import an IFC
+  model") and in the viewport **toolbar** ("Import IFC model"). Surfaces upload/activate errors inline.
+
+**Phase gate:** desktop **vitest 224** (57 files; +10: import-model pure ×6, ImportModelButton ×4 incl.
+role/no-building gating + error path, loader reload-fetches-fresh ×1) · client **18** (+4: upload/activate
++ units query + error envelope). `tsc -b --noEmit` (desktop), `tsc` (client/shared), `electron-vite build`
+— all clean. Live file-pick → upload → activate → in-place reload is the manual/display check.
+
+---
+
+## Device ↔ IFC Element GUID Link (2026-06-25)
+
+Realizes the core data-isolation vision: network infrastructure already modelled in the BIM/IFC can be
+linked to a NodeScope device by the element's **native IFC GlobalId (GUID)**. Clicking that BIM object
+in the 3D viewer then surfaces the device's live network info. The GUID is the *only* join between the
+model and network data, so the IFC can be exported with no IP/MAC/metrics ever leaving NodeScope.
+
+- **DB.** `Device.ifcGlobalId String?` + `@@index([organizationId, ifcGlobalId])` (reverse lookup:
+  clicked element GlobalId → device). Migration `20260625120000_device_ifc_link`. Nullable + independent
+  of x/y/z placement (a device can be GUID-linked without being separately placed).
+- **API.** `SpatialService.setIfcLink` (mirrors `setPosition`: F3 configure-scope via `assertCanConfigure`,
+  modeled-building guard on set, realtime `v1:device:updated` fan-out scoped to the site; trims, empty→clear).
+  `PATCH /v1/devices/:id/ifc-link` (OWNER/ADMIN) + `DeviceIfcLinkInputDto`. `DeviceDto.ifcGlobalId` + mapper.
+- **Client.** `setDeviceIfcLink(id, ifcGlobalId | null)`.
+- **Desktop.** Pure `element-link.ts` (guid→device index; reverse expressID→guid from `model.guidIndex`;
+  `deviceForElement`) + `link.ts` (`commitLink`/`clearLink`, optimistic upsert + rollback, mirrors
+  `placement.ts`). Store gains a `linkingDeviceId` mode (mutually exclusive with `placingDeviceId`).
+  `LinkController` (capture-phase, mirrors `PlacementController`): a click while linking sets the device's
+  GUID from the picked element. `PickingController` now resolves a clicked **linked** element to its device
+  (so clicking the BIM object opens its network drill-down). `DeviceDetails` gains Link/Re-link/Unlink +
+  a "BIM object" row; the element `Inspector` shows the linked device with a "Show device" jump.
+- **Export unaffected.** The Spec 5 derived-IFC export still carries only `toIfcGuid(device.id)` + geometry,
+  no network data — `ifcGlobalId` is a server-side pointer, never serialized with IP/MAC.
+
+**Phase gate (local — CI runners don't execute in this env):** api **unit 553** (61 suites; +8 setIfcLink:
+not-found, link/clear, trim, empty→clear, SPATIAL_001, PERM_001 scope, realtime emit) · desktop **vitest 233**
+(+13: element-link ×6, link ×4, plus fixture/stub updates) · client **18**. `nest build`, api+web `tsc --noEmit`,
+desktop `tsc -b`, `electron-vite build` — all clean. DB-backed integration/e2e for the new endpoint run in a
+DB-equipped env (no Postgres here). Live pick-to-link + click-linked-object-shows-network is the display check.

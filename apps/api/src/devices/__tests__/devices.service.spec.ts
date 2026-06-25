@@ -24,6 +24,7 @@ const makeDevice = (overrides = {}) => ({
   name: 'Router',
   category: DeviceCategory.ROUTER,
   mobility: DeviceMobility.UNKNOWN,
+  ifcGlobalId: null,
   latitude: null,
   longitude: null,
   floor: null,

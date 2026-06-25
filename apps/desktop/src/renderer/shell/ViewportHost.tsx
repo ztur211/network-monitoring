@@ -6,6 +6,7 @@ import { useDeviceLoad } from '../viewport/use-device-load';
 import { Idle, Loading, Empty, ErrorState, UpdateBanner } from '../viewport/ui/overlays';
 import { ViewportCanvas } from '../viewport/scene/ViewportCanvas';
 import { Toolbar } from '../viewport/ui/Toolbar';
+import { ImportModelButton } from '../viewport/ui/ImportModelButton';
 import { Inspector } from '../viewport/ui/Inspector';
 import { NodePanel } from '../viewport/ui/NodePanel';
 import { IssuesPanel } from '../viewport/bcf/ui/IssuesPanel';
@@ -28,7 +29,12 @@ export function ViewportHost() {
       {status === 'idle' && <Idle />}
       {status === 'loading' && <Loading />}
       {status === 'parsing' && <Loading parsing />}
-      {status === 'empty' && <Empty />}
+      {status === 'empty' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+          <Empty />
+          <ImportModelButton label="Import an IFC model" />
+        </div>
+      )}
       {status === 'error' && <ErrorState message={error ?? 'Error'} onRetry={reload} />}
       {status === 'ready' && model && (
         <>

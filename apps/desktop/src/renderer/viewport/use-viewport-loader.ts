@@ -113,14 +113,25 @@ export function useViewportLoader(loaderArg?: IfcModelLoader) {
   const cacheRef = useRef<ModelCache | null>(null);
   cacheRef.current ??= createModelCache();
   const shownRef = useRef<{ id: string; model: ParsedModel } | null>(null);
+  const prevNonceRef = useRef<number>(useViewportStore.getState().reloadNonce);
   const propertyId = useViewportStore((s) => s.activeBuildingPropertyId);
   const nonce = useViewportStore((s) => s.reloadNonce);
 
   useEffect(() => {
     const store = useViewportStore.getState();
     const cache = cacheRef.current!;
-    // stash whatever is currently shown so toggling back is instant
-    if (shownRef.current) {
+    // A reload (nonce bump) means "fetch fresh" — e.g. after an in-app import re-activates the
+    // model, or another client uploads a new version. Drop the cached/stashed copy for this
+    // building so loadBuilding re-downloads instead of re-serving stale geometry. Switching
+    // buildings (propertyId change, nonce unchanged) still stashes for instant toggle-back.
+    const isReload = prevNonceRef.current !== nonce;
+    prevNonceRef.current = nonce;
+    if (isReload) {
+      shownRef.current?.model.dispose();
+      shownRef.current = null;
+      cache.clear(propertyId ?? undefined);
+    } else if (shownRef.current) {
+      // stash whatever is currently shown so toggling back is instant
       cache.put(shownRef.current.id, shownRef.current.model);
       shownRef.current = null;
     }

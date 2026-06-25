@@ -17,6 +17,7 @@ const dev = (over: Partial<DeviceDto>): DeviceDto => ({
   x: null,
   y: null,
   z: null,
+  ifcGlobalId: null,
   ipAddress: '10.0.0.5',
   macAddress: null,
   notes: null,
