@@ -23,6 +23,56 @@ describe('createRestClient', () => {
     await expect(client.listProperties()).rejects.toBeInstanceOf(ApiError);
   });
 
+  describe('model import methods', () => {
+    it('uploadModelVersion POSTs raw bytes as octet-stream with the fileName query', async () => {
+      const version = { id: 'ver-1', versionNumber: 2, fileName: 'house.ifc' };
+      const fetchSpy = mockFetch(201, { success: true, data: version });
+      vi.stubGlobal('fetch', fetchSpy);
+      const client = createRestClient({ baseUrl: 'http://api', getToken: () => 'TKN' });
+      const bytes = new TextEncoder().encode('ISO-10303-21;').buffer;
+      const result = await client.uploadModelVersion('prop-1', 'house.ifc', bytes);
+      expect(result).toEqual(version);
+      expect(fetchSpy.mock.calls[0][0]).toBe(
+        'http://api/v1/buildings/prop-1/model/versions?fileName=house.ifc',
+      );
+      const init = fetchSpy.mock.calls[0][1];
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/octet-stream');
+      expect(init.headers.Authorization).toBe('Bearer TKN');
+      expect(init.body).toBe(bytes);
+    });
+
+    it('uploadModelVersion appends the units query when provided', async () => {
+      const fetchSpy = mockFetch(201, { success: true, data: { id: 'ver-2' } });
+      vi.stubGlobal('fetch', fetchSpy);
+      const client = createRestClient({ baseUrl: 'http://api', getToken: () => null });
+      await client.uploadModelVersion('prop-1', 'a b.ifc', new ArrayBuffer(0), 'METRE');
+      expect(fetchSpy.mock.calls[0][0]).toBe(
+        'http://api/v1/buildings/prop-1/model/versions?fileName=a%20b.ifc&units=METRE',
+      );
+    });
+
+    it('uploadModelVersion throws ApiError on an error envelope', async () => {
+      vi.stubGlobal('fetch', mockFetch(403, { success: false, error: { code: 'ORG_003', message: 'no' } }));
+      const client = createRestClient({ baseUrl: 'http://api', getToken: () => null });
+      await expect(
+        client.uploadModelVersion('prop-1', 'house.ifc', new ArrayBuffer(0)),
+      ).rejects.toMatchObject({ code: 'ORG_003', status: 403 });
+    });
+
+    it('activateModelVersion PUTs the versionId to the active route', async () => {
+      const model = { id: 'model-1', activeVersionId: 'ver-1' };
+      const fetchSpy = mockFetch(200, { success: true, data: model });
+      vi.stubGlobal('fetch', fetchSpy);
+      const client = createRestClient({ baseUrl: 'http://api', getToken: () => 'TKN' });
+      const result = await client.activateModelVersion('prop-1', 'ver-1');
+      expect(result).toEqual(model);
+      expect(fetchSpy.mock.calls[0][0]).toBe('http://api/v1/buildings/prop-1/model/active');
+      expect(fetchSpy.mock.calls[0][1].method).toBe('PUT');
+      expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toEqual({ versionId: 'ver-1' });
+    });
+  });
+
   describe('BCF methods', () => {
     it('listBcfTopics GETs the building route and unwraps data', async () => {
       const topics = [{ id: 'topic-1', title: 'Test topic' }];

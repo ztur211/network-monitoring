@@ -17,6 +17,9 @@
 The desktop app loads the building's IFC model and fuses live network operations onto it:
 
 - **3D BIM viewer** — navigate the building model (optimized for large models via per-category geometry merging).
+- **In-app IFC import** — OWNER/ADMIN users import a building's IFC model directly from the desktop
+  viewer (an "Import an IFC model" action on the empty state and in the toolbar); it uploads the file
+  as a new model version, activates it as the live model, and reloads the viewport — no CLI required.
 - **Devices as 3D equipment objects** — each placed device renders as a recognizable 3D object by category
   (a switch as a rack box, an access point as a dome, a rack as a tower), positioned where it physically lives.
 - **Click an object → live info** — selecting a device's 3D object opens its drill-down: live metric chart

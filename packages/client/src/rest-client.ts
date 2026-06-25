@@ -2,6 +2,7 @@ import type {
   OrganizationDto,
   PropertyDto,
   BuildingModelDto,
+  BuildingModelVersionDto,
   DeviceDto,
   AccessSummaryDto,
   DeviceStatusDto,
@@ -54,6 +55,42 @@ export function createRestClient(opts: RestClientOptions) {
       if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
       return res.arrayBuffer();
     },
+    // In-app IFC import: upload the raw bytes as a new model version (octet-stream body, NOT
+    // multipart — matches the BuildingModelsController upload seam and scripts/load-sample-model.mjs).
+    async uploadModelVersion(
+      propertyId: string,
+      fileName: string,
+      bytes: ArrayBuffer,
+      units?: string,
+    ): Promise<BuildingModelVersionDto> {
+      const token = await opts.getToken();
+      const qs =
+        `fileName=${encodeURIComponent(fileName)}` +
+        (units ? `&units=${encodeURIComponent(units)}` : '');
+      const res = await fetch(
+        `${opts.baseUrl}/v1/buildings/${propertyId}/model/versions?${qs}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: bytes,
+        },
+      );
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        throw new ApiError(
+          json?.error?.code ?? 'UNKNOWN',
+          json?.error?.message ?? res.statusText,
+          res.status,
+        );
+      }
+      return json.data as BuildingModelVersionDto;
+    },
+    // In-app IFC import: make an uploaded version the live model (drives the realtime reload seam).
+    activateModelVersion: (propertyId: string, versionId: string) =>
+      request<BuildingModelDto>('PUT', `/v1/buildings/${propertyId}/model/active`, { versionId }),
     // Spec 4: the active building's devices (F3 scope-filtered, subtree-resolved server-side).
     listDevicesForBuilding: (buildingPropertyId: string) =>
       request<DeviceDto[]>(

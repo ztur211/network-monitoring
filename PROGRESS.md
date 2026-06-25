@@ -2040,3 +2040,35 @@ The server-side monitoring pipeline that fills Spec 4's status-display seam: an 
 - **Phase D — HTTP ingest + per-org token.** `IngestTokenService` (mint/verify/rotate; sha256-at-rest, secret shown once) + `IngestTokenGuard` (resolves org from `x-ingest-token`/Bearer, **not** a session). `POST /v1/monitoring/ingest` (`@Public` + token guard, 202, batches into `IngestService` — foreign-org device → `ORG_008`) + `POST /v1/monitoring/ingest-token` (OWNER, returns the secret once). This is the seam the Agent spec (Spec 8) pushes to.
 
 **Phase gate (all green against real infra):** api **unit 514** (57 suites; +10: derive-state, emitter, probe, prober, token-guard) · **integration 141** (19 suites; +9: monitoring/ingest/token repository specs) · **e2e 313** (35 suites; +10: device-status/metrics reads + HTTP ingest/token). Desktop **vitest 99** (34 files; +4 status wiring) + client **8** (+2). `nest build`, api `tsc -p tsconfig.jest.json`, desktop `tsc -b`, `electron-vite build` — clean. (One unrelated e2e suite flaked once on a full-suite run and passed clean on re-run; the monitoring suites pass in isolation.) Manual smoke (enable the prober / curl the ingest with a token and watch a marker flip) is the display/live check. **Spec 7 complete → the Agent (Spec 8) is the next spec, pushing to this ingest seam.**
+
+---
+
+## In-App IFC Import (Desktop Viewer) (2026-06-25)
+
+Closed the last "fully working modeller" gap: importing a BIM model previously required the
+`scripts/load-sample-model.mjs` CLI (auth → find building → upload version → activate). The desktop
+viewer could *load* the active model but had no way to *import* one. Added an in-app import flow so an
+OWNER/ADMIN can bring a building's IFC model into the viewer directly.
+
+- **Client (`@nodescope/client`).** Added `uploadModelVersion(propertyId, fileName, bytes, units?)`
+  — raw `application/octet-stream` POST to `/v1/buildings/:propertyId/model/versions?fileName=…`
+  (matches the `BuildingModelsController` upload seam, *not* multipart) — and `activateModelVersion`
+  (PUT `/model/active`). Both reuse the existing bearer/`{data}` envelope handling.
+- **Reload semantics fix (`useViewportLoader`).** The loader's keep-last-1 cache re-served the
+  shown model on a `reload()` (nonce bump), so a freshly-activated version wouldn't appear. A reload
+  now means "fetch fresh": it disposes the shown model and clears that building's cache entry so
+  `loadBuilding` re-downloads. Building **switches** (propertyId change, nonce unchanged) still stash
+  for instant toggle-back. This also fixes the latent staleness on the realtime "model updated → Reload"
+  banner path.
+- **Orchestration (`viewport/ifc/import-model.ts`, pure).** `looksLikeIfc` (ISO-10303-21 header guard,
+  same as the CLI) + `importModel(file, {rest, propertyId, reload})`: validate → upload → activate →
+  reload. The activated model keeps its native IFC GlobalIds (GUIDs) that device network pointers
+  reference (`ifc-guid.ts`) — import changes geometry, not the guid→device linkage.
+- **UI (`ImportModelButton`).** OWNER/ADMIN-only (`canConfigure`, UX gate; server is the authority),
+  hidden `<input accept=".ifc">`. Shown as the primary CTA on the **empty** state ("Import an IFC
+  model") and in the viewport **toolbar** ("Import IFC model"). Surfaces upload/activate errors inline.
+
+**Phase gate:** desktop **vitest 224** (57 files; +10: import-model pure ×6, ImportModelButton ×4 incl.
+role/no-building gating + error path, loader reload-fetches-fresh ×1) · client **18** (+4: upload/activate
++ units query + error envelope). `tsc -b --noEmit` (desktop), `tsc` (client/shared), `electron-vite build`
+— all clean. Live file-pick → upload → activate → in-place reload is the manual/display check.

@@ -78,6 +78,8 @@ npm run load-sample-model
 
 Downloads a small public sample IFC and uploads + activates it on the Main Building. See **[`SETUP.md`](./SETUP.md)** for the full walkthrough (Windows + Docker, desktop login flow, troubleshooting).
 
+> 💡 You can also import a model **from inside the desktop app** (no CLI): as an OWNER/ADMIN, open a building and use the **"Import an IFC model"** action on the empty state (or **Import IFC model** in the viewport toolbar) to upload + activate an `.ifc` file and reload the viewport in place.
+
 ### Tests
 
 ```bash
