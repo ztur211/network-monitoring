@@ -24,7 +24,6 @@ export function DeviceModelLayer({
   const devices = useViewportStore((s) => s.devices);
   const selection = useViewportStore((s) => s.selection);
   const nodeStatus = useViewportStore((s) => s.nodeStatus);
-  const groupRef = useRef<THREE.Group>(null);
 
   const placed = useMemo(() => devices.filter(isPlaced), [devices]);
 
@@ -54,6 +53,10 @@ export function DeviceModelLayer({
   );
 
   // Tint bodies by live status (no geometry rebuild) + collect markers.
+  // markersRef is collected from the built meshes here; R3F flushes matrixWorld on its render pass
+  // before any user pointer interaction, so the picking raycast reads correct world positions.
+  // `selection` is in the deps deliberately: it triggers invalidate() so the selection highlight
+  // re-renders under frameloop="demand" (NOT a spurious dep — do not remove).
   useEffect(() => {
     const markers: THREE.Object3D[] = [];
     for (const { d, grp } of items) {
@@ -74,7 +77,7 @@ export function DeviceModelLayer({
   }, [items, nodeStatus, selection, markersRef, invalidate]);
 
   return (
-    <group ref={groupRef}>
+    <group>
       {items.map(({ d, grp }) => {
         const p = toViewport({ x: d.x!, y: d.y!, z: d.z! }, model.frame);
         const selected = selection?.kind === 'device' && selection.deviceId === d.id;
