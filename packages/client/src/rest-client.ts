@@ -100,6 +100,10 @@ export function createRestClient(opts: RestClientOptions) {
     // Spec 4: place/move (pos) or clear (null) a device's model-local 3D position (Spec 1 endpoint).
     setDevicePosition: (id: string, pos: { x: number; y: number; z: number } | null) =>
       request<DeviceDto>('PATCH', `/v1/devices/${id}/position`, pos ?? { x: null, y: null, z: null }),
+    // Link (or clear with null) the BIM element this device represents, by the element's native IFC
+    // GlobalId. The GUID is the only join between the model and network data.
+    setDeviceIfcLink: (id: string, ifcGlobalId: string | null) =>
+      request<DeviceDto>('PATCH', `/v1/devices/${id}/ifc-link`, { ifcGlobalId }),
     // Spec 4 / F3: the caller's effective access (role + assigned roots) — gates configure affordances (UX only).
     getAccessSummary: () => request<AccessSummaryDto>('GET', '/v1/access/me'),
     // Spec 7: current health status for the building's in-scope devices (Spec 4's initial node-status load).

@@ -22,6 +22,7 @@ export function toDeviceDto(device: Device): DeviceDto {
     x: device.x,
     y: device.y,
     z: device.z,
+    ifcGlobalId: device.ifcGlobalId,
     ipAddress: device.ipAddress,
     macAddress: device.macAddress,
     notes: device.notes,

@@ -11,6 +11,7 @@ import { PickingController } from '../interaction/picking';
 import { ViewCommands } from './ViewCommands';
 import { DeviceModelLayer } from '../objects/DeviceModelLayer';
 import { PlacementController } from '../nodes/PlacementController';
+import { LinkController } from '../nodes/LinkController';
 
 function InvalidateOnControls({ controls }: { controls: RefObject<OrbitControlsImpl | null> }) {
   const { invalidate } = useThree();
@@ -30,6 +31,7 @@ export function Scene({ model }: { model: ParsedModel }) {
       <DeviceModelLayer model={model} markersRef={markersRef} />
       <PickingController model={model} markersRef={markersRef} />
       <PlacementController model={model} />
+      <LinkController model={model} />
       <CameraRig box={model.bbox} controls={controls} />
       <ViewCommands model={model} controls={controls} />
     </>

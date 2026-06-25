@@ -30,6 +30,9 @@ export interface DeviceDto {
   x: number | null;
   y: number | null;
   z: number | null;
+  // Native IFC GlobalId (GUID) of the linked BIM element, or null. The join key between the BIM
+  // model and network data — clicking that element in the 3D viewer resolves to this device.
+  ifcGlobalId: string | null;
   ipAddress: string | null;
   macAddress: string | null;
   notes: string | null;

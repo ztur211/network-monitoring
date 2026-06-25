@@ -24,6 +24,10 @@ The desktop app loads the building's IFC model and fuses live network operations
   (a switch as a rack box, an access point as a dome, a rack as a tower), positioned where it physically lives.
 - **Click an object → live info** — selecting a device's 3D object opens its drill-down: live metric chart
   (polled) and recent status-change events.
+- **Link a BIM object to a device by GUID** — network infrastructure already modelled in the IFC can be
+  linked to a NodeScope device by the element's native IFC GlobalId (GUID). Clicking that BIM object then
+  surfaces the device's live network info. The GUID is the only join between the model and network data,
+  so the IFC can be exported without any IP/MAC/metrics ever leaving NodeScope.
 - **Live status in 3D** — a device's object is tinted by its real-time status (e.g. red when down).
 - **Triage Ops HUD** — a building-wide health overview: down/warning counts, a severity-sorted device list
   (problems first), per-floor roll-up, and fly-to.

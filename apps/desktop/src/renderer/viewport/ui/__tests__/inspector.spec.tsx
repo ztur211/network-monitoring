@@ -10,6 +10,7 @@ afterEach(() => cleanup());
 function modelWithProps() {
   return {
     elementIndex: new Map([[5, {}]]),
+    guidIndex: new Map<string, number>(),
     getProperties: vi.fn().mockResolvedValue({
       expressID: 5,
       ifcType: 'IfcWall',

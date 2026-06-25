@@ -228,6 +228,11 @@ model Device {
   x              Float? // model-local 3D coords (m) in the device's BUILDING active model — Spec 1
   y              Float?
   z              Float?
+  // Native IFC GlobalId (GUID) of the BIM element this device is linked to, if any. This is the
+  // ONLY join key between network data and the BIM model: the IFC export carries the element's
+  // native GlobalId but no network data, so clicking the BIM object resolves to this device's live
+  // info without the model ever embedding IP/MAC/metrics. Independent of x/y/z placement.
+  ifcGlobalId    String?
   ipAddress      String?
   macAddress     String?
   notes          String?
@@ -261,6 +266,8 @@ model Device {
   // Serves the device-list query: WHERE organizationId ORDER BY createdAt DESC
   // (index provides the sort order, eliminating the in-memory sort).
   @@index([organizationId, createdAt])
+  // Resolves a clicked BIM element's GlobalId → linked device (org-scoped reverse lookup).
+  @@index([organizationId, ifcGlobalId])
 }
 
 model Network {

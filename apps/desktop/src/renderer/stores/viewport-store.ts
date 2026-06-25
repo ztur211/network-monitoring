@@ -39,6 +39,9 @@ export interface ViewportState {
   // Spec 4 node state:
   devices: DeviceDto[];
   placingDeviceId: string | null;
+  // The device currently in "link to BIM object" mode (next element click sets its ifcGlobalId).
+  // Mutually exclusive with placingDeviceId.
+  linkingDeviceId: string | null;
   nodeFilter: NodeFilter;
   nodeStatus: Map<string, NodeStatus>;
   access: AccessSummaryDto | null;
@@ -62,6 +65,8 @@ export interface ViewportState {
   removeDevice: (id: string) => void;
   beginPlace: (deviceId: string) => void;
   cancelPlace: () => void;
+  beginLink: (deviceId: string) => void;
+  cancelLink: () => void;
   setNodeFilter: (p: Partial<NodeFilter>) => void;
   setNodeStatus: (deviceId: string, s: NodeStatus) => void;
   setAccess: (a: AccessSummaryDto | null) => void;
@@ -93,6 +98,7 @@ export const initialViewportState = () => ({
   section: { enabled: false, axis: 'Y' as const, constant: 0 },
   devices: [] as DeviceDto[],
   placingDeviceId: null as string | null,
+  linkingDeviceId: null as string | null,
   nodeFilter: emptyFilter(),
   nodeStatus: new Map<string, NodeStatus>(),
   access: null as AccessSummaryDto | null,
@@ -113,6 +119,7 @@ export const useViewportStore = create<ViewportState>()((set) => ({
       // Spec 4: per-building node state resets (devices reload for the new building)
       devices: [],
       placingDeviceId: null,
+      linkingDeviceId: null,
     }),
   isolate: (isolated) => set({ isolated }),
   clearIsolation: () => set({ isolated: null }),
@@ -151,8 +158,10 @@ export const useViewportStore = create<ViewportState>()((set) => ({
       devices: s.devices.filter((x) => x.id !== id),
       selection: s.selection?.kind === 'device' && s.selection.deviceId === id ? null : s.selection,
     })),
-  beginPlace: (placingDeviceId) => set({ placingDeviceId }),
+  beginPlace: (placingDeviceId) => set({ placingDeviceId, linkingDeviceId: null }),
   cancelPlace: () => set({ placingDeviceId: null }),
+  beginLink: (linkingDeviceId) => set({ linkingDeviceId, placingDeviceId: null }),
+  cancelLink: () => set({ linkingDeviceId: null }),
   setNodeFilter: (p) => set((s) => ({ nodeFilter: { ...s.nodeFilter, ...p } })),
   setNodeStatus: (id, st) =>
     set((s) => {

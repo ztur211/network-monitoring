@@ -2072,3 +2072,35 @@ OWNER/ADMIN can bring a building's IFC model into the viewer directly.
 role/no-building gating + error path, loader reload-fetches-fresh ×1) · client **18** (+4: upload/activate
 + units query + error envelope). `tsc -b --noEmit` (desktop), `tsc` (client/shared), `electron-vite build`
 — all clean. Live file-pick → upload → activate → in-place reload is the manual/display check.
+
+---
+
+## Device ↔ IFC Element GUID Link (2026-06-25)
+
+Realizes the core data-isolation vision: network infrastructure already modelled in the BIM/IFC can be
+linked to a NodeScope device by the element's **native IFC GlobalId (GUID)**. Clicking that BIM object
+in the 3D viewer then surfaces the device's live network info. The GUID is the *only* join between the
+model and network data, so the IFC can be exported with no IP/MAC/metrics ever leaving NodeScope.
+
+- **DB.** `Device.ifcGlobalId String?` + `@@index([organizationId, ifcGlobalId])` (reverse lookup:
+  clicked element GlobalId → device). Migration `20260625120000_device_ifc_link`. Nullable + independent
+  of x/y/z placement (a device can be GUID-linked without being separately placed).
+- **API.** `SpatialService.setIfcLink` (mirrors `setPosition`: F3 configure-scope via `assertCanConfigure`,
+  modeled-building guard on set, realtime `v1:device:updated` fan-out scoped to the site; trims, empty→clear).
+  `PATCH /v1/devices/:id/ifc-link` (OWNER/ADMIN) + `DeviceIfcLinkInputDto`. `DeviceDto.ifcGlobalId` + mapper.
+- **Client.** `setDeviceIfcLink(id, ifcGlobalId | null)`.
+- **Desktop.** Pure `element-link.ts` (guid→device index; reverse expressID→guid from `model.guidIndex`;
+  `deviceForElement`) + `link.ts` (`commitLink`/`clearLink`, optimistic upsert + rollback, mirrors
+  `placement.ts`). Store gains a `linkingDeviceId` mode (mutually exclusive with `placingDeviceId`).
+  `LinkController` (capture-phase, mirrors `PlacementController`): a click while linking sets the device's
+  GUID from the picked element. `PickingController` now resolves a clicked **linked** element to its device
+  (so clicking the BIM object opens its network drill-down). `DeviceDetails` gains Link/Re-link/Unlink +
+  a "BIM object" row; the element `Inspector` shows the linked device with a "Show device" jump.
+- **Export unaffected.** The Spec 5 derived-IFC export still carries only `toIfcGuid(device.id)` + geometry,
+  no network data — `ifcGlobalId` is a server-side pointer, never serialized with IP/MAC.
+
+**Phase gate (local — CI runners don't execute in this env):** api **unit 553** (61 suites; +8 setIfcLink:
+not-found, link/clear, trim, empty→clear, SPATIAL_001, PERM_001 scope, realtime emit) · desktop **vitest 233**
+(+13: element-link ×6, link ×4, plus fixture/stub updates) · client **18**. `nest build`, api+web `tsc --noEmit`,
+desktop `tsc -b`, `electron-vite build` — all clean. DB-backed integration/e2e for the new endpoint run in a
+DB-equipped env (no Postgres here). Live pick-to-link + click-linked-object-shows-network is the display check.

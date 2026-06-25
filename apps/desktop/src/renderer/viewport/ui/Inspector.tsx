@@ -1,15 +1,23 @@
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useMemo, useState, Fragment } from 'react';
 import { useViewportStore } from '../../stores/viewport-store';
 import type { ElementProperties } from '../ifc/ifc-types';
+import { buildGuidByExpressId, buildIfcLinkIndex, deviceForElement } from '../nodes/element-link';
 import { DeviceDetails } from './DeviceDetails';
 import { DeviceTelemetry } from './DeviceTelemetry';
 
 export function Inspector() {
-  const { model, selection, isolate, hideElement, requestFocus } = useViewportStore();
+  const { model, selection, devices, selectNode, isolate, hideElement, requestFocus } = useViewportStore();
   // Spec 4: the Inspector's element branch reads the tagged selection; the device branch
   // (selection.kind === 'device') is rendered by DeviceDetails in Phase D — here it is null.
   const expressID = selection?.kind === 'element' ? selection.expressID : null;
   const [props, setProps] = useState<ElementProperties | null>(null);
+
+  // If this BIM element is linked to a network device (by its GlobalId), offer a jump to it.
+  const guidByExpressId = useMemo(() => (model ? buildGuidByExpressId(model) : null), [model]);
+  const linkedDevice =
+    expressID != null && guidByExpressId
+      ? deviceForElement(buildIfcLinkIndex(devices), guidByExpressId, expressID)
+      : undefined;
 
   useEffect(() => {
     let live = true;
@@ -47,6 +55,12 @@ export function Inspector() {
           </>
         )}
       </dl>
+      {linkedDevice && (
+        <p role="status">
+          Network device: {linkedDevice.name}{' '}
+          <button onClick={() => selectNode(linkedDevice.id)}>Show device</button>
+        </p>
+      )}
       <div>
         <button onClick={() => isolate(expressID)}>Isolate</button>
         <button onClick={() => hideElement(expressID)}>Hide</button>

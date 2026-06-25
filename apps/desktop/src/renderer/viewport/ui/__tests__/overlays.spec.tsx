@@ -37,7 +37,7 @@ describe('ViewportHost states', () => {
       updateAvailable: true,
       // Toolbar (in the ready slot) now reads model.render.categories; ViewportCanvas is mocked to
       // null so nothing else touches render here — a categories-only stub is sufficient.
-      model: { elementIndex: new Map(), categories: new Map(), render: { categories: new Map() } } as any,
+      model: { elementIndex: new Map(), guidIndex: new Map(), categories: new Map(), render: { categories: new Map() } } as any,
     });
     render(<ViewportHost />);
     fireEvent.click(screen.getByText('Reload'));

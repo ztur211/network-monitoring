@@ -50,4 +50,18 @@ export class SpatialRepository {
       }),
     );
   }
+
+  /** Set (or clear, when null) the device's linked IFC element GlobalId. */
+  async setIfcLink(
+    organizationId: string,
+    deviceId: string,
+    ifcGlobalId: string | null,
+  ): Promise<Device | null> {
+    return updateOrNull(() =>
+      this.prisma.device.update({
+        where: { id: deviceId, organizationId },
+        data: { ifcGlobalId, version: { increment: 1 } },
+      }),
+    );
+  }
 }
