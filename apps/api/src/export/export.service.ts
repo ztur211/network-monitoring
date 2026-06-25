@@ -47,20 +47,15 @@ export class ExportService {
             y: { not: null },
             z: { not: null },
           },
-          include: { network: { select: { name: true } } },
+          select: { id: true, x: true, y: true, z: true },
         })
       : [];
 
     const devices: ExportDevice[] = rows.map((d) => ({
       id: d.id,
-      name: d.name,
-      category: d.category,
       x: d.x!,
       y: d.y!,
       z: d.z!,
-      ipAddress: d.ipAddress,
-      macAddress: d.macAddress,
-      networkName: d.network?.name ?? null,
     }));
 
     const ifc = buildNetworkIfc({
