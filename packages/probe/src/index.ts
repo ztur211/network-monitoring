@@ -1,5 +1,7 @@
 import { createConnection } from 'node:net';
-import { execFile } from 'node:child_process';
+import { execFile as nodeExecFile } from 'node:child_process';
+
+type ExecFileFn = typeof nodeExecFile;
 
 export interface ProbeResult {
   ok: boolean;
@@ -28,16 +30,30 @@ export function tcpProbe(ip: string, port: number, timeoutMs: number): Promise<P
 /**
  * ICMP via the system `ping` (spawned, so the node process needs no NET_RAW). Linux
  * flags: -c 1 (one echo), -W <seconds> (per-reply timeout).
+ *
+ * `-W` bounds a single *reply*, not a stalled child: a hung resolver, a zombied ping, or
+ * BSD/macOS (where `-W` is *milliseconds*, so `-W 2` ≈ 2 ms and the process outlives the
+ * budget) would leave the callback un-fired and this promise — and the probe's concurrency
+ * slot — hung forever. So also give execFile a hard `timeout` (+ SIGKILL) as a backstop;
+ * on timeout it kills the child and invokes the callback with an error → we resolve unreachable.
  */
-export function icmpProbe(ip: string, timeoutMs: number): Promise<ProbeResult> {
+export function icmpProbe(ip: string, timeoutMs: number, exec: ExecFileFn = nodeExecFile): Promise<ProbeResult> {
   return new Promise((resolve) => {
-    execFile(
+    const pingSecs = Math.max(1, Math.ceil(timeoutMs / 1000));
+    let settled = false;
+    const done = (r: ProbeResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+    exec(
       'ping',
-      ['-c', '1', '-W', String(Math.max(1, Math.ceil(timeoutMs / 1000))), ip],
+      ['-c', '1', '-W', String(pingSecs), ip],
+      { timeout: pingSecs * 1000 + 1000, killSignal: 'SIGKILL' },
       (err, stdout) => {
-        if (err) return resolve({ ok: false });
+        if (err) return done({ ok: false });
         const m = /time[=<]\s*([\d.]+)\s*ms/.exec(stdout);
-        resolve({ ok: true, latencyMs: m ? parseFloat(m[1]) : undefined });
+        done({ ok: true, latencyMs: m ? parseFloat(m[1]) : undefined });
       },
     );
   });
