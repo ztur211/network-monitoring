@@ -34,11 +34,15 @@ export class PermissionsRepository {
    *  Mirrors PropertiesRepository.getSubtreeIds — kept here to avoid a circular
    *  module dependency between PermissionsModule and PropertiesModule. */
   async subtreePropertyIds(organizationId: string, rootId: string): Promise<string[]> {
+    // Org filter is re-asserted on the recursive step (defence-in-depth), matching
+    // PropertyTreeRepository.ancestorIds — so the walk can never cross into another org
+    // even if a row's parentId ever pointed outside it. This CTE backs scopePropertyIds,
+    // the basis of every F3 authorization decision.
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
       WITH RECURSIVE subtree AS (
         SELECT id FROM "Property" WHERE id = ${rootId} AND "organizationId" = ${organizationId}
         UNION ALL
-        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id
+        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id AND p."organizationId" = ${organizationId}
       )
       SELECT id FROM subtree;
     `;

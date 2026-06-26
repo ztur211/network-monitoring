@@ -73,7 +73,7 @@ export class PropertiesRepository {
       WITH RECURSIVE subtree AS (
         SELECT id FROM "Property" WHERE id = ${rootId} AND "organizationId" = ${organizationId}
         UNION ALL
-        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id
+        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id AND p."organizationId" = ${organizationId}
       )
       SELECT id FROM subtree;
     `;
@@ -86,7 +86,7 @@ export class PropertiesRepository {
       WITH RECURSIVE ancestors AS (
         SELECT id, "parentId" FROM "Property" WHERE id = ${descendantId} AND "organizationId" = ${organizationId}
         UNION ALL
-        SELECT p.id, p."parentId" FROM "Property" p JOIN ancestors a ON p.id = a."parentId"
+        SELECT p.id, p."parentId" FROM "Property" p JOIN ancestors a ON p.id = a."parentId" AND p."organizationId" = ${organizationId}
       )
       SELECT 1 AS ok FROM ancestors WHERE id = ${ancestorId} LIMIT 1;
     `;
@@ -105,7 +105,7 @@ export class PropertiesRepository {
       WITH RECURSIVE chain AS (
         SELECT id, "parentId", type, code, 0 AS depth FROM "Property" WHERE id = ${id} AND "organizationId" = ${organizationId}
         UNION ALL
-        SELECT p.id, p."parentId", p.type, p.code, c.depth + 1 FROM "Property" p JOIN chain c ON p.id = c."parentId"
+        SELECT p.id, p."parentId", p.type, p.code, c.depth + 1 FROM "Property" p JOIN chain c ON p.id = c."parentId" AND p."organizationId" = ${organizationId}
       )
       SELECT type, code, depth FROM chain ORDER BY depth ASC;`;
     return rows.map((r) => ({ type: r.type, code: r.code }));
