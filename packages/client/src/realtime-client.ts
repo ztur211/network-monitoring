@@ -57,7 +57,12 @@ const MANAGER_EVENTS = new Set(['reconnect', 'reconnect_attempt', 'reconnect_err
 class RealtimeClientImpl implements RealtimeClient {
   private socket: Socket | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private pongHandler: Listener | null = null;
+  private pendingPingAt: number | null = null;
   private offlineRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Bumped on every connect()/disconnect() so an in-flight connect() whose awaited
+  // getToken() resolves after a disconnect (or a newer connect) can detect it is stale.
+  private connectGen = 0;
   private readonly socketSubscribers = new Map<string, Set<Listener>>();
   private readonly managerSubscribers = new Map<string, Set<Listener>>();
   private readonly io: IoFactory;
@@ -71,6 +76,8 @@ class RealtimeClientImpl implements RealtimeClient {
   async connect(): Promise<void> {
     if (this.socket?.connected) return;
 
+    const gen = ++this.connectGen;
+
     // Tear down any half-open socket before creating a fresh one. Otherwise the orphan keeps its
     // transport alive and — since attachRegisteredSubscribers wired every user handler onto it —
     // could double-fire app-level events when its background connect completes.
@@ -82,6 +89,9 @@ class RealtimeClientImpl implements RealtimeClient {
     // Resolve bearer token (desktop) without awaiting at all on the cookie path (web), so a
     // synchronous connect() still creates the socket before returning (the web suite relies on this).
     const auth = this.opts.getToken ? { token: await this.opts.getToken() } : undefined;
+    // If disconnect() or a newer connect() ran during the awaited getToken(), this attempt is
+    // stale — bail before wiring a live socket the caller already believes is gone (orphan leak).
+    if (gen !== this.connectGen) return;
     const r = this.opts.reconnection;
 
     this.socket = this.io(this.opts.baseUrl, {
@@ -116,6 +126,7 @@ class RealtimeClientImpl implements RealtimeClient {
   }
 
   disconnect(): void {
+    this.connectGen++; // invalidate any connect() awaiting getToken()
     this.stopPingLoop();
     this.clearOfflineRetry();
     this.socket?.disconnect();
@@ -198,10 +209,19 @@ class RealtimeClientImpl implements RealtimeClient {
     const ping = this.opts.ping;
     if (!ping) return;
     this.stopPingLoop();
+    // One persistent pong listener, NOT a per-tick `once`: a `once` only auto-removes when it
+    // fires, so every missed pong (server overloaded, latency > interval) would leak a one-shot
+    // listener + closure for the rest of the session, and they'd all fire with stale timestamps
+    // when pongs resume. Track a single outstanding ping timestamp instead.
+    this.pongHandler = () => {
+      if (this.pendingPingAt === null) return; // late/duplicate pong with no ping outstanding
+      ping.onLatency?.(this.now() - this.pendingPingAt);
+      this.pendingPingAt = null;
+    };
+    this.socket?.on(ping.pongEvent, this.pongHandler);
     this.pingTimer = setInterval(() => {
-      const sentAt = this.now();
+      this.pendingPingAt = this.now();
       this.socket?.emit(ping.event);
-      this.socket?.once(ping.pongEvent, () => ping.onLatency?.(this.now() - sentAt));
     }, ping.intervalMs);
   }
 
@@ -210,6 +230,11 @@ class RealtimeClientImpl implements RealtimeClient {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
+    if (this.pongHandler && this.opts.ping) {
+      this.socket?.off(this.opts.ping.pongEvent, this.pongHandler);
+      this.pongHandler = null;
+    }
+    this.pendingPingAt = null;
   }
 
   private scheduleOfflineRetry(): void {

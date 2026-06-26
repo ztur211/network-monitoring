@@ -56,6 +56,20 @@ describe('createRealtimeClient — handshake', () => {
     expect(opts.withCredentials).toBe(true);
     expect(opts.auth).toBeUndefined();
   });
+
+  it('connect() aborted by disconnect() during getToken does not orphan a live socket', async () => {
+    let resolveToken!: (v: string) => void;
+    const getToken = () => new Promise<string>((r) => { resolveToken = r; });
+    const rt = newClient({ getToken });
+
+    const pending = rt.connect(); // suspends on the awaited getToken
+    rt.disconnect();              // bumps the generation while connect is suspended
+    resolveToken('TKN');
+    await pending;
+
+    // The stale attempt bailed before building a socket — no orphan firing app events.
+    expect(ioMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('createRealtimeClient — Manager vs Socket routing', () => {
@@ -200,8 +214,43 @@ describe('createRealtimeClient — status, ping, offline retry', () => {
     vi.advanceTimersByTime(25_000);
     expect(last().emit).toHaveBeenCalledWith('v1:ping');
     t = 1042; // 42ms later
-    last()._firePong('v1:pong');
+    last()._emit('v1:pong'); // persistent pong listener (no longer a per-tick once)
     expect(onLatency).toHaveBeenCalledWith(42);
+  });
+
+  it('does not leak a pong listener per missed pong, and reports latency at most once when pongs resume', async () => {
+    let t = 1000;
+    const onLatency = vi.fn();
+    const rt = newClient({
+      now: () => t,
+      ping: { event: 'v1:ping', pongEvent: 'v1:pong', intervalMs: 25_000, onLatency },
+    });
+    await rt.connect();
+    last()._emit('connect');
+
+    // Five intervals elapse with NO pong arriving.
+    for (let i = 0; i < 5; i++) {
+      t += 25_000;
+      vi.advanceTimersByTime(25_000);
+    }
+    // Exactly one persistent pong listener exists (a per-tick `once` would have stacked 5).
+    const pongOnCalls = last().on.mock.calls.filter((c) => c[0] === 'v1:pong');
+    expect(pongOnCalls).toHaveLength(1);
+
+    // When a pong finally arrives, latency is reported once — not once per missed tick.
+    last()._emit('v1:pong');
+    expect(onLatency).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopPingLoop removes the pong listener (no leak across disconnect)', async () => {
+    const rt = newClient({
+      ping: { event: 'v1:ping', pongEvent: 'v1:pong', intervalMs: 25_000, onLatency: vi.fn() },
+    });
+    await rt.connect();
+    last()._emit('connect');
+    const sock = last();
+    rt.disconnect();
+    expect(sock.off).toHaveBeenCalledWith('v1:pong', expect.any(Function));
   });
 
   it('schedules an offline retry after reconnect_failed', async () => {
