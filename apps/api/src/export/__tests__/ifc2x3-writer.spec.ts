@@ -32,6 +32,33 @@ describe('buildNetworkIfc', () => {
     expect(ifc.trimEnd().endsWith('END-ISO-10303-21;')).toBe(true);
   });
 
+  it('backslash-escapes the building name in BOTH the body and the FILE_NAME header', () => {
+    const ifc = buildNetworkIfc({
+      building: { id: '22222222-2222-2222-2222-222222222222', name: 'A\\B' }, // A, backslash, B
+      storeyName: 'Network',
+      devices: [],
+      timestamp: '2026-06-12T00:00:00Z',
+    });
+    // Body already escaped correctly (A\\B); the header used to emit a raw lone backslash,
+    // which in ISO-10303-21 starts a control directive → a malformed FILE_NAME.
+    const fileNameLine = ifc.split('\n').find((l) => l.startsWith('FILE_NAME('))!;
+    expect(fileNameLine).toContain('A\\\\B-network.ifc'); // escaped backslash
+  });
+
+  it('clamps extreme/non-finite coordinates so STEP REALs never use exponential notation', () => {
+    const ifc = buildNetworkIfc({
+      building: { id: '22222222-2222-2222-2222-222222222222', name: 'HQ' },
+      storeyName: 'Network',
+      devices: [dev({ x: 1e21, y: -1e30, z: NaN })],
+      timestamp: '2026-06-12T00:00:00Z',
+    });
+    // (1e21).toFixed(6) === '1e+21' is an INVALID STEP REAL — no cartesian point may use exponents.
+    const cartesian = ifc.split('\n').filter((l) => l.includes('IFCCARTESIANPOINT'));
+    for (const l of cartesian) expect(l).not.toMatch(/e[+-]?\d/i);
+    // Clamped to ±MAX_COORD (1e15) and NaN→0, all in plain decimal notation.
+    expect(ifc).toContain('IFCCARTESIANPOINT((1000000000000000.000000,-1000000000000000.000000,0.000000))');
+  });
+
   it('zero devices → a valid empty discipline stub', () => {
     const ifc = buildNetworkIfc({
       building: { id: '22222222-2222-2222-2222-222222222222', name: 'HQ' },
