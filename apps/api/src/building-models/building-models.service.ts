@@ -7,6 +7,7 @@ import { meteredHashingStream, UploadTooLargeError, InvalidIfcError } from './me
 import { OrgMemberContext } from '../organizations/org-context.types';
 import { AuditService } from '../audit/audit.service';
 import { IRealtimeService, REALTIME_SERVICE } from '../realtime/realtime.types';
+import { PermissionsService } from '../permissions/permissions.service';
 import { PropertiesService } from '../properties/properties.service';
 import { StorageService } from '../storage/storage.service';
 import { BuildingModelsRepository } from './building-models.repository';
@@ -25,6 +26,7 @@ export class BuildingModelsService {
     private readonly storage: StorageService,
     private readonly properties: PropertiesService,
     private readonly audit: AuditService,
+    private readonly permissions: PermissionsService,
     @Inject(REALTIME_SERVICE) private readonly realtime: IRealtimeService,
   ) {}
 
@@ -34,16 +36,31 @@ export class BuildingModelsService {
     return model;
   }
 
+  /**
+   * F3 read gate. OWNER sees every building; otherwise the building (its own propertyId is the
+   * governing site) must be in the member's assigned scope. Out-of-scope reads 404 (not 403) so a
+   * model's existence is not revealed outside scope — mirrors the read-isolation other modules apply.
+   */
+  private async assertReadable(member: OrgMemberContext, propertyId: string): Promise<void> {
+    if (member.role === 'OWNER') return;
+    if (!(await this.permissions.inScope(member.organizationId, member.id, propertyId))) {
+      throw new NodeScopeException('MODEL_001', 'BUILDING_MODEL_NOT_FOUND', HttpStatus.NOT_FOUND);
+    }
+  }
+
   async getModel(member: OrgMemberContext, propertyId: string) {
+    await this.assertReadable(member, propertyId);
     return toBuildingModelDto(await this.loadModelOr404(member, propertyId));
   }
 
   async listVersions(member: OrgMemberContext, propertyId: string) {
+    await this.assertReadable(member, propertyId);
     const model = await this.loadModelOr404(member, propertyId);
     return (await this.repo.listVersions(member.organizationId, model.id)).map(toVersionDto);
   }
 
   async activateVersion(member: OrgMemberContext, propertyId: string, versionId: string) {
+    await this.permissions.assertCanConfigure(member, propertyId);
     const model = await this.loadModelOr404(member, propertyId);
     const version = await this.repo.findVersion(member.organizationId, versionId);
     if (!version || version.buildingModelId !== model.id) {
@@ -56,6 +73,7 @@ export class BuildingModelsService {
   }
 
   async deleteVersion(member: OrgMemberContext, propertyId: string, versionId: string): Promise<void> {
+    await this.permissions.assertCanConfigure(member, propertyId);
     const model = await this.loadModelOr404(member, propertyId);
     const version = await this.repo.findVersion(member.organizationId, versionId);
     if (!version || version.buildingModelId !== model.id) {
@@ -71,6 +89,7 @@ export class BuildingModelsService {
   }
 
   async getActiveFile(member: OrgMemberContext, propertyId: string): Promise<{ stream: Readable; fileName: string; sizeBytes: number }> {
+    await this.assertReadable(member, propertyId);
     const model = await this.loadModelOr404(member, propertyId);
     if (!model.activeVersionId) {
       throw new NodeScopeException('MODEL_004', 'MODEL_VERSION_NOT_FOUND', HttpStatus.NOT_FOUND);
@@ -85,6 +104,7 @@ export class BuildingModelsService {
     propertyId: string,
     versionId: string,
   ): Promise<{ stream: Readable; fileName: string; sizeBytes: number }> {
+    await this.assertReadable(member, propertyId);
     const model = await this.loadModelOr404(member, propertyId);
     const version = await this.repo.findVersion(member.organizationId, versionId);
     if (!version || version.buildingModelId !== model.id) {
@@ -105,6 +125,12 @@ export class BuildingModelsService {
     units: string | null,
     body: Readable,
   ): Promise<BuildingModelVersionDto> {
+    // F3 per-site configure scope FIRST — OWNER any; out-of-scope ADMIN → PERM_001; MEMBER → ORG_003
+    // (the controller's @OrgRoles already blocks MEMBER, this adds the per-site authority). Gating
+    // before any DB lookup means an out-of-scope ADMIN learns nothing about the target property's
+    // existence/type, and never triggers the (expensive) streamed upload. Mirrors activate/delete.
+    await this.permissions.assertCanConfigure(member, propertyId);
+
     const property = await this.properties.findInOrg(member.organizationId, propertyId);
     if (!property) throw new NodeScopeException('MODEL_001', 'BUILDING_MODEL_NOT_FOUND', HttpStatus.NOT_FOUND);
     if (property.type !== 'BUILDING') {

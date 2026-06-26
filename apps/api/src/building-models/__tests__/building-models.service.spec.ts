@@ -3,11 +3,13 @@ import { BuildingModelsService } from '../building-models.service';
 import { BuildingModelsRepository } from '../building-models.repository';
 import { StorageService } from '../../storage/storage.service';
 import { PropertiesService } from '../../properties/properties.service';
+import { PermissionsService } from '../../permissions/permissions.service';
 import { AuditService } from '../../audit/audit.service';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
 
 const owner = { id: 'mem-o', organizationId: 'org', role: 'OWNER' } as OrgMemberContext;
+const admin = { id: 'mem-a', organizationId: 'org', role: 'ADMIN' } as OrgMemberContext;
 const model = { id: 'm', organizationId: 'org', propertyId: 'b', name: 'B', activeVersionId: 'vACTIVE', version: 3, createdAt: new Date(), updatedAt: new Date() };
 
 describe('BuildingModelsService (unit)', () => {
@@ -20,20 +22,61 @@ describe('BuildingModelsService (unit)', () => {
   const properties = { findInOrg: jest.fn() } as any;
   const audit = { recordCreate: jest.fn(), recordDelete: jest.fn(), recordUpdate: jest.fn() } as any;
   const realtime = { pushToOrg: jest.fn() } as any;
+  // assertCanConfigure mirrors the real one: OWNER resolves; otherwise it's stubbed per-test.
+  const permissions = {
+    assertCanConfigure: jest.fn().mockResolvedValue(undefined),
+    inScope: jest.fn().mockResolvedValue(true),
+  } as any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    permissions.assertCanConfigure.mockResolvedValue(undefined);
+    permissions.inScope.mockResolvedValue(true);
     const ref = await Test.createTestingModule({
       providers: [
         BuildingModelsService,
         { provide: BuildingModelsRepository, useValue: repo },
         { provide: StorageService, useValue: storage },
         { provide: PropertiesService, useValue: properties },
+        { provide: PermissionsService, useValue: permissions },
         { provide: AuditService, useValue: audit },
         { provide: REALTIME_SERVICE, useValue: realtime },
       ],
     }).compile();
     service = ref.get(BuildingModelsService);
+  });
+
+  describe('F3 scope enforcement', () => {
+    it('activateVersion is gated by assertCanConfigure (out-of-scope ADMIN → PERM_001, no write)', async () => {
+      permissions.assertCanConfigure.mockRejectedValue(
+        Object.assign(new Error('x'), { code: 'PERM_001' }),
+      );
+      await expect(service.activateVersion(admin, 'b', 'v1')).rejects.toMatchObject({ code: 'PERM_001' });
+      expect(permissions.assertCanConfigure).toHaveBeenCalledWith(admin, 'b');
+      expect(repo.setActiveVersion).not.toHaveBeenCalled();
+      expect(repo.findByProperty).not.toHaveBeenCalled(); // gated before any load
+    });
+
+    it('deleteVersion is gated by assertCanConfigure', async () => {
+      permissions.assertCanConfigure.mockRejectedValue(
+        Object.assign(new Error('x'), { code: 'PERM_001' }),
+      );
+      await expect(service.deleteVersion(admin, 'b', 'v2')).rejects.toMatchObject({ code: 'PERM_001' });
+      expect(repo.deleteVersion).not.toHaveBeenCalled();
+    });
+
+    it('reads 404 for an out-of-scope, non-OWNER member (existence not revealed)', async () => {
+      permissions.inScope.mockResolvedValue(false);
+      await expect(service.getModel(admin, 'b')).rejects.toMatchObject({ code: 'MODEL_001' });
+      await expect(service.getActiveFile(admin, 'b')).rejects.toMatchObject({ code: 'MODEL_001' });
+      expect(repo.findByProperty).not.toHaveBeenCalled(); // gated before the model load
+    });
+
+    it('an in-scope ADMIN can read (OWNER-bypass not required)', async () => {
+      permissions.inScope.mockResolvedValue(true);
+      repo.findByProperty.mockResolvedValue(model);
+      await expect(service.getModel(admin, 'b')).resolves.toMatchObject({ propertyId: 'b' });
+    });
   });
 
   it('getModel throws MODEL_001 when no model exists', async () => {
