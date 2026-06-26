@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { Team, TeamMember, TeamProperty, MemberProperty, OrganizationMember } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PropertyTreeRepository } from '../property-tree/property-tree.repository';
 
 @Injectable()
 export class PermissionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tree: PropertyTreeRepository,
+  ) {}
 
   findMember(organizationId: string, userId: string): Promise<OrganizationMember | null> {
     return this.prisma.organizationMember.findFirst({ where: { organizationId, userId } });
@@ -41,21 +45,11 @@ export class PermissionsRepository {
     return rows.map((r) => r.id);
   }
 
-  /** The property and every ancestor up to the root (org-scoped), via a recursive CTE.
-   *  Used by the scoped realtime fan-out to resolve which sockets should receive an
-   *  event when a node is mutated — callers walk up the tree to find all interested rooms. */
-  async ancestorPropertyIds(organizationId: string, propertyId: string): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      WITH RECURSIVE ancestors AS (
-        SELECT "id", "parentId" FROM "Property"
-          WHERE "id" = ${propertyId} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p."id", p."parentId" FROM "Property" p
-          JOIN ancestors a ON p."id" = a."parentId" AND p."organizationId" = ${organizationId}
-      )
-      SELECT "id" FROM ancestors;
-    `;
-    return rows.map((r) => r.id);
+  /** The property and every ancestor up to the root (org-scoped). Used by the scoped realtime
+   *  fan-out to resolve which sockets should receive an event when a node is mutated. Delegates to
+   *  the shared PropertyTreeRepository (single source of the upward CTE). */
+  ancestorPropertyIds(organizationId: string, propertyId: string): Promise<string[]> {
+    return this.tree.ancestorIds(organizationId, propertyId);
   }
 
   /** Union of (team assignments via membership) and (direct member assignments). Deduped. */

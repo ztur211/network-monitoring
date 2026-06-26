@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PropertyTreeModule } from '../property-tree/property-tree.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { ConflictResolutionModule } from '../conflict/conflict.module';
 import { PermissionsModule } from '../permissions/permissions.module';
@@ -12,7 +13,7 @@ import { NetworkPropertyController } from './network-property.controller';
 import { ContainmentService } from './containment.service';
 
 @Module({
-  imports: [PrismaModule, OrganizationsModule, ConflictResolutionModule, PermissionsModule],
+  imports: [PrismaModule, PropertyTreeModule, OrganizationsModule, ConflictResolutionModule, PermissionsModule],
   controllers: [PropertiesController, NetworkPropertyController],
   providers: [
     PropertiesRepository,

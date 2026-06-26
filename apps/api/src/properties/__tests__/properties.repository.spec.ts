@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PropertyTreeRepository } from '../../property-tree/property-tree.repository';
 import { PropertiesRepository } from '../properties.repository';
 
 describe('PropertiesRepository (integration)', () => {
@@ -9,7 +10,7 @@ describe('PropertiesRepository (integration)', () => {
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [PropertiesRepository, PrismaService],
+      providers: [PropertiesRepository, PrismaService, PropertyTreeRepository],
     }).compile();
     repo = moduleRef.get(PropertiesRepository);
     prisma = moduleRef.get(PrismaService);

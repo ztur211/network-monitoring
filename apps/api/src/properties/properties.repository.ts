@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, Property, PropertyType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PropertyTreeRepository } from '../property-tree/property-tree.repository';
 
 type PropertyScope = { propertyIdIn: string[] } | null;
 
 @Injectable()
 export class PropertiesRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tree: PropertyTreeRepository,
+  ) {}
 
   create(data: { organizationId: string; parentId: string | null; type: PropertyType; name: string; code: string | null }): Promise<Property> {
     return this.prisma.property.create({ data });
@@ -89,16 +93,10 @@ export class PropertiesRepository {
     return rows.length > 0;
   }
 
-  /** Self + all ancestors (org-scoped), via an upward recursive CTE. */
-  async getAncestorIds(organizationId: string, id: string): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      WITH RECURSIVE ancestors AS (
-        SELECT id, "parentId" FROM "Property" WHERE id = ${id} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p.id, p."parentId" FROM "Property" p JOIN ancestors a ON p.id = a."parentId"
-      )
-      SELECT id FROM ancestors;`;
-    return rows.map((r) => r.id);
+  /** Self + all ancestors (org-scoped). Delegates to the shared PropertyTreeRepository (single
+   *  source of the upward CTE). */
+  getAncestorIds(organizationId: string, id: string): Promise<string[]> {
+    return this.tree.ancestorIds(organizationId, id);
   }
 
   /** Self → root ordered by depth ASC, returning type + code for naming-token resolution. */
