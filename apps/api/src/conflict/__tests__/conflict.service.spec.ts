@@ -6,7 +6,11 @@ import { ChangesetDto, WS_EVENTS } from '@nodescope/shared';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import { CreateDeviceDto, DEVICE_WRITABLE_FIELDS } from '../../devices/devices.dto';
 
-const mockRealtimeService = { pushToUser: jest.fn(), pushToOrg: jest.fn() };
+const mockRealtimeService = {
+  pushToUser: jest.fn(),
+  pushToOrg: jest.fn(),
+  evictOrgMember: jest.fn().mockResolvedValue(undefined),
+};
 
 /** Asserts a call throws a NodeScopeException carrying GEN_001 / 400. */
 function expectGen001BadRequest(fn: () => unknown): void {
@@ -207,6 +211,13 @@ describe('ConflictResolutionService', () => {
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
       expect(mockRealtimeService.pushToUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('evictOrgMember', () => {
+    it('delegates to the realtime service', async () => {
+      await service.evictOrgMember('org-1', 'user-7');
+      expect(mockRealtimeService.evictOrgMember).toHaveBeenCalledWith('org-1', 'user-7');
     });
   });
 });

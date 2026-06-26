@@ -98,4 +98,9 @@ export class ConflictResolutionService {
       timestamp: new Date().toISOString(),
     });
   }
+
+  /** Force-disconnect a removed member's live sockets so their stale org state cannot linger. */
+  async evictOrgMember(orgId: string, userId: string): Promise<void> {
+    await this.realtimeService.evictOrgMember(orgId, userId);
+  }
 }

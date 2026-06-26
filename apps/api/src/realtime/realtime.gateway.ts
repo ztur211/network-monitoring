@@ -259,6 +259,25 @@ export class RealtimeGateway
   }
 
   /**
+   * Evict a user removed from an org by disconnecting their live sockets. Their
+   * `socket.data.orgId` is set at connection and never refreshed mid-session, so a
+   * removed member's open socket would otherwise keep receiving `org:`/`scope:`
+   * broadcasts and keep ingesting metrics under that stale orgId. A room-leave can't
+   * fix the latter cross-node (RemoteSocket.data is a read-only snapshot on remote
+   * nodes); a disconnect propagates via the Redis adapter and forces handleConnection
+   * to re-resolve membership (now none) on the client's automatic reconnect. Scoped to
+   * `orgId` so unrelated sessions (future multi-org) are untouched.
+   */
+  async evictOrgMember(orgId: string, userId: string): Promise<void> {
+    const sockets = await this.server.in(`user:${userId}`).fetchSockets();
+    for (const socket of sockets) {
+      if ((socket.data as { orgId?: string | null }).orgId === orgId) {
+        socket.disconnect(true);
+      }
+    }
+  }
+
+  /**
    * Resync handler: client fires 'resync' after receiving ACCESS_CHANGED so the
    * gateway re-caches their effective roots without a full reconnect cycle.
    */
@@ -268,6 +287,11 @@ export class RealtimeGateway
     const userId = (client.data.user as { id: string } | undefined)?.id;
     if (!orgId || !userId) return;
     const member = await this.permissionsRepo.findMember(orgId, userId);
+    // A vanished membership only re-scopes (effectiveRoots → []) here; it deliberately
+    // does NOT evict from the org room or null orgId. Removal-from-org is handled
+    // authoritatively by removeMember → evictOrgMember (a force-disconnect). Treating a
+    // null read as eviction here would turn a transient DB blip (e.g. a lagging replica)
+    // into a durable drop of a still-valid member, with no self-healing trigger.
     client.data.effectiveRoots = member
       ? (member.role === 'OWNER'
           ? null

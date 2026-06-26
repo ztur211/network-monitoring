@@ -20,7 +20,11 @@ const repoMock = () => ({
   countOwners: jest.fn(),
 });
 const usersMock = () => ({ findByEmail: jest.fn() });
-const conflictMock = () => ({ buildUpdatePayload: jest.fn(), emitEntityEvent: jest.fn() });
+const conflictMock = () => ({
+  buildUpdatePayload: jest.fn(),
+  emitEntityEvent: jest.fn(),
+  evictOrgMember: jest.fn().mockResolvedValue(undefined),
+});
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
@@ -133,6 +137,9 @@ describe('OrganizationsService', () => {
         { userId: 'u2' },
         'org1',
       );
+      // The removed member's live sockets must be evicted so their fixed socket.data.orgId
+      // can no longer receive org broadcasts or ingest metrics into the org they left.
+      expect(conflict.evictOrgMember).toHaveBeenCalledWith('org1', 'u2');
     });
 
     it('throws ORG_002 when target is not a member', async () => {

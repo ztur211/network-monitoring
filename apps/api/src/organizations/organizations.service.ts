@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { OrgRole } from '@prisma/client';
 import { OrganizationDto, OrganizationMemberDto, WS_EVENTS } from '@nodescope/shared';
 import { OrganizationsRepository } from './organizations.repository';
@@ -9,6 +9,8 @@ import { CreateOrganizationDto, PatchOrganizationDto, ORG_WRITABLE_FIELDS } from
 
 @Injectable()
 export class OrganizationsService {
+  private readonly logger = new Logger(OrganizationsService.name);
+
   constructor(
     private readonly repo: OrganizationsRepository,
     private readonly users: UsersRepository,
@@ -129,6 +131,21 @@ export class OrganizationsService {
       { userId: targetUserId },
       organizationId,
     );
+    // Emit the removal event first (so the member's still-connected client can react),
+    // then evict: their socket's orgId is fixed at connection time, so without this a
+    // removed member keeps receiving org broadcasts and can keep ingesting metrics into
+    // the org until they happen to disconnect. Best-effort: the membership row is already
+    // gone (the authoritative state), so a realtime/Redis hiccup must not fail an
+    // otherwise-successful removal — log and move on. A still-connected socket re-resolves
+    // to no-org on its next reconnect regardless.
+    try {
+      await this.conflict.evictOrgMember(organizationId, targetUserId);
+    } catch (err) {
+      this.logger.error(
+        { err, organizationId, targetUserId },
+        'Failed to evict removed member sockets — membership is already deleted',
+      );
+    }
   }
 
   private toDto(o: {

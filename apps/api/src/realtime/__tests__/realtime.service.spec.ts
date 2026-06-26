@@ -283,6 +283,73 @@ describe('RealtimeGateway — service interface', () => {
     });
   });
 
+  describe('evictOrgMember', () => {
+    const makeRemoteSocket = (orgId: string | null) => ({
+      data: { orgId },
+      disconnect: jest.fn(),
+    });
+
+    it('disconnects only the user sockets whose orgId matches the removed org', async () => {
+      const match = makeRemoteSocket('org-1');
+      const other = makeRemoteSocket('org-2'); // a different org (future multi-org) — left alone
+      const fetchSockets = jest.fn().mockResolvedValue([match, other]);
+      (mockServer as unknown as { in: jest.Mock }).in = jest.fn().mockReturnValue({ fetchSockets });
+
+      await gateway.evictOrgMember('org-1', 'user-9');
+
+      expect((mockServer as unknown as { in: jest.Mock }).in).toHaveBeenCalledWith('user:user-9');
+      expect(match.disconnect).toHaveBeenCalledWith(true);
+      expect(other.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when the user has no connected sockets', async () => {
+      const fetchSockets = jest.fn().mockResolvedValue([]);
+      (mockServer as unknown as { in: jest.Mock }).in = jest.fn().mockReturnValue({ fetchSockets });
+
+      await expect(gateway.evictOrgMember('org-1', 'user-9')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('onResync', () => {
+    const makeLocalSocket = (orgId: string | null, rooms: string[]) => {
+      const roomSet = new Set<string>(rooms);
+      return {
+        data: { orgId, user: { id: 'u-1' } } as Record<string, unknown>,
+        rooms: roomSet,
+        join: jest.fn().mockImplementation((r: string) => { roomSet.add(r); return Promise.resolve(); }),
+        leave: jest.fn().mockImplementation((r: string) => { roomSet.delete(r); return Promise.resolve(); }),
+      } as unknown as Parameters<RealtimeGateway['onResync']>[0];
+    };
+
+    it('clears roots but retains the org room/orgId when findMember returns null', async () => {
+      // A null read must NOT be treated as eviction here — that is removeMember's job
+      // (force-disconnect). A transient DB null must not durably drop a valid member.
+      mockPermissionsRepo.findMember.mockResolvedValue(null);
+      const client = makeLocalSocket('org-1', ['org:org-1', 'scope:p-1', 'user:u-1']);
+
+      await gateway.onResync(client);
+
+      expect(client.leave).toHaveBeenCalledWith('scope:p-1'); // scope rooms re-derived (now none)
+      expect(client.leave).not.toHaveBeenCalledWith('org:org-1'); // org room retained
+      expect((client.data as { orgId: unknown }).orgId).toBe('org-1'); // orgId retained
+      expect((client.data as { effectiveRoots: unknown }).effectiveRoots).toEqual([]);
+      expect(mockPermissionsService.effectiveRoots).not.toHaveBeenCalled();
+    });
+
+    it('re-syncs scope rooms for a still-scoped member', async () => {
+      mockPermissionsRepo.findMember.mockResolvedValue({ id: 'mem-1', role: 'MEMBER' });
+      mockPermissionsService.effectiveRoots.mockResolvedValue(['p-2']);
+      const client = makeLocalSocket('org-1', ['org:org-1', 'scope:p-1']);
+
+      await gateway.onResync(client);
+
+      expect(client.leave).toHaveBeenCalledWith('scope:p-1'); // stale root dropped
+      expect(client.join).toHaveBeenCalledWith('scope:p-2');  // new root joined
+      expect(client.leave).not.toHaveBeenCalledWith('org:org-1'); // org room retained
+      expect((client.data as { orgId: unknown }).orgId).toBe('org-1');
+    });
+  });
+
   describe('handlePing', () => {
     it('returns PONG event with null data', () => {
       const response = gateway.handlePing();
