@@ -78,7 +78,7 @@ export class AiRateLimiterService {
     }
   }
 
-  async incrementUsage(userId: string, tokensUsed: number, scope?: string): Promise<void> {
+  async incrementUsage(userId: string, tokensUsed: number, ip: string, scope?: string): Promise<void> {
     const pipeline = this.redis.pipeline();
 
     pipeline.incr(hourlyKey(userId, scope));
@@ -90,6 +90,13 @@ export class AiRateLimiterService {
     pipeline.incrby(monthlyTokenKey(userId, scope), tokensUsed);
     const monthlyTtl = Math.floor((nextMonthStart().getTime() - Date.now()) / 1000) + 86400;
     pipeline.expire(monthlyTokenKey(userId, scope), monthlyTtl);
+
+    // Per-IP hourly request counter — checkRateLimits reads ipHourlyKey and throws
+    // GEN_004 past IP_HOURLY_LIMIT, but nothing wrote this key, so the per-IP abuse
+    // guard (one IP hammering AI across many accounts) was dead. Increment it here,
+    // mirroring the hourly user counter (1 per request, 1-hour TTL).
+    pipeline.incr(ipHourlyKey(ip, scope));
+    pipeline.expire(ipHourlyKey(ip, scope), 3600);
 
     await pipeline.exec();
   }

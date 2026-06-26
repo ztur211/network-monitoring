@@ -107,17 +107,26 @@ describe('AiRateLimiterService', () => {
   });
 
   describe('incrementUsage', () => {
-    it('increments hourly, daily, and monthly token counters via pipeline', async () => {
-      await service.incrementUsage('user-1', 500);
+    it('increments hourly, daily, per-IP, and monthly token counters via pipeline', async () => {
+      await service.incrementUsage('user-1', 500, '127.0.0.1');
       expect(mockRedis.pipeline).toHaveBeenCalled();
-      expect(mockPipeline.incr).toHaveBeenCalledTimes(2);
+      // hourly + daily + per-IP = 3 incr; monthly tokens = 1 incrby; each has an expire = 4
+      expect(mockPipeline.incr).toHaveBeenCalledTimes(3);
       expect(mockPipeline.incrby).toHaveBeenCalledTimes(1);
-      expect(mockPipeline.expire).toHaveBeenCalledTimes(3);
+      expect(mockPipeline.expire).toHaveBeenCalledTimes(4);
       expect(mockPipeline.exec).toHaveBeenCalled();
     });
 
-    it('writes scoped keys when a bucket is given', async () => {
-      await service.incrementUsage('user-1', 500, 'onboarding');
+    it('increments the per-IP hourly counter so checkRateLimits GEN_004 is reachable', async () => {
+      // Regression guard: this key was read by checkRateLimits but never written,
+      // making the per-IP abuse limit a dead control.
+      await service.incrementUsage('user-1', 500, '203.0.113.7');
+      const incrKeys = mockPipeline.incr.mock.calls.map((c) => c[0] as string);
+      expect(incrKeys.some((k) => k.startsWith('ai:rate:ip:') && k.includes('203.0.113.7'))).toBe(true);
+    });
+
+    it('writes scoped keys (including the per-IP key) when a bucket is given', async () => {
+      await service.incrementUsage('user-1', 500, '127.0.0.1', 'onboarding');
       const incrKeys = mockPipeline.incr.mock.calls.map((c) => c[0] as string);
       const incrbyKeys = mockPipeline.incrby.mock.calls.map((c) => c[0] as string);
       expect([...incrKeys, ...incrbyKeys].every((k) => k.includes('onboarding'))).toBe(true);

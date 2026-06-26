@@ -118,6 +118,8 @@ describe('AiService', () => {
       expect(result.content).toBe('Hello world');
       expect(result.providerStatus).toBe('ok');
       expect(result.tokensUsed).toBe(220);
+      // The caller IP must reach incrementUsage so the per-IP hourly counter is written.
+      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 220, '127.0.0.1');
     });
 
     it('re-throws NodeScopeException from rate limiter without calling adapter', async () => {
@@ -274,7 +276,7 @@ describe('AiService', () => {
       expect(result.providerStatus).toBe('ok');
       expect(result.content.length).toBe(300);
       expect(result.tokensUsed).toBe(80);
-      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 80, 'onboarding');
+      expect(mockRateLimiter.incrementUsage).toHaveBeenCalledWith('user-1', 80, '127.0.0.1', 'onboarding');
     });
 
     it('does NOT call conversation history (onboarding is stateless on AI side)', async () => {

@@ -77,6 +77,7 @@ export class AiService {
       // caught below and relabel a healthy response as provider-unavailable.
       const usage = await this.recordUsageBestEffort(
         userId,
+        ip,
         conversationId,
         dto.content,
         adapterResponse.content,
@@ -110,6 +111,7 @@ export class AiService {
    */
   private async recordUsageBestEffort(
     userId: string,
+    ip: string,
     conversationId: string,
     userMessage: string,
     assistantMessage: string,
@@ -118,7 +120,7 @@ export class AiService {
     try {
       await Promise.all([
         this.conversation.appendMessages(userId, conversationId, userMessage, assistantMessage),
-        this.rateLimiter.incrementUsage(userId, totalTokens),
+        this.rateLimiter.incrementUsage(userId, totalTokens, ip),
       ]);
       return await this.rateLimiter.getUsageCounts(userId);
     } catch (err) {
@@ -176,7 +178,7 @@ export class AiService {
 
       const content = adapterResponse.content.slice(0, ONBOARDING_MESSAGE_MAX_CHARS);
       const totalTokens = adapterResponse.inputTokens + adapterResponse.outputTokens;
-      await this.rateLimiter.incrementUsage(userId, totalTokens, ONBOARDING_RATE_SCOPE);
+      await this.rateLimiter.incrementUsage(userId, totalTokens, ip, ONBOARDING_RATE_SCOPE);
 
       return { content, providerStatus: 'ok', tokensUsed: totalTokens };
     } catch (err) {
