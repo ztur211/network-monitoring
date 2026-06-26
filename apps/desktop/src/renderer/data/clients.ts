@@ -6,7 +6,8 @@ export async function buildClients() {
   const getToken = () => window.nodescope.auth.getToken();
   return {
     rest: createRestClient({ baseUrl: apiUrl, getToken }),
-    realtime: createRealtimeClient({ baseUrl: apiUrl, getToken }),
+    // Electron uses a websocket-only transport (no browser polling fallback) and bearer-token auth.
+    realtime: createRealtimeClient({ baseUrl: apiUrl, getToken, transports: ['websocket'] }),
   };
 }
 

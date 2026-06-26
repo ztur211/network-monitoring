@@ -49,6 +49,7 @@ function freshDevice(overrides: Partial<DeviceDto> = {}): DeviceDto {
     x: null,
     y: null,
     z: null,
+    ifcGlobalId: null,
     ipAddress: '192.168.1.1',
     macAddress: 'AA:BB:CC:DD:EE:FF',
     notes: null,
