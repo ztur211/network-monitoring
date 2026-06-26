@@ -7,12 +7,28 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { IsString, IsNotEmpty } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
 import { AgentTokenGuard } from './agent-token.guard';
 import { AgentTokenService } from './agent-token.service';
 import { AgentRepository } from './agent.repository';
 import { SnmpService } from '../snmp/snmp.service';
+
+// `enroll` redeems a single-use code for a long-lived agent token — a
+// credential-exchange endpoint on a @Public (session-less) route, so its only
+// brute-force/DoS backstop is per-IP rate limiting. The global `auth` throttler
+// (5/15min in prod) already covers every route incidentally, but relying on that
+// is fragile: retuning `auth` for login UX, or a future broad @SkipThrottle, would
+// silently strip enrollment's protection. Pin it explicitly here (same strict
+// posture as sign-in/sign-up) so the intent is route-local and can't regress.
+// Lax in development so repeated local enrollments don't lock you out.
+const STRICT_ENROLL_THROTTLE = {
+  auth: {
+    limit: process.env.NODE_ENV === 'production' ? 5 : 200,
+    ttl: 15 * 60 * 1000,
+  },
+};
 
 export class EnrollDto {
   @IsString()
@@ -46,6 +62,8 @@ export class AgentIngestController {
    */
   @Post('enroll')
   @Public()
+  @Throttle(STRICT_ENROLL_THROTTLE)
+  @SkipThrottle({ default: true })
   async enroll(@Body() body: EnrollDto) {
     const data = await this.tokens.enroll(body.code, {
       name: body.name,
