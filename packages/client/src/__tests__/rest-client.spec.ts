@@ -23,6 +23,26 @@ describe('createRestClient', () => {
     await expect(client.listProperties()).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('aborts a hung request after the timeout and throws a TIMEOUT ApiError', async () => {
+    vi.useFakeTimers();
+    // fetch that never settles on its own, but rejects once its abort signal fires.
+    const fetchSpy = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const client = createRestClient({ baseUrl: 'http://api', getToken: () => null, timeoutMs: 5_000 });
+
+    const p = client.getOrganization();
+    const expectation = expect(p).rejects.toMatchObject({ code: 'TIMEOUT', status: 0 });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expectation;
+    await expect(p).rejects.toBeInstanceOf(ApiError);
+    vi.useRealTimers();
+  });
+
   describe('model import methods', () => {
     it('uploadModelVersion POSTs raw bytes as octet-stream with the fileName query', async () => {
       const version = { id: 'ver-1', versionNumber: 2, fileName: 'house.ifc' };
