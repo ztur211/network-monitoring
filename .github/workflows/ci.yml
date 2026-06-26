@@ -12,11 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npm run lint
 
   unit:
@@ -25,11 +21,7 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npm run test:unit
 
   integration:
@@ -64,11 +56,7 @@ jobs:
       REDIS_URL: redis://localhost:6380
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
@@ -121,11 +109,7 @@ jobs:
       SECRET_ENCRYPTION_KEY: Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/setup
       # MinIO can't run as a GitHub service container (the minio/minio image needs the
       # `server /data` command, which service containers can't supply), so start it as a step.
       - name: Start MinIO (object storage; StorageService.ensureBucket runs at AppModule boot)
@@ -151,9 +135,5 @@ jobs:
     needs: e2e
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npm run build
