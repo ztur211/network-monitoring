@@ -15,4 +15,10 @@ export interface AiResponse {
 export interface AiProviderAdapter {
   complete(payload: AiCompletionPayload): Promise<AiResponse>;
   stream(payload: AiCompletionPayload, onChunk: (token: string) => void): Promise<AiResponse>;
+  /**
+   * Optional liveness probe for availability-aware provider selection (prefer a local model only when
+   * it's actually running). Implemented by the local/OpenAI-compatible adapter; absent on adapters
+   * whose availability can't be cheaply checked without a billable call (e.g. Claude).
+   */
+  isAvailable?(): Promise<boolean>;
 }

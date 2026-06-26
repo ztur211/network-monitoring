@@ -70,6 +70,21 @@ describe('OpenAICompatibleAdapter', () => {
       ).rejects.toThrow(/502/);
     });
 
+    it('passes an abort signal (request timeout) and folds the error body into the message', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'model is loading',
+      });
+
+      await expect(
+        adapter.complete({ systemPrompt: 's', history: [], userMessage: 'hi' }),
+      ).rejects.toThrow(/503 — model is loading/);
+
+      const opts = (global.fetch as jest.Mock).mock.calls[0][1];
+      expect(opts.signal).toBeInstanceOf(AbortSignal);
+    });
+
     it('returns empty content when choices is empty', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
@@ -124,6 +139,19 @@ describe('OpenAICompatibleAdapter', () => {
       await expect(
         adapter.stream({ systemPrompt: 's', history: [], userMessage: 'hi' }, () => undefined),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('isAvailable', () => {
+    it('returns true when the local model server answers /models', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true });
+      await expect(adapter.isAvailable()).resolves.toBe(true);
+      expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toMatch(/\/models$/);
+    });
+
+    it('returns false (never throws) when the server is down', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'));
+      await expect(adapter.isAvailable()).resolves.toBe(false);
     });
   });
 });

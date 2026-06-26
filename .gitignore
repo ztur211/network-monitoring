@@ -9,6 +9,8 @@ docs/*
 # …except product-knowledge: the AI loads it at runtime (docs/product-knowledge),
 # so it must ship in the repo + image, not stay local-only.
 !docs/product-knowledge/
+# …and design docs: versioned architecture/decision records belong in the repo.
+!docs/design/
 .claude/
 PROGRESS.md
 
