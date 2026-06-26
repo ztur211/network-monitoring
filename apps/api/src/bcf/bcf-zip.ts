@@ -51,6 +51,29 @@ export interface ParsedBcf {
 const xml = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 const build = new XMLBuilder({ ignoreAttributes: false, attributeNamePrefix: '@_', format: true });
 
+/** Thrown when a `.bcfzip` decompresses (or declares it will) beyond the allowed size. */
+export class BcfArchiveTooLargeError extends Error {
+  constructor() {
+    super('BCF archive decompresses beyond the allowed size');
+    this.name = 'BcfArchiveTooLargeError';
+  }
+}
+
+// The upload is capped at 50 MB *compressed*; DEFLATE reaches ~1000:1 on repetitive XML,
+// so that can inflate to many GB and OOM the process (zip bomb). Cap the *decompressed*
+// size too. Read at call-time so it can be tuned/overridden per environment (and in tests).
+function maxDecompressedBytes(): number {
+  const n = parseInt(process.env.BCF_MAX_DECOMPRESSED_BYTES ?? String(200 * 1024 * 1024), 10);
+  return Number.isFinite(n) && n > 0 ? n : 200 * 1024 * 1024;
+}
+
+// JSZip exposes the central-directory declared size on the private `_data`; reading it lets
+// us reject an honest bomb *before* materializing the entry (a post-hoc check would OOM
+// first). Falls back to 0 when unavailable, degrading to the decoded-bytes backstop.
+function declaredSize(file: JSZip.JSZipObject): number {
+  return (file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+}
+
 const arr = <T>(v: T | T[] | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const xyz = (n: { X: number; Y: number; Z: number }): [number, number, number] => [Number(n.X), Number(n.Y), Number(n.Z)];
 const pt = ([x, y, z]: number[]) => ({ X: x, Y: y, Z: z });
@@ -58,6 +81,36 @@ const pt = ([x, y, z]: number[]) => ({ X: x, Y: y, Z: z });
 /** Parse a BCF 2.1 `.bcfzip` archive into topics (markup + primary viewpoint + snapshot). Pure. */
 export async function readBcfZip(buffer: Buffer): Promise<ParsedBcf> {
   const zip = await JSZip.loadAsync(buffer);
+  const cap = maxDecompressedBytes();
+
+  // Pre-flight: reject before decoding anything if the declared decompressed total — or
+  // any single entry — already exceeds the cap. Catches the realistic (honestly-declared)
+  // zip bomb without ever materializing it.
+  let totalDeclared = 0;
+  for (const f of Object.values(zip.files)) {
+    const s = declaredSize(f);
+    if (s > cap) throw new BcfArchiveTooLargeError();
+    totalDeclared += s;
+    if (totalDeclared > cap) throw new BcfArchiveTooLargeError();
+  }
+
+  // Backstop: track bytes actually decoded, in case a header understates its size. A single
+  // entry that lies small but inflates huge would still need streaming to fully bound — the
+  // per-entry declared check above covers the realistic case.
+  let decoded = 0;
+  const decodeString = async (f: JSZip.JSZipObject): Promise<string> => {
+    const s = await f.async('string');
+    decoded += Buffer.byteLength(s);
+    if (decoded > cap) throw new BcfArchiveTooLargeError();
+    return s;
+  };
+  const decodeBuffer = async (f: JSZip.JSZipObject): Promise<Buffer> => {
+    const b = await f.async('nodebuffer');
+    decoded += b.length;
+    if (decoded > cap) throw new BcfArchiveTooLargeError();
+    return b;
+  };
+
   const topics: ParsedTopic[] = [];
   const guids = new Set<string>();
   for (const path of Object.keys(zip.files)) {
@@ -65,12 +118,12 @@ export async function readBcfZip(buffer: Buffer): Promise<ParsedBcf> {
     if (m) guids.add(m[1]);
   }
   for (const guid of guids) {
-    const markup = xml.parse(await zip.file(`${guid}/markup.bcf`)!.async('string')).Markup;
+    const markup = xml.parse(await decodeString(zip.file(`${guid}/markup.bcf`)!)).Markup;
     const T = markup.Topic;
     const vpFile = zip.file(`${guid}/viewpoint.bcfv`);
     const viewpoints: ParsedViewpoint[] = [];
     if (vpFile) {
-      const vi = xml.parse(await vpFile.async('string')).VisualizationInfo;
+      const vi = xml.parse(await decodeString(vpFile)).VisualizationInfo;
       const cam = vi.PerspectiveCamera ?? vi.OrthogonalCamera;
       const snap = zip.file(`${guid}/snapshot.png`);
       viewpoints.push({
@@ -92,7 +145,7 @@ export async function readBcfZip(buffer: Buffer): Promise<ParsedBcf> {
           },
         },
         clippingPlanes: arr(vi.ClippingPlanes?.ClippingPlane),
-        snapshotPng: snap ? await snap.async('nodebuffer') : undefined,
+        snapshotPng: snap ? await decodeBuffer(snap) : undefined,
       });
     }
     topics.push({

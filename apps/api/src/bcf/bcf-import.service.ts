@@ -7,7 +7,7 @@ import { PropertiesService } from '../properties/properties.service';
 import { DevicesRepository } from '../devices/devices.repository';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { readBcfZip } from './bcf-zip';
+import { readBcfZip, BcfArchiveTooLargeError } from './bcf-zip';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
@@ -75,7 +75,12 @@ export class BcfImportService {
     let parsed;
     try {
       parsed = await readBcfZip(buffer);
-    } catch {
+    } catch (err) {
+      // A zip bomb (small compressed, huge decompressed) is a size problem, not a malformed
+      // one — surface it as 413 like the compressed-size guard above, not 422.
+      if (err instanceof BcfArchiveTooLargeError) {
+        throw new NodeScopeException('BCF_001', 'BCF_FILE_TOO_LARGE', HttpStatus.PAYLOAD_TOO_LARGE);
+      }
       throw new NodeScopeException('BCF_003', 'MALFORMED_BCF_ZIP', HttpStatus.UNPROCESSABLE_ENTITY);
     }
 

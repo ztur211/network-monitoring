@@ -1,4 +1,4 @@
-import { readBcfZip, writeBcfZip, ParsedTopic } from '../bcf-zip';
+import { readBcfZip, writeBcfZip, BcfArchiveTooLargeError, ParsedTopic } from '../bcf-zip';
 
 const topic: ParsedTopic = {
   guid: 'c2c0e1a0-0000-0000-0000-000000000001',
@@ -70,5 +70,32 @@ describe('bcf-zip', () => {
     expect(zip.file('bcf.version')).not.toBeNull();
     expect(zip.file(`${topic.guid}/markup.bcf`)).not.toBeNull();
     expect(zip.file(`${topic.guid}/viewpoint.bcfv`)).not.toBeNull();
+  });
+
+  describe('zip-bomb guard', () => {
+    const KEY = 'BCF_MAX_DECOMPRESSED_BYTES';
+    const original = process.env[KEY];
+    afterEach(() => {
+      if (original === undefined) delete process.env[KEY];
+      else process.env[KEY] = original;
+    });
+
+    it('rejects an archive whose declared decompressed size exceeds the cap', async () => {
+      process.env[KEY] = '10000'; // 10 KB cap
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      // 50 KB of highly-compressible XML — declares uncompressedSize ~50 KB but the
+      // compressed archive is tiny (the zip-bomb shape). Must be rejected before decode.
+      zip.file('topic-1/markup.bcf', 'A'.repeat(50_000));
+      const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+      await expect(readBcfZip(buf)).rejects.toBeInstanceOf(BcfArchiveTooLargeError);
+    });
+
+    it('does not trip the guard for a normal archive under the cap', async () => {
+      process.env[KEY] = String(1024 * 1024); // 1 MB — comfortably above a 1-topic archive
+      const parsed = await readBcfZip(await writeBcfZip([topic]));
+      expect(parsed.topics).toHaveLength(1);
+    });
   });
 });
