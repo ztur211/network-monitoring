@@ -19,6 +19,12 @@ export async function runCycle(deps: {
   ];
   const batch = await pollDevices(devices, collectors, deps.concurrency);
   deps.buffer.enqueue(batch);
-  await deps.buffer.drain(deps.client.ingest);
-  await deps.client.heartbeat();
+  // Liveness must not be coupled to data delivery: drain() re-throws on a transient ingest
+  // failure (5xx/429/network), but the heartbeat must still go out or the backend starts
+  // marking a healthy agent offline. Run it in finally so a failed drain can't skip it.
+  try {
+    await deps.buffer.drain(deps.client.ingest);
+  } finally {
+    await deps.client.heartbeat();
+  }
 }

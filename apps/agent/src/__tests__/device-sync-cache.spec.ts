@@ -30,4 +30,18 @@ describe('cachedFetch', () => {
     expect(await get()).toEqual(['ok']); // retries immediately despite the interval
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('shares one in-flight fetch across concurrent callers (no duplicate syncs)', async () => {
+    let resolve!: (v: string[]) => void;
+    const fetch = vi.fn(() => new Promise<string[]>((r) => { resolve = r; }));
+    const get = cachedFetch(fetch, 5000, () => 0);
+
+    const p1 = get();
+    const p2 = get(); // arrives while the first fetch is still pending
+    resolve(['x']);
+
+    expect(await p1).toEqual(['x']);
+    expect(await p2).toEqual(['x']);
+    expect(fetch).toHaveBeenCalledTimes(1); // one real fetch, not two
+  });
 });

@@ -1,6 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseArgs, runCli, AGENT_VERSION } from '../cli.js';
+import { parseArgs, runCli, nonOverlapping, AGENT_VERSION } from '../cli.js';
 import type { CliDeps } from '../cli.js';
+
+describe('nonOverlapping', () => {
+  it('skips a tick while the previous cycle is still running, then resumes', async () => {
+    let resolveFirst!: () => void;
+    const cycle = vi
+      .fn<() => Promise<void>>()
+      .mockImplementationOnce(() => new Promise<void>((r) => { resolveFirst = r; }))
+      .mockImplementation(() => Promise.resolve());
+    const tick = nonOverlapping(cycle);
+
+    const first = tick(); // starts the (pending) first cycle
+    void tick();          // fires while the first is in flight → skipped
+    expect(cycle).toHaveBeenCalledTimes(1);
+
+    resolveFirst();       // first cycle completes
+    await first;          // its finally clears the running flag
+    await tick();         // now runs again (resolves immediately)
+    expect(cycle).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the running flag even when a cycle rejects', async () => {
+    const cycle = vi.fn().mockRejectedValue(new Error('boom'));
+    const tick = nonOverlapping(cycle);
+    await expect(tick()).rejects.toThrow('boom');
+    await expect(tick()).rejects.toThrow('boom'); // not stuck "running"
+    expect(cycle).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('parseArgs', () => {
   it('returns version command for --version', () => {

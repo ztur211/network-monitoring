@@ -35,6 +35,26 @@ function getVersion(): string {
 
 export const AGENT_VERSION: string = getVersion();
 
+/**
+ * Wrap an async cycle so that if a tick is still running when the next fires, the new one is
+ * skipped instead of overlapping. The probe cycle's wall-time (devices × probe timeout) can
+ * exceed probeIntervalMs for a large or unreachable fleet; without this, setInterval fires
+ * overlapping cycles whose two buffer.drain() calls race on the same head batch — double-sending
+ * it and then dropping a never-sent one (data loss).
+ */
+export function nonOverlapping(cycle: () => Promise<void>): () => Promise<void> {
+  let running = false;
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      await cycle();
+    } finally {
+      running = false;
+    }
+  };
+}
+
 export interface ParsedArgs {
   command: 'version' | 'enroll' | 'run';
   options: { code?: string; url?: string };
@@ -132,8 +152,12 @@ async function runDaemon(): Promise<void> {
   };
   const buffer = createBuffer({ path: process.env.NODESCOPE_AGENT_QUEUE ?? '/var/lib/nodescope-agent/queue.jsonl', maxItems: 5000 });
   const probe = probeFromConfig(cfg);
-  const tick = () => runCycle({ client, buffer, probe, concurrency: cfg.concurrency, snmpFactory: netSnmpSessionFactory }).catch((e) => console.error('[agent] cycle error', e));
-  const interval = setInterval(tick, cfg.probeIntervalMs);
+  const tick = nonOverlapping(() =>
+    runCycle({ client, buffer, probe, concurrency: cfg.concurrency, snmpFactory: netSnmpSessionFactory }).catch((e) =>
+      console.error('[agent] cycle error', e),
+    ),
+  );
+  const interval = setInterval(() => void tick(), cfg.probeIntervalMs);
   void tick();
   const shutdown = async () => {
     clearInterval(interval);
