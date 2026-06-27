@@ -5,11 +5,36 @@ import { PrismaService } from '../prisma/prisma.service';
 const CAGG_BUCKET_SECONDS = 300; // granularity of the MonitoringMetric_5m continuous aggregate
 
 /** Best-effort parse of a Postgres interval string ('5 minutes', '1 hour', …) to seconds. */
-function bucketSeconds(bucket: string): number {
+export function bucketSeconds(bucket: string): number {
   const m = /^\s*(\d+)\s*(second|minute|hour|day|week)s?\s*$/i.exec(bucket);
   if (!m) return 0;
   const factors: Record<string, number> = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800 };
   return Number(m[1]) * (factors[m[2].toLowerCase()] ?? 0);
+}
+
+/**
+ * Whether a metric query may be served from the 5-min continuous aggregate instead of the raw
+ * hypertable. The cagg pre-averages each 5-min bucket, so it can ONLY reproduce the raw result
+ * when the requested window introduces no partial buckets — i.e. the requested bucket is a whole
+ * multiple of 5 min AND `from`/`to` sit on the 5-min grid (TimescaleDB's time_bucket is
+ * epoch-aligned, and a unix-ms multiple of 300_000 lands on a 5-min boundary).
+ *
+ * For an unaligned window the two paths legitimately differ at the edges (raw filters individual
+ * samples by `time`; the cagg filters whole buckets by `bucket`-start), which made the same chart
+ * request return different averages depending solely on whether the aggregate was available — and
+ * the `.catch` fallback to raw made it nondeterministic. Gating on alignment makes cagg and raw
+ * identical wherever cagg is used (so the fallback is safe too), at the cost of serving unaligned
+ * windows from raw. Callers wanting the aggregate's speed should request grid-aligned ranges.
+ */
+export function isCaggEligible(from: Date, to: Date, bucket: string): boolean {
+  const bs = bucketSeconds(bucket);
+  const gridMs = CAGG_BUCKET_SECONDS * 1000;
+  return (
+    bs >= CAGG_BUCKET_SECONDS &&
+    bs % CAGG_BUCKET_SECONDS === 0 &&
+    from.getTime() % gridMs === 0 &&
+    to.getTime() % gridMs === 0
+  );
 }
 
 /**
@@ -142,10 +167,11 @@ export class MonitoringRepository {
     to: Date,
     bucket: string,
   ): Promise<{ bucket: Date; avg: number }[]> {
-    // For buckets at/above the aggregate granularity, read the pre-aggregated 5-min rollup
-    // (re-bucketed) instead of scanning the raw hypertable. Fall back to raw if the
-    // aggregate is unavailable; finer buckets always use raw (the rollup can't serve them).
-    if (bucketSeconds(bucket) >= CAGG_BUCKET_SECONDS) {
+    // Read the pre-aggregated 5-min rollup (re-bucketed) instead of scanning the raw hypertable
+    // ONLY when the window is grid-aligned, so the rollup reproduces the raw result exactly (see
+    // isCaggEligible). Fall back to raw if the aggregate is unavailable — safe here because, for an
+    // aligned window, raw and cagg are identical. Unaligned windows (and sub-5-min buckets) use raw.
+    if (isCaggEligible(from, to, bucket)) {
       return this.queryMetricFromCagg(organizationId, deviceId, metric, from, to, bucket).catch(() =>
         this.queryMetricFromRaw(organizationId, deviceId, metric, from, to, bucket),
       );
