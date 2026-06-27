@@ -22,6 +22,9 @@ const mockRedis = {
   srem: jest.fn().mockResolvedValue(1),
   scard: jest.fn().mockResolvedValue(0),
   set: jest.fn().mockResolvedValue(null),
+  hset: jest.fn().mockResolvedValue(1),
+  hdel: jest.fn().mockResolvedValue(1),
+  hgetall: jest.fn().mockResolvedValue({}),
   duplicate: jest.fn().mockReturnValue({
     on: jest.fn(),
     subscribe: jest.fn().mockResolvedValue(undefined),
@@ -219,14 +222,43 @@ describe('RealtimeGateway — service interface', () => {
       expect(mockDataSources.getLatestMetrics).not.toHaveBeenCalled();
     });
 
-    it('runs the push cycle when the lock is acquired', async () => {
+    it('runs the push cycle when the lock is acquired (reads the conn-org index)', async () => {
       mockRedis.set.mockResolvedValueOnce('OK');
-      const fetchSockets = jest.fn().mockResolvedValue([]);
+      mockRedis.hgetall.mockResolvedValueOnce({});
+
+      await run();
+
+      expect(mockRedis.hgetall).toHaveBeenCalledWith('nodescope:conn:userorg');
+    });
+
+    it('pushes latest metrics to users grouped by org from the conn-org index', async () => {
+      mockRedis.set.mockResolvedValueOnce('OK');
+      mockRedis.hgetall.mockResolvedValueOnce({ u1: 'org1', u2: 'org1', u3: 'org2' });
+      mockDataSources.getLatestMetrics
+        .mockResolvedValueOnce(new Map([['u1', { x: 1 }], ['u2', { x: 2 }]]))
+        .mockResolvedValueOnce(new Map([['u3', { x: 3 }]]));
+
+      await run();
+
+      expect(mockDataSources.getLatestMetrics).toHaveBeenCalledWith('org1', expect.arrayContaining(['u1', 'u2']));
+      expect(mockDataSources.getLatestMetrics).toHaveBeenCalledWith('org2', ['u3']);
+      expect(mockServer.to).toHaveBeenCalledWith('user:u1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:u3');
+    });
+
+    it('falls back to fetchSockets when the conn-org index read fails', async () => {
+      mockRedis.set.mockResolvedValueOnce('OK');
+      mockRedis.hgetall.mockRejectedValueOnce(new Error('redis down'));
+      const fetchSockets = jest.fn().mockResolvedValue([
+        { data: { user: { id: 'u9' }, orgId: 'org9' } },
+      ]);
       (mockServer as unknown as { fetchSockets: jest.Mock }).fetchSockets = fetchSockets;
+      mockDataSources.getLatestMetrics.mockResolvedValueOnce(new Map([['u9', { x: 9 }]]));
 
       await run();
 
       expect(fetchSockets).toHaveBeenCalledTimes(1);
+      expect(mockDataSources.getLatestMetrics).toHaveBeenCalledWith('org9', ['u9']);
     });
   });
 
@@ -264,6 +296,8 @@ describe('RealtimeGateway — service interface', () => {
       expect(joined).toContain('org:org-abc');
       expect(joined).toContain('user:u-1');
       expect(joined).toContain('tier:PERSONAL_FREE');
+      // Indexes userId -> orgId for the metrics push
+      expect(mockRedis.hset).toHaveBeenCalledWith('nodescope:conn:userorg', 'u-1', 'org-abc');
     });
 
     it('does NOT join any org room when user has no org membership', async () => {
@@ -280,6 +314,31 @@ describe('RealtimeGateway — service interface', () => {
       const joined = client._joinedRooms;
       expect(joined.some((r) => r.startsWith('org:'))).toBe(false);
       expect(joined).toContain('user:u-2');
+      // No org → not indexed for the metrics push
+      expect(mockRedis.hset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleDisconnect', () => {
+    const socket = (userId?: string) =>
+      ({ data: userId ? { user: { id: userId } } : {}, id: 'sock-1' }) as unknown as Parameters<RealtimeGateway['handleDisconnect']>[0];
+
+    it('removes the conn-org index entry when the last socket disconnects', async () => {
+      mockRedis.scard.mockResolvedValueOnce(0);
+      await gateway.handleDisconnect(socket('u-1'));
+      expect(mockRedis.srem).toHaveBeenCalledWith('nodescope:connections:u-1', 'sock-1');
+      expect(mockRedis.hdel).toHaveBeenCalledWith('nodescope:conn:userorg', 'u-1');
+    });
+
+    it('keeps the conn-org index entry while the user has other sockets', async () => {
+      mockRedis.scard.mockResolvedValueOnce(2);
+      await gateway.handleDisconnect(socket('u-1'));
+      expect(mockRedis.hdel).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op for a socket with no authenticated user', async () => {
+      await gateway.handleDisconnect(socket(undefined));
+      expect(mockRedis.srem).not.toHaveBeenCalled();
     });
   });
 

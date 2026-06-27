@@ -4,6 +4,11 @@ export const REALTIME_SERVICE = Symbol('REALTIME_SERVICE');
 
 export const REDIS_KEY_CONNECTIONS = (userId: string) => `nodescope:connections:${userId}`;
 export const REDIS_KEY_PUSH_SCHEDULER_LOCK = 'nodescope:lock:push_scheduler';
+// userId -> orgId for users with at least one live socket. Lets the 30s metrics push enumerate
+// connected (user, org) pairs from one Redis read instead of fetchSockets() serializing every
+// socket's full data cluster-wide. A crashed node can leave a stale entry — benign: it only
+// triggers a no-op push to a user-room with no sockets, and self-heals on the user's reconnect.
+export const REDIS_KEY_CONN_ORG = 'nodescope:conn:userorg';
 
 export interface IRealtimeService {
   pushToUser(userId: string, event: string, payload: unknown): void;

@@ -26,6 +26,7 @@ import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope
 import {
   IRealtimeService,
   REDIS_KEY_CONNECTIONS,
+  REDIS_KEY_CONN_ORG,
   REDIS_KEY_PUSH_SCHEDULER_LOCK,
 } from './realtime.types';
 
@@ -140,6 +141,11 @@ export class RealtimeGateway
     await this.syncScopeRooms(client);
 
     await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
+    // Index userId -> orgId so the metrics push can enumerate connected (user, org) pairs from
+    // one Redis read instead of a cluster-wide fetchSockets(). Only users in an org get pushes.
+    if (client.data.orgId) {
+      await this.redis.hset(REDIS_KEY_CONN_ORG, userId, client.data.orgId as string);
+    }
 
     const requestIp = extractRequestIp(client.handshake.address);
     const onHomeResult = await this.networksService.checkOnHome(userId, requestIp);
@@ -153,6 +159,11 @@ export class RealtimeGateway
     const userId = (client.data.user as { id: string } | undefined)?.id;
     if (userId) {
       await this.redis.srem(REDIS_KEY_CONNECTIONS(userId), client.id);
+      // Drop the userId -> orgId index entry only when this was the user's LAST socket, so a
+      // user with other tabs/devices open keeps receiving the metrics push.
+      if ((await this.redis.scard(REDIS_KEY_CONNECTIONS(userId))) === 0) {
+        await this.redis.hdel(REDIS_KEY_CONN_ORG, userId);
+      }
       this.logger.log({ userId, socketId: client.id }, 'Client disconnected');
     }
   }
@@ -326,34 +337,47 @@ export class RealtimeGateway
   }
 
   private async pushLatestMetricsToConnectedUsers(): Promise<void> {
-    // Collect all currently connected sockets that have a resolved orgId.
-    // Sockets with no orgId (fresh users not yet in an org) are skipped —
-    // their metrics were never ingested, so there is nothing to push.
-    const sockets = await this.server.fetchSockets();
-
-    // Group userIds by orgId so we can issue one DB query per org.
-    const orgToUsers = new Map<string, string[]>();
-    for (const s of sockets) {
-      const userId = (s.data.user as { id: string } | undefined)?.id;
-      const orgId = s.data.orgId as string | null | undefined;
-      if (!userId || !orgId) continue;
-      const bucket = orgToUsers.get(orgId) ?? [];
-      bucket.push(userId);
-      orgToUsers.set(orgId, bucket);
-    }
-
+    const orgToUsers = await this.connectedUsersByOrg();
     for (const [orgId, userIds] of orgToUsers) {
-      const metricsMap = await this.dataSourcesService.getLatestMetrics(
-        orgId,
-        [...new Set(userIds)],
-      );
-
+      const metricsMap = await this.dataSourcesService.getLatestMetrics(orgId, [...userIds]);
       for (const [userId, metrics] of metricsMap) {
         this.pushToUser(userId, WS_EVENTS.METRICS_UPDATE, {
           metrics,
           sourceTypes: ['browser'],
         } satisfies { metrics: MetricsDto; sourceTypes: string[] });
       }
+    }
+  }
+
+  /**
+   * Connected (org -> unique userIds) for the metrics push. Reads the userId->orgId index
+   * (maintained on connect/disconnect) in one Redis call. Falls back to a cluster-wide
+   * fetchSockets() scan if the index read fails, so a Redis blip can't silently stop the
+   * live-metrics feature.
+   */
+  private async connectedUsersByOrg(): Promise<Map<string, Set<string>>> {
+    const orgToUsers = new Map<string, Set<string>>();
+    try {
+      const index = await this.redis.hgetall(REDIS_KEY_CONN_ORG);
+      for (const [userId, orgId] of Object.entries(index)) {
+        if (!orgId) continue;
+        const bucket = orgToUsers.get(orgId) ?? new Set<string>();
+        bucket.add(userId);
+        orgToUsers.set(orgId, bucket);
+      }
+      return orgToUsers;
+    } catch (err) {
+      this.logger.warn({ err }, 'Conn-org index unavailable — falling back to fetchSockets for metrics push');
+      const sockets = await this.server.fetchSockets();
+      for (const s of sockets) {
+        const userId = (s.data.user as { id: string } | undefined)?.id;
+        const orgId = s.data.orgId as string | null | undefined;
+        if (!userId || !orgId) continue;
+        const bucket = orgToUsers.get(orgId) ?? new Set<string>();
+        bucket.add(userId);
+        orgToUsers.set(orgId, bucket);
+      }
+      return orgToUsers;
     }
   }
 
