@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, master]
 
+# Cancel an in-progress run when a newer commit lands on the same ref, so a burst of pushes
+# (e.g. merging a stack of PRs) doesn't queue a full CI run per commit — only the latest runs.
+# Keyed by ref, so different branches/PRs never cancel each other.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
