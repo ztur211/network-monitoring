@@ -7,6 +7,8 @@ import { HealthModule } from './health/health.module';
 import { BandwidthModule } from './bandwidth/bandwidth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { RedisService } from './redis/redis.service';
+import { RedisThrottlerStorage } from './redis/redis-throttler.adapter';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/guards/auth.guard';
 import { TierGuard } from './auth/guards/tier.guard';
@@ -54,18 +56,27 @@ import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
             : undefined,
       },
     }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60 * 1000,
-        limit: process.env.NODE_ENV === 'production' ? 100 : 2000,
-      },
-      {
-        name: 'auth',
-        ttl: 15 * 60 * 1000,
-        limit: process.env.NODE_ENV === 'production' ? 5 : 200,
-      },
-    ]),
+    // Redis-backed storage so HTTP rate limits are shared across API nodes (the default
+    // in-memory storage is per-node, so behind a load balancer a client gets N× the limit).
+    ThrottlerModule.forRootAsync({
+      imports: [RedisModule],
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: 60 * 1000,
+            limit: process.env.NODE_ENV === 'production' ? 100 : 2000,
+          },
+          {
+            name: 'auth',
+            ttl: 15 * 60 * 1000,
+            limit: process.env.NODE_ENV === 'production' ? 5 : 200,
+          },
+        ],
+        storage: new RedisThrottlerStorage(redis),
+      }),
+    }),
     PrismaModule,
     RedisModule,
     HealthModule,
