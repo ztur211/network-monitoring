@@ -11,12 +11,14 @@ import {
   REALTIME_CONTEXT_PROVIDER,
   ACCOUNT_CONTEXT_PROVIDER,
   PRODUCT_CONTEXT_PROVIDER,
+  RAG_CONTEXT_PROVIDER,
 } from './context/context-provider.interface';
 import { NetworkContextProvider } from './context/network-context.provider';
 import { NetworkContextRepository } from './context/network-context.repository';
 import { RealtimeContextProvider } from './context/realtime-context.provider';
 import { AccountContextProvider } from './context/account-context.provider';
 import { ProductContextProvider } from './context/product-context.provider';
+import { NoopRagContextProvider } from './context/noop-rag-context.provider';
 import { ContextBuilderService } from './context/context-builder.service';
 import { AiRateLimiterService } from './rate-limiting/ai-rate-limiter.service';
 import { ConversationService } from './conversation/conversation.service';
@@ -41,6 +43,7 @@ import { AiController } from './ai.controller';
     { provide: REALTIME_CONTEXT_PROVIDER, useClass: RealtimeContextProvider },
     { provide: ACCOUNT_CONTEXT_PROVIDER, useClass: AccountContextProvider },
     { provide: PRODUCT_CONTEXT_PROVIDER, useClass: ProductContextProvider },
+    { provide: RAG_CONTEXT_PROVIDER, useClass: NoopRagContextProvider },
     ContextBuilderService,
     AiRateLimiterService,
     ConversationService,

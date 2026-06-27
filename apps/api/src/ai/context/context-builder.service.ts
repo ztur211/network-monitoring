@@ -4,6 +4,8 @@ import {
   REALTIME_CONTEXT_PROVIDER,
   ACCOUNT_CONTEXT_PROVIDER,
   PRODUCT_CONTEXT_PROVIDER,
+  RAG_CONTEXT_PROVIDER,
+  RagContextProvider,
 } from './context-provider.interface';
 import { NetworkContextProvider } from './network-context.provider';
 import { RealtimeContextProvider } from './realtime-context.provider';
@@ -33,21 +35,33 @@ export class ContextBuilderService {
     private readonly accountProvider: AccountContextProvider,
     @Inject(PRODUCT_CONTEXT_PROVIDER)
     private readonly productProvider: ProductContextProvider,
+    @Inject(RAG_CONTEXT_PROVIDER)
+    private readonly ragProvider: RagContextProvider,
   ) {}
 
   async buildSystemPrompt(
     organizationId: string,
     userId: string,
     userTier: string,
+    userQuestion?: string,
+    activeDeviceIds?: string[],
   ): Promise<string> {
-    const [network, realtime, account, product] = await Promise.all([
+    const [network, realtime, account, product, rag] = await Promise.all([
       this.networkProvider.getContext(organizationId, userId),
       this.realtimeProvider.getContext(organizationId, userId),
       this.accountProvider.getContext(userId, userTier),
       this.productProvider.getContext(),
+      // Retrieval is keyed on the user's message, so it only runs for a real question.
+      userQuestion
+        ? this.ragProvider.getContext(organizationId, userId, userQuestion, activeDeviceIds)
+        : Promise.resolve(''),
     ]);
 
-    return [SYSTEM_PREAMBLE, network, '', realtime, '', account, '', product].join('\n');
+    const sections = [SYSTEM_PREAMBLE, network, '', realtime, '', account, '', product];
+    // Append the RAG section only when it has content, so an empty result leaves the prompt
+    // byte-identical to before this seam (no trailing blank lines).
+    if (rag) sections.push('', rag);
+    return sections.join('\n');
   }
 
   estimateTokenCount(text: string): number {

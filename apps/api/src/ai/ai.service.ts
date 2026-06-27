@@ -60,7 +60,8 @@ export class AiService {
     const conversationId = dto.conversationId ?? this.conversation.createConversationId();
     const [history, systemPrompt] = await Promise.all([
       this.conversation.getHistory(userId, conversationId),
-      this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier),
+      // Pass the user's message as the RAG retrieval query (no-op until a retriever is wired).
+      this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier, dto.content),
     ]);
 
     const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);
