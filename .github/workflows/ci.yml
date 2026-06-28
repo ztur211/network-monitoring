@@ -16,7 +16,7 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -24,7 +24,7 @@ jobs:
 
   unit:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -33,7 +33,7 @@ jobs:
 
   integration:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: lint
     services:
       postgres:
@@ -71,7 +71,7 @@ jobs:
 
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [unit, integration]
     services:
       postgres:
@@ -121,6 +121,9 @@ jobs:
       # `server /data` command, which service containers can't supply), so start it as a step.
       - name: Start MinIO (object storage; StorageService.ensureBucket runs at AppModule boot)
         run: |
+          # Self-hosted runners are persistent, so a leftover container from a prior run would
+          # collide on --name; remove any stale one first (no-op on a fresh/ephemeral runner).
+          docker rm -f minio 2>/dev/null || true
           docker run -d --name minio -p 9100:9000 \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio:latest server /data
@@ -138,7 +141,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: e2e
     steps:
       - uses: actions/checkout@v7
