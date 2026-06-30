@@ -109,9 +109,10 @@ export class MonitoringRepository {
     deviceId: string;
     state: DeviceStatusState;
     source: string;
+    ts?: Date;
   }): Promise<unknown> {
     return this.prisma.$executeRaw`INSERT INTO "DeviceStatusEvent" ("time","organizationId","deviceId","state","source")
-      VALUES (${new Date()}, ${d.organizationId}, ${d.deviceId}, ${d.state}, ${d.source})`;
+      VALUES (${d.ts ?? new Date()}, ${d.organizationId}, ${d.deviceId}, ${d.state}, ${d.source})`;
   }
 
   /** Bulk variant of insertMetric — one multi-row INSERT for an entire ingest batch. */

@@ -94,8 +94,12 @@ describe('MonitoringRepository (integration)', () => {
   });
 
   it('recentStatusEvents returns newest-first, capped by limit', async () => {
-    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'DOWN', source: 'prober' });
-    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'UP', source: 'prober' });
+    // DeviceStatusEvent has no tiebreaker column, so two events stamped in the same
+    // millisecond (back-to-back inserts on a fast DB connection) have an undefined order
+    // under `ORDER BY time DESC`. Real status transitions are seconds apart — give the two
+    // events explicit, separated timestamps so the test deterministically exercises ordering.
+    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'DOWN', source: 'prober', ts: new Date(Date.now() - 2000) });
+    await repo.insertStatusEvent({ organizationId: orgId, deviceId, state: 'UP', source: 'prober', ts: new Date(Date.now() - 1000) });
     const events = await repo.recentStatusEvents(orgId, deviceId, 1);
     expect(events).toHaveLength(1);
     expect(events[0].state).toBe('UP'); // most recent first
