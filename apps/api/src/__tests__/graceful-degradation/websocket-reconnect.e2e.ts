@@ -25,6 +25,10 @@ const mockRedis = {
   scard: jest.fn().mockResolvedValue(0),
   smembers: jest.fn().mockResolvedValue([]),
   set: jest.fn().mockResolvedValue('OK'),
+  // userId -> orgId index for the metrics push: written on connect (when the
+  // socket has an orgId), deleted on the user's last disconnect.
+  hset: jest.fn().mockResolvedValue(1),
+  hdel: jest.fn().mockResolvedValue(1),
   duplicate: jest.fn().mockReturnThis(),
 };
 
@@ -62,7 +66,11 @@ function makeSocket(overrides: Partial<Socket> = {}): Socket {
     id: 'test-socket-id',
     handshake: { headers: {} },
     data: {},
+    // socket.io exposes the socket's joined rooms as a Set; syncScopeRooms() iterates
+    // it on connect to leave stale scope/owner rooms. leave() mirrors join().
+    rooms: new Set<string>(),
     join: jest.fn().mockResolvedValue(undefined),
+    leave: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn(),
     emit: jest.fn(),
     ...overrides,
