@@ -8,13 +8,44 @@ records how to stand one up (steps written for **Arch Linux**, the current host 
 > workflow to `runs-on: [self-hosted, linux, x64]`. With the self-hosted label and no runner
 > registered, jobs queue indefinitely ("Waiting for a runner…") instead of failing fast.
 
+## Quick path (automated script)
+
+`scripts/setup-self-hosted-runner.sh` does everything below in one idempotent, re-runnable
+pass (auto-detecting Arch/`pacman` or Debian·Ubuntu/`apt`). Happy path:
+
+1. Generate a **registration token**: `ztur211/nodescope` → Settings → Actions → Runners →
+   **New self-hosted runner** → Linux / x64 (copy the token shown on the `./config.sh` line).
+2. On the runner host, as the **non-root** user that will own the runner:
+
+   ```bash
+   ./scripts/setup-self-hosted-runner.sh --token <TOKEN>
+   ```
+
+   It installs rootful Docker + the runner's runtime libs, downloads and registers the runner,
+   installs it as a boot service, and adds a weekly `docker system prune` timer. Then confirm
+   the runner shows **Idle** under Settings → Actions → Runners.
+3. Only once it's `Idle`, merge the workflow flip (PR #67) — see step 5 below.
+
+> Scope note: the design moves `ci.yml` **and** `deploy-validate.yml` / `deploy.yml` to
+> self-hosted; PR #67 currently flips `ci.yml` only (the constant cost driver). Extend to the
+> deploy workflows later if you want — they're rare (PR-path-filtered / manual dispatch).
+
+The manual steps below are the fallback, and explain what the script automates.
+
 ## What the runner host needs
 
-- **Docker (rootful).** The `integration` and `e2e` jobs use `postgres`/`redis` **service
-  containers** and a manual MinIO `docker run`; the runner user must reach the Docker socket.
-  Rootless Docker can break Actions' service-container networking — use rootful.
+- **Docker Engine (rootful) — not Docker Desktop.** The `integration`/`e2e` jobs use
+  `postgres`/`redis` **service containers** + a manual MinIO `docker run`; the runner user must
+  reach the native Docker socket. On Arch that's the `docker` package (upstream Engine/`dockerd`);
+  Docker Desktop runs Engine inside a VM and breaks service-container networking. Rootless Docker
+  can too — use rootful.
+- **`git`** on the host — `actions/checkout@v7` uses it; a base Arch install has none.
 - **A few native libs** for the .NET-based runner agent (Arch doesn't match the runner's bundled
-  `installdependencies.sh`, which only knows apt/yum).
+  `installdependencies.sh`, which only knows apt/yum). If `config.sh` errors on a missing `.so`
+  (usually `icu`, if Arch's version is ahead of the agent's .NET), install the matching lib or
+  set `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` in the runner's `.env`.
+- **A non-root user with `sudo`.** The runner refuses root, and Arch `base` ships neither `sudo`
+  nor a user — one-time root prep on a barebones box (install `sudo`, add a `wheel` user).
 - **Outbound network** to Docker Hub / ghcr and npm, plus disk for images + builds.
 - Node is **not** required pre-installed — `actions/setup-node@v6` downloads Node 20 per job.
 
