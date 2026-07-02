@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+# The demo env holds only localhost throwaway values (see its header) and is
+# committed on purpose so the 3D demo is turnkey.
+!deploy/.env.demo
 
 # Local-only docs and AI config
 CLAUDE.md

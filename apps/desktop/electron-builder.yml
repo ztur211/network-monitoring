@@ -1,5 +1,9 @@
 appId: io.nodescope.desktop
 productName: NodeScope
+# Pinned because electron is hoisted to the monorepo root, so electron-builder
+# can't infer the version from apps/desktop/node_modules. Keep in sync with the
+# electron devDependency.
+electronVersion: 32.3.3
 directories:
   output: release
   buildResources: build
@@ -8,7 +12,11 @@ files:
   - package.json
 win:
   target:
-    - target: nsis
+    # Portable zip: unzip and run NodeScope.exe — no install, no admin. This is the
+    # reliable cross-build target (the nsis installer's uninstaller-signing step fails
+    # under wine when cross-building from Linux). Build the nsis installer natively on
+    # Windows with `npm run package:win` if a true installer is needed.
+    - target: zip
       arch:
         - x64
 nsis:

@@ -74,7 +74,10 @@ import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
             limit: process.env.NODE_ENV === 'production' ? 5 : 200,
           },
         ],
-        storage: new RedisThrottlerStorage(redis),
+        // Shared Redis storage only when Redis is enabled (multi-node); single-node
+        // falls back to @nestjs/throttler's default per-process in-memory storage,
+        // which is correct when there is exactly one process.
+        storage: redis.enabled ? new RedisThrottlerStorage(redis) : undefined,
       }),
     }),
     PrismaModule,
