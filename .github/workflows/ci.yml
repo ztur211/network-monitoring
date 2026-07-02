@@ -46,6 +46,12 @@ jobs:
           # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
           # timeout, which kills the container mid-init. Give it generous headroom.
           PGCTLTIMEOUT: "300"
+          # timescaledb-tune sizes shared_buffers etc. to the whole host by default,
+          # which starves the jest workers and app instances sharing this runner
+          # (observed as multi-minute machine-wide stalls in e2e). Cap it to a
+          # CI-appropriate slice of the box.
+          TS_TUNE_MEMORY: 2GB
+          TS_TUNE_NUM_CPUS: "2"
         ports:
           - 5433:5432
         # -h localhost forces the health check over TCP: the temporary init-phase
@@ -104,6 +110,12 @@ jobs:
           # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
           # timeout, which kills the container mid-init. Give it generous headroom.
           PGCTLTIMEOUT: "300"
+          # timescaledb-tune sizes shared_buffers etc. to the whole host by default,
+          # which starves the jest workers and app instances sharing this runner
+          # (observed as multi-minute machine-wide stalls in e2e). Cap it to a
+          # CI-appropriate slice of the box.
+          TS_TUNE_MEMORY: 2GB
+          TS_TUNE_NUM_CPUS: "2"
         ports:
           - 5433:5432
         # -h localhost forces the health check over TCP: the temporary init-phase
