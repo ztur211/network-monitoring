@@ -42,13 +42,21 @@ jobs:
           POSTGRES_USER: nodescope
           POSTGRES_PASSWORD: localdevpassword
           POSTGRES_DB: nodescope_test
+          # The entrypoint restarts postgres after running init scripts; on a busy
+          # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
+          # timeout, which kills the container mid-init. Give it generous headroom.
+          PGCTLTIMEOUT: "300"
         ports:
           - 5433:5432
+        # -h localhost forces the health check over TCP: the temporary init-phase
+        # server only listens on the unix socket, so plain `pg_isready` reports
+        # healthy before initialization has actually finished.
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h localhost -U nodescope -d nodescope_test"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
+          --health-start-period 30s
       redis:
         image: redis:7-alpine
         ports:
@@ -64,6 +72,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      # Belt-and-suspenders for the health check above: on a loaded runner the
+      # container can lag behind "Initialize containers", so re-verify over TCP
+      # right before touching the database.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec ${{ job.services.postgres.id }} pg_isready -h localhost -U nodescope -d nodescope_test > /dev/null 2>&1; then
+              echo "Postgres ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2; exit 1
       - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
@@ -80,13 +100,21 @@ jobs:
           POSTGRES_USER: nodescope
           POSTGRES_PASSWORD: localdevpassword
           POSTGRES_DB: nodescope_test
+          # The entrypoint restarts postgres after running init scripts; on a busy
+          # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
+          # timeout, which kills the container mid-init. Give it generous headroom.
+          PGCTLTIMEOUT: "300"
         ports:
           - 5433:5432
+        # -h localhost forces the health check over TCP: the temporary init-phase
+        # server only listens on the unix socket, so plain `pg_isready` reports
+        # healthy before initialization has actually finished.
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h localhost -U nodescope -d nodescope_test"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
+          --health-start-period 30s
       redis:
         image: redis:7-alpine
         ports:
@@ -134,6 +162,18 @@ jobs:
             sleep 2
           done
           echo "MinIO did not become ready in time" >&2; exit 1
+      # Belt-and-suspenders for the health check above: on a loaded runner the
+      # container can lag behind "Initialize containers", so re-verify over TCP
+      # right before touching the database.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec ${{ job.services.postgres.id }} pg_isready -h localhost -U nodescope -d nodescope_test > /dev/null 2>&1; then
+              echo "Postgres ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2; exit 1
       - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
