@@ -33,11 +33,15 @@ services:
       retries: 20
     # No host port published — reachable only inside the compose network.
 
+  # Redis is OPTIONAL — only needed for MULTI-REPLICA deployments. The single-node
+  # appliance runs the API against an in-memory backing and never starts this service.
+  # Enable it with `--profile redis` and set REDIS_URL + CLUSTER_MODE in deploy/.env.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
     command: ["redis-server", "--appendonly", "yes"]
+    profiles: ["redis"]
     volumes:
       - redisdata:/data
     healthcheck:
@@ -52,16 +56,19 @@ services:
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
     logging: *default-logging
+    # No hard dependency on redis: single-node boots without it. When you run
+    # `--profile redis`, start redis first (or just re-run `up`, it will start too).
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: "3000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
-      REDIS_URL: redis://redis:6379
+      # Empty by default = single-node in-memory backing. For multi-replica set this to
+      # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
+      REDIS_URL: ${REDIS_URL:-}
+      CLUSTER_MODE: ${CLUSTER_MODE:-false}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}

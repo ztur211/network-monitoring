@@ -1,11 +1,20 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger as NestLogger, ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { RedisService } from './redis/redis.service';
 import { resolveTrustProxy } from './common/config/trust-proxy.config';
+
+// Safety net: a rejected promise with no local catch (e.g. a transient backend blip
+// inside a fire-and-forget path) must be logged, never crash the process. Individual
+// call sites still handle their own errors; this only stops an escaped rejection from
+// taking the API down.
+process.on('unhandledRejection', (reason) => {
+  new NestLogger('unhandledRejection').error(reason instanceof Error ? reason.stack : String(reason));
+});
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -13,6 +22,13 @@ async function bootstrap() {
   });
 
   app.useLogger(app.get(Logger));
+
+  // Log how Redis is wired so an operator can see single-node vs multi-node at a glance.
+  const redis = app.get(RedisService);
+  const { enabled, mode, clusterMode } = redis.describe();
+  new NestLogger('Bootstrap').log(
+    `Redis: ${enabled ? 'enabled' : 'disabled'} (mode=${mode}, clusterMode=${clusterMode})`,
+  );
 
   // Trust the proxy chain so req.ip is the real client (per-IP AI rate limiting
   // + Network.checkOnHome). Defaults to 1 hop — a single LB/Caddy in front (the

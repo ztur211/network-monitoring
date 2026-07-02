@@ -40,12 +40,14 @@ export class HealthController {
 
   @Get()
   async check() {
-    const [dbOk, redisOk] = await Promise.all([
+    const [dbOk, redis] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
     ]);
 
-    const status = dbOk && redisOk ? 'ok' : 'degraded';
+    // A disabled (single-node) Redis is a healthy configuration, not a degradation.
+    const redisHealthy = redis.status !== 'degraded';
+    const status = dbOk && redisHealthy ? 'ok' : 'degraded';
 
     return {
       status,
@@ -53,7 +55,7 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       services: {
         database: dbOk ? 'ok' : 'degraded',
-        redis: redisOk ? 'ok' : 'degraded',
+        redis,
         ai: 'ok',
       },
     };
@@ -68,12 +70,22 @@ export class HealthController {
     }
   }
 
-  private async checkRedis(): Promise<boolean> {
+  private async checkRedis(): Promise<{
+    enabled: boolean;
+    mode: string;
+    clusterMode: boolean;
+    status: 'ok' | 'degraded' | 'disabled';
+  }> {
+    const info = this.redis.describe();
+    // In-memory backing: nothing to ping — report it as an explicit, healthy 'disabled'.
+    if (!this.redis.enabled) {
+      return { ...info, status: 'disabled' };
+    }
     try {
       await this.redis.ping();
-      return true;
+      return { ...info, status: 'ok' };
     } catch {
-      return false;
+      return { ...info, status: 'degraded' };
     }
   }
 }

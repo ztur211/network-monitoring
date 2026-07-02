@@ -80,9 +80,14 @@ export class RealtimeGateway
   ) {}
 
   async afterInit(server: Server): Promise<void> {
-    const pubClient = this.redis.duplicate();
-    const subClient = this.redis.duplicate();
-    server.adapter(createAdapter(pubClient, subClient));
+    // The socket.io Redis adapter fans events across API replicas. Single-node mode
+    // (Redis disabled) uses socket.io's default in-memory adapter — correct because
+    // there is only one process and no cross-node fan-out is needed.
+    if (this.redis.enabled) {
+      const pubClient = this.redis.duplicate();
+      const subClient = this.redis.duplicate();
+      server.adapter(createAdapter(pubClient, subClient));
+    }
 
     const intervalMs =
       parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10) * 1000;
