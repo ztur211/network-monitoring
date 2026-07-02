@@ -32,6 +32,9 @@ RUN npm ci --legacy-peer-deps
 
 # 2) Build the API. @nodescope/shared was already built by the postinstall above.
 COPY apps/api ./apps/api
+# scripts/ carries load-sample-model.mjs so the demo-seed one-shot service (see
+# docker-compose.demo.yml) can populate the FZK-Haus model on first boot.
+COPY scripts ./scripts
 RUN npm run build --workspace=apps/api
 
 # ---------------------------------------------------------------------------
