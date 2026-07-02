@@ -16,14 +16,15 @@ const mockAdapter = { complete: jest.fn(), stream: jest.fn() };
 
 describe('App boots with Redis disabled (single-node, in-memory)', () => {
   let app: INestApplication;
-  const savedEnv = { redis: process.env.REDIS_URL, cluster: process.env.CLUSTER_MODE, storage: process.env.STORAGE_ENDPOINT };
+  const savedEnv = { redis: process.env.REDIS_URL, cluster: process.env.CLUSTER_MODE };
 
   beforeAll(async () => {
     // Explicitly disable Redis (the e2e setup otherwise defaults REDIS_URL to a
-    // test instance) and point storage at the dev MinIO the sandbox runs.
+    // test instance). Storage stays on the test MinIO that jest.e2e.setup.ts /
+    // the CI job env already point at (port 9100) — overriding it to the dev
+    // MinIO port here broke boot in CI, where nothing listens on 9000.
     delete process.env.REDIS_URL;
     delete process.env.CLUSTER_MODE;
-    process.env.STORAGE_ENDPOINT = 'http://localhost:9000';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -45,7 +46,6 @@ describe('App boots with Redis disabled (single-node, in-memory)', () => {
     // Restore env so a shared jest worker's later e2e files still see Redis configured.
     if (savedEnv.redis !== undefined) process.env.REDIS_URL = savedEnv.redis;
     if (savedEnv.cluster !== undefined) process.env.CLUSTER_MODE = savedEnv.cluster;
-    if (savedEnv.storage !== undefined) process.env.STORAGE_ENDPOINT = savedEnv.storage;
   });
 
   it('selected the in-memory Redis backing', () => {
