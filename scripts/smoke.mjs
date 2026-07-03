@@ -195,7 +195,7 @@ async function checkSocketIoHandshake() {
 }
 
 async function checkApiHealthDependencies() {
-  const name = 'API health — db + redis connected';
+  const name = 'API health — backing stores healthy';
   try {
     const res = await fetchWithTimeout(`${API_URL}/api/health`);
     if (res.status !== 200) {
@@ -206,13 +206,17 @@ async function checkApiHealthDependencies() {
     const svc = body.services ?? {};
     // /api/health reports per-dependency status; 'degraded' means the API is up
     // but a backing store isn't reachable — a broken deploy the shallow health
-    // check (which accepts 'degraded') would pass.
-    const down = ['database', 'redis'].filter((k) => svc[k] !== 'ok');
-    if (down.length > 0) {
-      fail(name, `not ok: ${down.map((k) => `${k}=${svc[k] ?? 'missing'}`).join(', ')}`);
+    // check (which accepts 'degraded') would pass. database is a status string;
+    // redis is an object whose status is 'ok' | 'disabled' (single-node
+    // in-memory backing — a healthy configuration) | 'degraded'.
+    const dbOk = svc.database === 'ok';
+    const redisStatus = svc.redis?.status ?? svc.redis;
+    const redisOk = redisStatus === 'ok' || redisStatus === 'disabled';
+    if (!dbOk || !redisOk) {
+      fail(name, `not ok: database=${svc.database ?? 'missing'}, redis=${redisStatus ?? 'missing'}`);
       return;
     }
-    pass(name, `database=ok, redis=ok, version=${body.version ?? '?'}`);
+    pass(name, `database=ok, redis=${redisStatus}, version=${body.version ?? '?'}`);
   } catch (err) {
     fail(name, err.message);
   }
