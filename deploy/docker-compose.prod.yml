@@ -70,6 +70,9 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-false}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
+      # CryptoModule (SNMP credential encryption) refuses to boot without a
+      # base64-encoded 32-byte key: `openssl rand -base64 32`.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env (openssl rand -base64 32)}
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
