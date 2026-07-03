@@ -54,6 +54,9 @@ COPY --from=build /app /app
 COPY docs/product-knowledge ./docs/product-knowledge
 COPY deploy/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
 RUN chmod +x /usr/local/bin/api-entrypoint.sh && chown -R node:node /app
+# FS storage mode writes blobs here; pre-create it owned by node so a mounted
+# volume at this path is writable by the (non-root) runtime user.
+RUN mkdir -p /data/storage && chown -R node:node /data/storage
 USER node
 
 ENV PORT=3000

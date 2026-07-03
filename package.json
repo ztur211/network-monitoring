@@ -20,6 +20,7 @@
     "db:reset": "prisma migrate reset --schema=apps/api/prisma/schema.prisma --skip-seed --force && npm run db:seed",
     "load-sample-model": "node scripts/load-sample-model.mjs",
     "load-large-sample-model": "node scripts/load-large-sample-model.mjs",
+    "migrate-storage": "node apps/api/dist/storage/migrate-storage.js",
     "postinstall": "patch-package && prisma generate --schema=apps/api/prisma/schema.prisma && npm run build --workspace=packages/shared && npm run build --workspace=packages/client && npm run build --workspace=packages/probe"
   },
   "engines": {

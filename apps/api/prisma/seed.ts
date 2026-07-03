@@ -1,9 +1,9 @@
 import { PrismaClient, DeviceCategory, ConnectionType, PropertyType } from '@prisma/client';
 import { auth } from '../src/auth/better-auth.config';
-import { S3Client, CreateBucketCommand } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'node:stream';
 import { createHash, randomUUID } from 'node:crypto';
+import { createStorageBackend } from '../src/storage/storage-backend.factory';
+import { storageConfig } from '../src/common/config/storage.config';
 
 const prisma = new PrismaClient();
 
@@ -298,42 +298,14 @@ async function seedBuildingModel(organizationId: string) {
   const contentHash = createHash('sha256').update(VALID_IFC).digest('hex');
   const sizeBytes = VALID_IFC.byteLength;
 
-  // Construct the S3 client using the same defaults as storageConfig()
-  const storageEndpoint = process.env.STORAGE_ENDPOINT ?? 'http://localhost:9000';
-  const storageRegion = process.env.STORAGE_REGION ?? 'us-east-1';
-  const storageBucket = process.env.STORAGE_BUCKET ?? 'nodescope';
-  const s3 = new S3Client({
-    endpoint: storageEndpoint,
-    region: storageRegion,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.STORAGE_ACCESS_KEY ?? 'minioadmin',
-      secretAccessKey: process.env.STORAGE_SECRET_KEY ?? 'minioadmin',
-    },
-  });
-
-  // Ensure the bucket exists (idempotent — same logic as StorageService.ensureBucket)
-  try {
-    await s3.send(new CreateBucketCommand({ Bucket: storageBucket }));
-  } catch (e: unknown) {
-    const name = (e as { name?: string })?.name;
-    if (name !== 'BucketAlreadyOwnedByYou' && name !== 'BucketAlreadyExists') throw e;
-  }
-
   // Build the storage key using the same path convention as StorageService.buildVersionKey
   const versionId = randomUUID();
   const storageKey = `org/${organizationId}/building/${building.id}/${versionId}.ifc`;
 
-  // Upload the minimal IFC object to the dev MinIO bucket
-  await new Upload({
-    client: s3,
-    params: {
-      Bucket: storageBucket,
-      Key: storageKey,
-      Body: Readable.from(VALID_IFC),
-      ContentType: 'application/octet-stream',
-    },
-  }).done();
+  // Write the placeholder IFC via the configured storage backend (s3 or fs).
+  const storage = createStorageBackend(storageConfig());
+  await storage.ensureReady();
+  await storage.put(storageKey, Readable.from(VALID_IFC), 'application/octet-stream');
 
   // Create the BuildingModel row (mirrors BuildingModelsRepository.createModel)
   const buildingModel = await prisma.buildingModel.create({

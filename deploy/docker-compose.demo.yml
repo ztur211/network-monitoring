@@ -5,46 +5,28 @@
 #     -f deploy/docker-compose.prod.yml -f deploy/docker-compose.demo.yml \
 #     --env-file deploy/.env.demo up -d --build
 #
-# This runs SINGLE-NODE (no Redis — the API uses its in-memory backing) and adds a
-# one-shot `demo-seed` service that seeds the org/site/building and uploads the
-# public "FZK-Haus" IFC into "Main Building". Then open the NodeScope desktop app,
-# point it at http://localhost:8080/api (Settings), sign in, and open Main Building.
+# This runs SINGLE-NODE (no Redis — the API uses its in-memory backing) and stores
+# blobs on a local Docker volume (STORAGE_DRIVER=fs — no MinIO). A one-shot
+# `demo-seed` service seeds the org/site/building and uploads the public "FZK-Haus"
+# IFC into "Main Building". Then open the NodeScope desktop app, point it at
+# http://localhost:8080/api (Settings), sign in, and open Main Building.
 #
 # See deploy/DEMO.md for the full walkthrough.
 
 name: nodescope
 
 services:
-  # Object storage for IFC bytes. The prod compose omits it (the future FS-storage
-  # backend will replace it); the demo bundles MinIO so the appliance boots + stores
-  # models. The API auto-creates the bucket on start (StorageService.ensureBucket).
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-minioadmin}
-    volumes:
-      - miniodata:/data
-    # No published ports — reached only inside the compose network by the API.
-
   # Tag the built API image so the seed one-shot can reuse it without a second build.
   api:
     image: nodescope-api:demo
-    # Storage race is tolerated: if MinIO isn't ready when the API first calls
-    # ensureBucket, the API exits and `restart: unless-stopped` retries until MinIO is up.
-    depends_on:
-      minio:
-        condition: service_started
     environment:
       # The prod compose omits these; the API needs them to boot (crypto) + store IFCs.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env.demo}
-      STORAGE_ENDPOINT: http://minio:9000
-      STORAGE_REGION: us-east-1
-      STORAGE_BUCKET: nodescope
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
+      # Filesystem storage (single-node appliance) — blobs on a local volume, no MinIO.
+      STORAGE_DRIVER: fs
+      STORAGE_FS_ROOT: /data/storage
+    volumes:
+      - blobstore:/data/storage
 
   # One-shot: waits for the API to be healthy, seeds the demo org + loads the sample
   # model, then exits. Re-running `up` re-runs it (the seed is idempotent).
@@ -62,17 +44,18 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env.demo}
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
       FRONTEND_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
-      STORAGE_ENDPOINT: http://minio:9000
-      STORAGE_REGION: us-east-1
-      STORAGE_BUCKET: nodescope
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
+      # Same fs storage as the API. The volume is shared below so the placeholder IFC
+      # the seed writes directly is the same store the API reads from.
+      STORAGE_DRIVER: fs
+      STORAGE_FS_ROOT: /data/storage
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}
       SEED_PASSWORD: ${SEED_PASSWORD:-devpassword123}
       # load-sample-model.mjs uploads through the API; Origin must match FRONTEND_URL
       # for CORS to admit it.
       API_URL: http://api:3000
       WEB_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+    volumes:
+      - blobstore:/data/storage
     entrypoint: ["/bin/sh", "-lc"]
     command:
       - |
@@ -83,4 +66,4 @@ services:
         echo '[demo-seed] done — open the desktop app and view Main Building.'
 
 volumes:
-  miniodata:
+  blobstore:

@@ -22,10 +22,10 @@ docker compose `
   up -d --build
 ```
 
-This brings up Postgres (TimescaleDB + PostGIS), MinIO (object storage for the IFC
-bytes), the API (single-node, **in-memory** Redis), the web app, and a one-shot
-**`demo-seed`** that seeds the org/site/building and uploads the public **FZK-Haus**
-sample model into *Main Building*.
+This brings up Postgres (TimescaleDB + PostGIS), the API (single-node, **in-memory**
+Redis, **filesystem storage** — blobs on a local Docker volume, no MinIO), the web app,
+and a one-shot **`demo-seed`** that seeds the org/site/building and uploads the public
+**FZK-Haus** sample model into *Main Building*.
 
 Watch the seed finish (it exits when done):
 
