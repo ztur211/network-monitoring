@@ -21,10 +21,13 @@ ARG EXPO_PUBLIC_API_URL=http://localhost:3000
 ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
 
 # Same workspace install as the API image — the root postinstall runs here too,
-# so the prisma schema + shared sources + patches must be present.
-COPY package.json package-lock.json .npmrc ./
+# so the prisma schema, patches, and the package sources postinstall builds
+# (shared/client/probe; their tsconfigs extend tsconfig.base.json) must be present.
+COPY package.json package-lock.json .npmrc tsconfig.base.json ./
 COPY patches ./patches
 COPY packages/shared ./packages/shared
+COPY packages/client ./packages/client
+COPY packages/probe ./packages/probe
 COPY apps/api/package.json ./apps/api/
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/web/package.json ./apps/web/
