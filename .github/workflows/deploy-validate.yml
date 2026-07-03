@@ -42,6 +42,7 @@ jobs:
           POSTGRES_PASSWORD=ci-test-password
           POSTGRES_DB=nodescope
           BETTER_AUTH_SECRET=ci-test-secret-minimum-32-characters-long
+          SECRET_ENCRYPTION_KEY=Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
           ANTHROPIC_API_KEY=sk-ci-placeholder-not-used-by-smoke
           AI_PROVIDER=claude
           GEOCODING_USER_AGENT=NodeScope/1.0 (ci@example.com)

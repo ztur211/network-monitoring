@@ -70,6 +70,9 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-false}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
+      # CryptoModule (SNMP credential encryption) refuses to boot without a
+      # base64-encoded 32-byte key: `openssl rand -base64 32`.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env (openssl rand -base64 32)}
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
@@ -80,6 +83,13 @@ services:
       # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare
       # Tunnel → Caddy → API set 2.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Single-node appliance default: blobs on the local blobstore volume (no
+      # MinIO/S3 to run). To use S3/MinIO instead, set STORAGE_DRIVER=s3 in
+      # deploy/.env and add the STORAGE_ENDPOINT/…/SECRET_KEY env here.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-fs}
+      STORAGE_FS_ROOT: /data/storage
+    volumes:
+      - blobstore:/data/storage
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -126,3 +136,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  blobstore:

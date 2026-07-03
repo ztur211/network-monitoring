@@ -19,12 +19,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # 1) Install with the full workspace manifest set so npm workspaces links all
-#    three packages and the root postinstall can run. postinstall needs the
-#    prisma schema, the shared sources, and patches/ — copy those first so the
-#    dependency layer caches across source-only changes.
-COPY package.json package-lock.json .npmrc ./
+#    packages and the root postinstall can run. postinstall needs the prisma
+#    schema, the package sources it builds (shared/client/probe — their
+#    tsconfigs extend the root tsconfig.base.json), and patches/ — copy those
+#    first so the dependency layer caches across source-only changes.
+COPY package.json package-lock.json .npmrc tsconfig.base.json ./
 COPY patches ./patches
 COPY packages/shared ./packages/shared
+COPY packages/client ./packages/client
+COPY packages/probe ./packages/probe
 COPY apps/api/package.json ./apps/api/
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/web/package.json ./apps/web/
