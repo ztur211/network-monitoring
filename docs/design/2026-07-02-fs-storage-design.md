@@ -1,7 +1,7 @@
 # FS storage backend — pluggable object storage (S3 / filesystem)
 
 - **Date:** 2026-07-02
-- **Status:** Approved (design) — implementation pending
+- **Status:** Implemented (2026-07-03) — landed via the `feat/fs-storage` merge (53c79a1) + deploy completion in PR #74 (9ff2724)
 - **Related:** [[local-first architecture direction]] (`docs/design/2026-06-30-local-first-architecture-direction.md`), the Redis-optional seam (same facade→backend shape).
 
 ## Context & problem
