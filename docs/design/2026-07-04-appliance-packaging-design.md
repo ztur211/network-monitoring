@@ -96,6 +96,12 @@ building out into an overlay.
     `blobstore:/data/storage` volume mount (the Dockerfile already pre-creates
     `/data/storage` owned by `node`).
   - `SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env}`.
+  - **Relax `ANTHROPIC_API_KEY` to optional** (`${ANTHROPIC_API_KEY:-}`, was a required `:?`
+    guard). An AI-optional / local-Ollama appliance must not be forced to hold a cloud key to
+    boot. Verified the API tolerates this: the Anthropic SDK does **not** throw at construction
+    with a missing key (the `ClaudeAdapter` DI factory runs at boot), so the app boots fine and
+    only live AI calls fail until a key or `AI_PROVIDER=openai-compatible` is configured. No
+    apps/api change needed — purely the compose guard.
 - **Prebuilt images, not build:** `api` and `web` use
   `image: ghcr.io/ztur211/nodescope-{api,web}:${NODESCOPE_VERSION:-<pinned-release>}` and drop
   their `build:` blocks.
