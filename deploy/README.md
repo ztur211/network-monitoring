@@ -149,6 +149,7 @@ web is only ever built as a static export):
 ### D2 — Configure secrets · [host] + [repo]
 Copy `deploy/.env.example` → `deploy/.env`, then fill:
 - `BETTER_AUTH_SECRET` — `openssl rand -base64 48`
+- `SECRET_ENCRYPTION_KEY` — `openssl rand -base64 32` (SNMP credential crypto; boot-required)
 - `POSTGRES_PASSWORD` — `openssl rand -base64 24` (and matching `DATABASE_URL`)
 - `ANTHROPIC_API_KEY` — your key
 - `SEED_PASSWORD` — for the one-shot demo seed user
@@ -219,7 +220,10 @@ assistant → confirm live metrics tick.
 | `NODE_ENV` | api | `production` |
 | `PORT` | api | `3000` |
 | `DATABASE_URL` | api | `postgresql://nodescope:<pw>@db:5432/nodescope` |
-| `REDIS_URL` | api | `redis://redis:6379` |
+| `REDIS_URL` | api | empty = single-node in-memory (default); `redis://redis:6379` with `--profile redis` |
+| `SECRET_ENCRYPTION_KEY` | api | `openssl rand -base64 32` (required — API refuses to boot without it) |
+| `STORAGE_DRIVER` | api | `fs` (default; blobs on the blobstore volume) or `s3` |
+| `STORAGE_FS_ROOT` | api | `/data/storage` (set by compose; fs mode only) |
 | `BETTER_AUTH_SECRET` | api | `openssl rand -base64 48` |
 | `BETTER_AUTH_URL` | api | `https://<origin>` |
 | `FRONTEND_URL` | api | `https://<origin>` (required — `main.ts` throws without it) |
@@ -242,7 +246,7 @@ free self-hosted demo:
 | Managed Redis | `redis:7` container ✓ |
 | App Platform 2× instances, zero-downtime | 2 API replicas behind Caddy (in-host) — **partial** |
 | PgBouncer pooling (`DATABASE_URL`) | Not needed at demo scale; **deferred** |
-| DO Spaces bucket | Post-MVP (floor plans/installers) — **deferred** |
+| DO Spaces bucket | Filesystem storage backend (`STORAGE_DRIVER=fs`) ✓ |
 | HTTPS enforced | Cloudflare Tunnel / Caddy TLS ✓ |
 | DO monitoring alerts | Container healthchecks + (optional) Uptime Kuma — **adapted** |
 | `prisma migrate deploy` pre-deploy | API entrypoint runs it ✓ |
@@ -253,7 +257,8 @@ free self-hosted demo:
 ### Genuinely deferred (require paid infra) — deliberate decisions
 - **True multi-host HA** (a single box is a single point of failure).
 - **Managed connection pooling** (PgBouncer) — unnecessary at demo concurrency.
-- **Object storage** (Spaces) — only used by post-MVP features.
+- **Hosted object storage** (Spaces/S3) — replaced by the filesystem storage backend
+  (`STORAGE_DRIVER=fs`, blobs on a local volume); S3 remains a config switch away.
 - **Hosted monitoring/alerting** — replaced by lightweight self-hosted health/uptime.
 
 These are fine for a demo; revisit when promoting to real production (at which point
