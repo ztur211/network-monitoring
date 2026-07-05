@@ -200,18 +200,26 @@ cmd_backup() { # cmd_backup [output-dir]
   mkdir -p "${bundle}"
 
   log "dumping database…"
-  # shellcheck disable=SC2016 # single-quoted: expands inside the container shell, not here
-  compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "${bundle}/db.sql.gz"
-  [ "$(wc -c < "${bundle}/db.sql.gz")" -ge 100 ] \
-    || { rm -rf "${bundle}"; die "db dump is empty — is the stack up? (nodescope.sh up)"; }
+  # `if ! <pipeline>` tests the status (pipefail makes a failed pg_dump propagate)
+  # without set -e aborting, so we can clean up and emit a clear error.
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB expand inside the db container, not here
+  if ! compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "${bundle}/db.sql.gz"; then
+    rm -rf "${bundle}"; die "database dump failed — is the stack up? (nodescope.sh up)"
+  fi
+  if [ "$(wc -c < "${bundle}/db.sql.gz")" -lt 100 ]; then
+    rm -rf "${bundle}"; die "database dump is implausibly small — aborting"
+  fi
 
   log "archiving blob storage…"
-  compose run --rm --no-deps --entrypoint sh --volume "${bundle}:/backup" api \
-    -c 'tar czf /backup/blobs.tar.gz -C /data/storage .'
+  if ! compose run --rm --no-deps --entrypoint sh --volume "${bundle}:/backup" api \
+    -c 'tar czf /backup/blobs.tar.gz -C /data/storage .'; then
+    rm -rf "${bundle}"; die "blob archive failed"
+  fi
+  [ -f "${bundle}/blobs.tar.gz" ] || { rm -rf "${bundle}"; die "blob archive missing after run"; }
 
   local ver mig
   ver="$(get_kv NODESCOPE_VERSION)"; [ -n "${ver}" ] || ver="unknown"
-  # shellcheck disable=SC2016 # single-quoted: expands inside the container shell, not here
+  # shellcheck disable=SC2016 # expands inside the db container
   mig="$(compose exec -T db sh -c 'psql -tAqX -U "$POSTGRES_USER" "$POSTGRES_DB" -c "SELECT migration_name FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 1"' 2>/dev/null | tr -d "[:space:]")"
   [ -n "${mig}" ] || mig="unknown"
   write_manifest "${bundle}" "${ver}" "${mig}" "${ts}"
