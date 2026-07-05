@@ -95,6 +95,29 @@ require_systemd_root() {
   [ -w /etc/systemd/system ] || die "writing systemd units needs root — re-run with sudo"
 }
 
+# --- backup helpers ---------------------------------------------------------
+
+write_manifest() { # write_manifest <bundle-dir> <version> <migration> <timestamp>
+  printf 'nodescope_version=%s\nmigration=%s\ntimestamp=%s\n' "$2" "$3" "$4" > "$1/manifest.txt"
+}
+
+manifest_version() { # manifest_version <bundle-dir> -> prints nodescope_version
+  sed -n 's/^nodescope_version=//p' "$1/manifest.txt" | head -n1
+}
+
+prune_backups() { # prune_backups <dir> <keep> — remove all but the newest <keep> nodescope-* bundles
+  local dir="$1" keep="${2:-7}"
+  case "${keep}" in ''|*[!0-9]*) keep=7 ;; esac
+  [ "${keep}" -ge 1 ] || keep=7
+  local old
+  # timestamp bundle names sort lexically = chronologically; newest-first, skip the newest <keep>
+  # shellcheck disable=SC2012 # bundle names are plain nodescope-<timestamp>; ls+sort is fine here
+  ls -1d "${dir}"/nodescope-* 2>/dev/null | sort -r | tail -n +"$((keep + 1))" | while IFS= read -r old; do
+    [ -n "${old}" ] && rm -rf "${old}"
+  done
+  return 0
+}
+
 # --- commands ---------------------------------------------------------------
 
 preflight() {
@@ -166,6 +189,38 @@ cmd_disable_boot() {
   log "boot auto-start disabled"
 }
 
+cmd_backup() { # cmd_backup [output-dir]
+  local out="${1:-$(get_kv BACKUP_DIR)}"
+  [ -n "${out}" ] || out="${SCRIPT_DIR}/backups"
+  mkdir -p "${out}"
+  out="$(cd "${out}" && pwd)"                       # absolutize (needed for the -v mount below)
+  local ts bundle
+  ts="$(date +%Y%m%d-%H%M%S)"
+  bundle="${out}/nodescope-${ts}"
+  mkdir -p "${bundle}"
+
+  log "dumping database…"
+  # shellcheck disable=SC2016 # single-quoted: expands inside the container shell, not here
+  compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "${bundle}/db.sql.gz"
+  [ "$(wc -c < "${bundle}/db.sql.gz")" -ge 100 ] \
+    || { rm -rf "${bundle}"; die "db dump is empty — is the stack up? (nodescope.sh up)"; }
+
+  log "archiving blob storage…"
+  compose run --rm --no-deps --entrypoint sh --volume "${bundle}:/backup" api \
+    -c 'tar czf /backup/blobs.tar.gz -C /data/storage .'
+
+  local ver mig
+  ver="$(get_kv NODESCOPE_VERSION)"; [ -n "${ver}" ] || ver="unknown"
+  # shellcheck disable=SC2016 # single-quoted: expands inside the container shell, not here
+  mig="$(compose exec -T db sh -c 'psql -tAqX -U "$POSTGRES_USER" "$POSTGRES_DB" -c "SELECT migration_name FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 1"' 2>/dev/null | tr -d "[:space:]")"
+  [ -n "${mig}" ] || mig="unknown"
+  write_manifest "${bundle}" "${ver}" "${mig}" "${ts}"
+
+  prune_backups "${out}" "$(get_kv BACKUP_KEEP)"
+  log "backup written: ${bundle}"
+  printf '%s\n' "${bundle}"                          # last line = bundle path (used by update)
+}
+
 usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d'; }
 
 main() {
@@ -179,6 +234,7 @@ main() {
     down)        cmd_down "$@" ;;
     enable-boot)  cmd_enable_boot "$@" ;;
     disable-boot) cmd_disable_boot "$@" ;;
+    backup)      cmd_backup "$@" ;;
     ""|-h|--help|help) usage ;;
     *) die "unknown command: ${sub} (try --help)" ;;
   esac
