@@ -19,6 +19,7 @@
 #   ./deploy/nodescope.sh offsite-keygen    # generate the off-site keypair (writes recovery key)
 #   ./deploy/nodescope.sh offsite-push [b]  # encrypt+upload the newest (or given) bundle off-site
 #   ./deploy/nodescope.sh offsite-list      # list off-site backups
+#   ./deploy/nodescope.sh offsite-pull <name> [dest] --identity <file>  # download+decrypt only
 #   ./deploy/nodescope.sh offsite-restore <name> --identity <file>  # DR: pull, decrypt, restore
 set -euo pipefail
 
@@ -141,22 +142,25 @@ latest_bundle() { # latest_bundle <dir> -> newest nodescope-* path (empty if non
 offsite_cli() { # offsite_cli <mount-dir-or-''> <cli-arg>...
   local mount="$1"; shift
   local vol=(); [ -n "${mount}" ] && vol=(--volume "${mount}:/work")
-  # Pass OFFSITE_* from deploy/.env explicitly — compose run's bare `-e VAR` reads
-  # the host PROCESS env, which doesn't hold these (they live in --env-file, used
-  # only for interpolation). OFFSITE_IDENTITY comes from the caller's shell env
-  # (set by offsite-pull), not from .env.
+  # Export OFFSITE_* as a prefix so `compose run -e VAR` forwards them from the
+  # process env — keeping the S3 secret + recovery key OUT of the argv (ps/cmdline).
+  # PUBKEY/IDENTITY may be supplied by the caller's shell env (restore); otherwise
+  # come from deploy/.env via get_kv.
+  OFFSITE_BACKUP_PUBKEY="${OFFSITE_BACKUP_PUBKEY:-$(get_kv OFFSITE_BACKUP_PUBKEY)}" \
+  OFFSITE_S3_ENDPOINT="$(get_kv OFFSITE_S3_ENDPOINT)" \
+  OFFSITE_S3_REGION="$(get_kv OFFSITE_S3_REGION)" \
+  OFFSITE_S3_BUCKET="$(get_kv OFFSITE_S3_BUCKET)" \
+  OFFSITE_S3_ACCESS_KEY="$(get_kv OFFSITE_S3_ACCESS_KEY)" \
+  OFFSITE_S3_SECRET_KEY="$(get_kv OFFSITE_S3_SECRET_KEY)" \
+  OFFSITE_S3_PREFIX="$(get_kv OFFSITE_S3_PREFIX)" \
+  OFFSITE_KEEP="$(get_kv OFFSITE_KEEP)" \
+  OFFSITE_INCLUDE_BLOBS="$(get_kv OFFSITE_INCLUDE_BLOBS)" \
+  OFFSITE_IDENTITY="${OFFSITE_IDENTITY:-}" \
   compose run --rm --no-deps --entrypoint node \
-    -e "OFFSITE_BACKUP_PUBKEY=$(get_kv OFFSITE_BACKUP_PUBKEY)" \
-    -e "OFFSITE_S3_ENDPOINT=$(get_kv OFFSITE_S3_ENDPOINT)" \
-    -e "OFFSITE_S3_REGION=$(get_kv OFFSITE_S3_REGION)" \
-    -e "OFFSITE_S3_BUCKET=$(get_kv OFFSITE_S3_BUCKET)" \
-    -e "OFFSITE_S3_ACCESS_KEY=$(get_kv OFFSITE_S3_ACCESS_KEY)" \
-    -e "OFFSITE_S3_SECRET_KEY=$(get_kv OFFSITE_S3_SECRET_KEY)" \
-    -e "OFFSITE_S3_PREFIX=$(get_kv OFFSITE_S3_PREFIX)" \
-    -e "OFFSITE_KEEP=$(get_kv OFFSITE_KEEP)" \
-    -e "OFFSITE_INCLUDE_BLOBS=$(get_kv OFFSITE_INCLUDE_BLOBS)" \
-    -e "OFFSITE_IDENTITY=${OFFSITE_IDENTITY:-}" \
-    "${vol[@]}" api dist/offsite/cli.js "$@"
+    -e OFFSITE_BACKUP_PUBKEY -e OFFSITE_S3_ENDPOINT -e OFFSITE_S3_REGION -e OFFSITE_S3_BUCKET \
+    -e OFFSITE_S3_ACCESS_KEY -e OFFSITE_S3_SECRET_KEY -e OFFSITE_S3_PREFIX -e OFFSITE_KEEP \
+    -e OFFSITE_INCLUDE_BLOBS -e OFFSITE_IDENTITY \
+    "${vol[@]}" api apps/api/dist/offsite/cli.js "$@"
 }
 
 # --- commands ---------------------------------------------------------------
@@ -334,7 +338,7 @@ cmd_offsite_keygen() {
   # shellcheck disable=SC2015 # both sides are pure tests (no side effects); A&&B||C is correct here
   [ -n "${pub}" ] && [ -n "${priv}" ] || die "keygen failed"
   set_kv OFFSITE_BACKUP_PUBKEY "${pub}"
-  printf '%s\n' "${priv}" > "${SCRIPT_DIR}/offsite-identity.key"
+  { printf 'PUBKEY=%s\n' "${pub}"; printf 'PRIVKEY=%s\n' "${priv}"; } > "${SCRIPT_DIR}/offsite-identity.key"
   chmod 600 "${SCRIPT_DIR}/offsite-identity.key"
   log "off-site keypair generated. Public key stored in deploy/.env."
   log "!!! RECOVERY KEY WRITTEN TO deploy/offsite-identity.key !!!"
@@ -346,7 +350,8 @@ cmd_offsite_keygen() {
 # Best-effort off-site push of a bundle (default: newest local). No-ops if off-site
 # isn't configured, so it's safe as a chained timer step.
 cmd_offsite_push() {
-  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] || { log "off-site not configured — skipping push"; return 0; }
+  { [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] && [ -n "$(get_kv OFFSITE_S3_BUCKET)" ]; } \
+    || { log "off-site not fully configured — skipping push"; return 0; }
   local dir; dir="$(get_kv BACKUP_DIR)"; [ -n "${dir}" ] || dir="${SCRIPT_DIR}/backups"
   local bundle; bundle="${1:-$(latest_bundle "${dir}")}"
   # shellcheck disable=SC2015 # both sides are pure tests (no side effects); A&&B||C is correct here
@@ -365,7 +370,7 @@ cmd_offsite_list() {
 }
 
 cmd_offsite_pull() { # cmd_offsite_pull <name> [dest-dir] [--identity <file>]
-  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] || die "off-site not configured"
+  [ -n "$(get_kv OFFSITE_S3_BUCKET)" ] || die "off-site S3 not configured (set OFFSITE_S3_* in deploy/.env)"
   local name="" dest="" ident="${SCRIPT_DIR}/offsite-identity.key"
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -375,9 +380,16 @@ cmd_offsite_pull() { # cmd_offsite_pull <name> [dest-dir] [--identity <file>]
   done
   [ -n "${name}" ] || die "usage: offsite-pull <name> [dest-dir] [--identity <file>]"
   [ -f "${ident}" ] || die "identity key not found: ${ident} (bring your off-box recovery key)"
+  local ipub ipriv
+  ipub="$(sed -n 's/^PUBKEY=//p' "${ident}" | head -n1)"
+  ipriv="$(sed -n 's/^PRIVKEY=//p' "${ident}" | head -n1)"
+  [ -n "${ipriv}" ] || ipriv="$(head -n1 "${ident}")"   # back-compat: privkey-only file
+  [ -n "${ipub}" ] || ipub="$(get_kv OFFSITE_BACKUP_PUBKEY)"
+  [ -n "${ipriv}" ] || die "identity file has no private key"
+  [ -n "${ipub}" ] || die "no public key (identity file lacks PUBKEY and OFFSITE_BACKUP_PUBKEY is unset)"
   [ -n "${dest}" ] || dest="${SCRIPT_DIR}/backups/${name}"
   mkdir -p "${dest}"; dest="$(cd "${dest}" && pwd)"
-  OFFSITE_IDENTITY="$(cat "${ident}")" offsite_cli "${dest}" pull "${name}" "/work"
+  OFFSITE_BACKUP_PUBKEY="${ipub}" OFFSITE_IDENTITY="${ipriv}" offsite_cli "${dest}" pull "${name}" "/work"
   log "downloaded + decrypted to ${dest}"
   printf '%s\n' "${dest}"
 }
