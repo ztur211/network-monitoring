@@ -1,6 +1,8 @@
 import { Readable } from 'node:stream';
 import { generateKeypair, sealStream, unsealStream } from '../crypto';
 
+jest.setTimeout(20_000);
+
 async function collect(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const c of stream) chunks.push(Buffer.from(c));

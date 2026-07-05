@@ -72,7 +72,9 @@ encrypt but not decrypt its own off-site backups).
    recovery key; without it, off-site backups are unrecoverable.
 2. Set `OFFSITE_S3_*` in `deploy/.env` (endpoint/bucket/credentials for your
    S3-compatible provider — R2/B2/S3/Wasabi). Optionally `OFFSITE_INCLUDE_BLOBS=false`
-   to ship the DB only.
+   to ship the DB only. Note: a DB-only off-site backup restores the database but
+   **not** the 3D/BCF models (the model store comes back empty) — `offsite-restore`
+   handles this automatically and warns when it does.
 3. The daily backup timer now also pushes the newest bundle off-site. Push
    manually with `./deploy/nodescope.sh offsite-push`; see them with `offsite-list`;
    download+decrypt without restoring with

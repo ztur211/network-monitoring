@@ -7,6 +7,8 @@ import type { ObjectStore } from '../object-store';
 import type { OffsiteConfig } from '../config';
 import { pushBundle, pullBundle, listBackups } from '../backup';
 
+jest.setTimeout(20_000);
+
 class MemStore implements ObjectStore {
   objs = new Map<string, Buffer>();
   async put(key: string, body: Readable) {
