@@ -121,7 +121,7 @@ services:
   # Enable with `--profile tunnel`. In the Cloudflare dashboard, route your
   # hostname to http://web:80; paste the tunnel token into deploy/.env.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.6.1
     profiles: ["tunnel"]
     restart: unless-stopped
     logging: *default-logging
