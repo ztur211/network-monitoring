@@ -17,7 +17,10 @@ RUN apt-get update \
 # Baked into the browser bundle at build time: the origin the web app calls for
 # REST + websockets. For the same-origin demo, set this to the public origin
 # (compose passes ${PUBLIC_ORIGIN}); changing it requires rebuilding this image.
-ARG EXPO_PUBLIC_API_URL=http://localhost:3000
+# Default empty so the published appliance image resolves the API at same-origin
+# (window.location.origin) at runtime. A split-origin/dev build can still pass an
+# explicit --build-arg EXPO_PUBLIC_API_URL=https://api.example.com.
+ARG EXPO_PUBLIC_API_URL=
 ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
 
 # Same workspace install as the API image — the root postinstall runs here too,

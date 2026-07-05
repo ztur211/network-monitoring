@@ -6,6 +6,7 @@ import type {
   OidProfileDto,
   CreateOidProfileDto,
 } from '@nodescope/shared';
+import { resolveApiBaseUrl } from './api-base';
 
 /** Shape sent to POST /snmp/assign */
 export interface AssignSnmpPayload {
@@ -15,10 +16,7 @@ export interface AssignSnmpPayload {
   oidProfileId: string | null;
 }
 
-const apiUrl =
-  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_API_URL
-    ? process.env.EXPO_PUBLIC_API_URL
-    : 'http://localhost:3000';
+const apiUrl = resolveApiBaseUrl();
 
 export const api = axios.create({
   baseURL: `${apiUrl}/api/v1`,

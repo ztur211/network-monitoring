@@ -8,6 +8,7 @@ import { authClient } from '../../lib/auth-client';
 import { useAuthStore } from '../../store/auth.store';
 import type { SessionUser } from '@nodescope/shared';
 import { safeDesktopReturnTo } from '../../lib/safe-desktop-return';
+import { resolveApiBaseUrl } from '../../lib/api-base';
 
 const schema = z.object({
   email: z.string().email('Invalid email address'),
@@ -46,7 +47,7 @@ export default function LoginScreen() {
     if (result.data?.user) {
       setLoading(false);
       setUser(result.data.user as SessionUser);
-      const apiOrigin = new URL(process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000').origin;
+      const apiOrigin = new URL(resolveApiBaseUrl()).origin;
       const raw =
         typeof window !== 'undefined'
           ? new URLSearchParams(window.location.search).get('returnTo')

@@ -1,10 +1,8 @@
 import { createAuthClient } from 'better-auth/react';
 import { inferAdditionalFields } from 'better-auth/client/plugins';
+import { resolveApiBaseUrl } from './api-base';
 
-const apiUrl =
-  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_API_URL
-    ? process.env.EXPO_PUBLIC_API_URL
-    : 'http://localhost:3000';
+const apiUrl = resolveApiBaseUrl();
 
 // Mirror the server's additionalFields config in apps/api/src/auth/better-auth.config.ts.
 // inferAdditionalFields tells the client SDK that authClient.getSession().data.user
