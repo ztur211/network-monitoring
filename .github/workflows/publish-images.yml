@@ -1,0 +1,67 @@
+name: Publish appliance images
+
+# Build and push the appliance API + web images to GHCR so on-prem installs pull
+# prebuilt images (no repo, no build toolchain on the box). Triggered by a
+# release tag, or manually with an explicit version.
+#
+# Runs on the self-hosted runner because GitHub-hosted Actions billing is unpaid;
+# the runner must have Docker + buildx. GHCR packages should be made public once
+# (repo → Packages → each package → change visibility) so customers pull with no auth.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag to publish (e.g. 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build + push api/web to GHCR
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version tag
+        id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build + push api
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          docker buildx build \
+            --file deploy/Dockerfile.api \
+            --tag "ghcr.io/ztur211/nodescope-api:${VERSION}" \
+            --tag ghcr.io/ztur211/nodescope-api:latest \
+            --push .
+
+      - name: Build + push web
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          docker buildx build \
+            --file deploy/Dockerfile.web \
+            --build-arg EXPO_PUBLIC_API_URL= \
+            --tag "ghcr.io/ztur211/nodescope-web:${VERSION}" \
+            --tag ghcr.io/ztur211/nodescope-web:latest \
+            --push .

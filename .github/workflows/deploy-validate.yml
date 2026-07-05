@@ -26,7 +26,8 @@ on:
 jobs:
   validate-stack:
     name: Build + smoke-test the compose stack
-    runs-on: ubuntu-latest
+    # Self-hosted: GitHub-hosted Actions billing is unpaid. Runner must have Docker + buildx.
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v7
 
@@ -48,14 +49,19 @@ jobs:
           GEOCODING_USER_AGENT=NodeScope/1.0 (ci@example.com)
           WEB_PORT=8080
           SITE_ADDRESS=:80
+          SECRET_ENCRYPTION_KEY=bm9kZXNjb3BlLWNpLXNlY3JldC1rZXktMzJieXRlcyE=
+          STORAGE_DRIVER=fs
           ENV
 
       - name: Validate compose config
-        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env config >/dev/null
+        run: |
+          docker compose -f deploy/docker-compose.prod.yml \
+            -f deploy/docker-compose.build.yml --env-file deploy/.env config >/dev/null
 
       - name: Build images + bring up the stack (waits for healthchecks)
         run: |
-          docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+          docker compose -f deploy/docker-compose.prod.yml \
+            -f deploy/docker-compose.build.yml --env-file deploy/.env \
             up -d --build --wait --wait-timeout 360
 
       - name: Smoke test the running stack

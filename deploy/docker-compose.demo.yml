@@ -1,37 +1,23 @@
-# NodeScope 3D DEMO overlay — turnkey single-node stack with the sample building
-# pre-loaded, so `docker compose up` gives you something to view immediately.
+# NodeScope 3D DEMO overlay — layered on the appliance base to pre-load the
+# public "FZK-Haus" sample building so `up` gives you something to view right away.
 #
 #   docker compose \
 #     -f deploy/docker-compose.prod.yml -f deploy/docker-compose.demo.yml \
-#     --env-file deploy/.env.demo up -d --build
+#     --env-file deploy/.env.demo up -d
 #
-# This runs SINGLE-NODE (no Redis — the API uses its in-memory backing) and stores
-# blobs on a local Docker volume (STORAGE_DRIVER=fs — no MinIO). A one-shot
-# `demo-seed` service seeds the org/site/building and uploads the public "FZK-Haus"
-# IFC into "Main Building". Then open the NodeScope desktop app, point it at
-# http://localhost:8080/api (Settings), sign in, and open Main Building.
+# (Add -f deploy/docker-compose.build.yml before --env-file to build locally
+#  instead of pulling from GHCR.)
 #
+# The appliance base already runs single-node (no Redis) with fs storage (no
+# MinIO) and the crypto key, so this overlay only adds a one-shot that seeds the
+# demo org/site/building and uploads the sample IFC. Then open the desktop app,
+# point it at http://localhost:8080/api, sign in, and open Main Building.
 # See deploy/DEMO.md for the full walkthrough.
-
 name: nodescope
 
 services:
-  # Tag the built API image so the seed one-shot can reuse it without a second build.
-  api:
-    image: nodescope-api:demo
-    environment:
-      # The prod compose omits these; the API needs them to boot (crypto) + store IFCs.
-      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env.demo}
-      # Filesystem storage (single-node appliance) — blobs on a local volume, no MinIO.
-      STORAGE_DRIVER: fs
-      STORAGE_FS_ROOT: /data/storage
-    volumes:
-      - blobstore:/data/storage
-
-  # One-shot: waits for the API to be healthy, seeds the demo org + loads the sample
-  # model, then exits. Re-running `up` re-runs it (the seed is idempotent).
   demo-seed:
-    image: nodescope-api:demo
+    image: ghcr.io/ztur211/nodescope-api:${NODESCOPE_VERSION:-latest}
     depends_on:
       api:
         condition: service_healthy
@@ -39,19 +25,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env.demo}
-      # seed.ts imports better-auth.config (reads these at load) + uploads the placeholder
-      # IFC to storage, so the seed needs the same auth + storage env the API has.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env.demo}
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
       FRONTEND_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
-      # Same fs storage as the API. The volume is shared below so the placeholder IFC
-      # the seed writes directly is the same store the API reads from.
       STORAGE_DRIVER: fs
       STORAGE_FS_ROOT: /data/storage
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}
       SEED_PASSWORD: ${SEED_PASSWORD:-devpassword123}
-      # load-sample-model.mjs uploads through the API; Origin must match FRONTEND_URL
-      # for CORS to admit it.
       API_URL: http://api:3000
       WEB_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
     volumes:
@@ -64,6 +44,3 @@ services:
         echo '[demo-seed] uploading the FZK-Haus sample model (needs internet on first run)…'
         node scripts/load-sample-model.mjs
         echo '[demo-seed] done — open the desktop app and view Main Building.'
-
-volumes:
-  blobstore:

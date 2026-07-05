@@ -2,10 +2,11 @@ import { WS_EVENTS } from '@nodescope/shared';
 import { websocketService } from './websocket.service';
 import { useRealtimeStore } from '../store/realtime.store';
 import { getBrowserDeviceId } from './browser-device-id';
+import { resolveApiBaseUrl } from './api-base';
 
 const COLLECT_INTERVAL_MS = 30_000;
 const BANDWIDTH_PAYLOAD_BYTES = 100_000; // 100 KB test payload
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const API_URL = resolveApiBaseUrl();
 
 interface NetworkInformation {
   effectiveType?: string;

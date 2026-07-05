@@ -1,10 +1,15 @@
-# NodeScope self-hosted demo stack. See deploy/README.md for the full runbook.
+# NodeScope self-hosted appliance stack. See deploy/README.md for the full runbook,
+# or run `deploy/nodescope.sh install` for a one-command setup.
 #
 #   cp deploy/.env.example deploy/.env     # then fill in secrets + PUBLIC_ORIGIN
-#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+#
+# This pulls prebuilt images (ghcr.io/ztur211/nodescope-*). To build locally
+# instead, add the build overlay and --build:
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml \
+#     --env-file deploy/.env up -d --build
 #
 # Add `--profile tunnel` to also run cloudflared (needs CLOUDFLARE_TUNNEL_TOKEN).
-# Build context is the repo root (..), so the -f path is all you need.
 
 name: nodescope
 
@@ -51,9 +56,7 @@ services:
       retries: 20
 
   api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.api
+    image: ghcr.io/ztur211/nodescope-api:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     # No hard dependency on redis: single-node boots without it. When you run
@@ -69,6 +72,12 @@ services:
       # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
       REDIS_URL: ${REDIS_URL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-false}
+      # Required for crypto (SNMP credential encryption). The appliance generates
+      # this once at install time; the API refuses to boot without it.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env}
+      # Single-node appliance stores blobs (IFC/BCF models) on a local volume — no MinIO/S3.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-fs}
+      STORAGE_FS_ROOT: /data/storage
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
       # CryptoModule (SNMP credential encryption) refuses to boot without a
       # base64-encoded 32-byte key: `openssl rand -base64 32`.
@@ -76,7 +85,10 @@ services:
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in deploy/.env}
+      # Optional: an AI-optional / local-Ollama appliance boots without it (the
+      # Anthropic SDK tolerates a missing key at construction; only live AI calls
+      # fail until a key or AI_PROVIDER=openai-compatible is set).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_PROVIDER: ${AI_PROVIDER:-claude}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
       # Proxy hops to trust for the real client IP (per-IP AI rate limiting +
@@ -98,12 +110,9 @@ services:
       retries: 5
 
   web:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.web
-      args:
-        # Baked into the browser bundle — rebuild (`--build`) if PUBLIC_ORIGIN changes.
-        EXPO_PUBLIC_API_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
+    # Origin-agnostic image (same-origin at runtime — see apps/web/lib/api-base.ts),
+    # so no PUBLIC_ORIGIN is baked and no rebuild is needed on IP change.
+    image: ghcr.io/ztur211/nodescope-web:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:

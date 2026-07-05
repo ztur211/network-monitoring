@@ -2,8 +2,9 @@ import { io } from 'socket.io-client';
 import { WS_EVENTS } from '@nodescope/shared';
 import { createRealtimeClient } from '@nodescope/client';
 import { useUiStore } from '../store/ui.store';
+import { resolveApiBaseUrl } from './api-base';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const API_URL = resolveApiBaseUrl();
 const PING_INTERVAL_MS = 25_000;
 const OFFLINE_RETRY_DELAY_MS = 30_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
