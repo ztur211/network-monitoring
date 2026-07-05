@@ -1,4 +1,5 @@
 import { WebhookChannel } from '../channels/webhook.channel';
+import { EmailChannel } from '../channels/email.channel';
 import { InAppChannel } from '../channels/inapp.channel';
 import { ChannelDispatcherImpl } from '../channels/channel-dispatcher.impl';
 
@@ -23,6 +24,27 @@ describe('WebhookChannel', () => {
     const ch = new WebhookChannel({ decrypt: () => 'tok' } as never, fetchMock as never);
     await ch.send(chan({ secretEnc: 'enc' }), evt);
     expect((fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer tok');
+  });
+});
+
+describe('EmailChannel', () => {
+  const emailChan = (over = {}) => chan({ type: 'EMAIL', config: { host: 'smtp.x', port: 587, fromAddr: 'a@x', toAddrs: ['b@x'] }, secretEnc: null, ...over });
+  it('sends via SMTP with mapped config and no auth when no secret', async () => {
+    const sendMail = jest.fn().mockResolvedValue({});
+    const make = jest.fn().mockReturnValue({ sendMail });
+    await new EmailChannel({ decrypt: () => 'pw' } as never, make as never).send(emailChan(), evt);
+    expect(make).toHaveBeenCalledWith(expect.objectContaining({ host: 'smtp.x', port: 587, auth: undefined }));
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'a@x', to: 'b@x' }));
+  });
+  it('uses auth when secret + username are set', async () => {
+    const make = jest.fn().mockReturnValue({ sendMail: jest.fn().mockResolvedValue({}) });
+    await new EmailChannel({ decrypt: () => 'pw' } as never, make as never)
+      .send(emailChan({ config: { host: 'smtp.x', fromAddr: 'a@x', toAddrs: ['b@x'], username: 'u' }, secretEnc: 'enc' }), evt);
+    expect(make).toHaveBeenCalledWith(expect.objectContaining({ auth: { user: 'u', pass: 'pw' } }));
+  });
+  it('throws on misconfig (missing host/from/to)', async () => {
+    await expect(new EmailChannel({ decrypt: () => 'pw' } as never, jest.fn() as never).send(emailChan({ config: {} }), evt))
+      .rejects.toThrow(/misconfigured/);
   });
 });
 

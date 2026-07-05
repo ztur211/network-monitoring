@@ -14,6 +14,7 @@ export class EmailChannel {
     if (!c?.host || !c?.fromAddr || !c?.toAddrs?.length) throw new Error('email channel misconfigured');
     const t: Transporter = this.make({
       host: c.host, port: c.port ?? 587, secure: c.secure ?? false,
+      connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 10000,
       auth: channel.secretEnc && c.username ? { user: c.username, pass: this.crypto.decrypt(channel.secretEnc) } : undefined,
     });
     const subject = `[NodeScope ${event.severity}] ${event.kind === 'FIRING' ? 'ALERT' : 'RESOLVED'}: device ${event.deviceId ?? ''}`;

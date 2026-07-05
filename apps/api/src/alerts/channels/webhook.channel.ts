@@ -4,6 +4,8 @@ import { CryptoService } from '../../common/crypto/crypto.service';
 
 type Fetch = typeof fetch;
 
+const WEBHOOK_TIMEOUT_MS = Number(process.env.ALERT_WEBHOOK_TIMEOUT_MS ?? 10000);
+
 @Injectable()
 export class WebhookChannel {
   constructor(private readonly crypto: CryptoService, private readonly fetchFn: Fetch = fetch) {}
@@ -17,7 +19,7 @@ export class WebhookChannel {
       kind: event.kind, severity: event.severity, deviceId: event.deviceId,
       detail: event.detail, at: event.createdAt,
     });
-    const res = await this.fetchFn(url, { method: 'POST', headers, body });
+    const res = await this.fetchFn(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`webhook POST failed: HTTP ${res.status}`);
   }
 }
