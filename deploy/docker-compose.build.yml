@@ -1,0 +1,22 @@
+# Build overlay — adds the `build:` blocks so CI (publish-images.yml,
+# deploy-validate.yml) and local dev can build the images the appliance base
+# (docker-compose.prod.yml) otherwise pulls from GHCR. It keeps the same
+# `image:` references, so a local build tags exactly the image compose expects
+# and `up` uses the locally-built image without touching a registry.
+#
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml \
+#     --env-file deploy/.env up -d --build
+name: nodescope
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        # Empty = same-origin at runtime (the appliance default).
+        EXPO_PUBLIC_API_URL: ""

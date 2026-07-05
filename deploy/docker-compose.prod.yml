@@ -51,9 +51,7 @@ services:
       retries: 20
 
   api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.api
+    image: ghcr.io/ztur211/nodescope-api:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     # No hard dependency on redis: single-node boots without it. When you run
@@ -69,17 +67,28 @@ services:
       # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
       REDIS_URL: ${REDIS_URL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-false}
+      # Required for crypto (SNMP credential encryption). The appliance generates
+      # this once at install time; the API refuses to boot without it.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env}
+      # Single-node appliance stores blobs (IFC/BCF models) on a local volume — no MinIO/S3.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-fs}
+      STORAGE_FS_ROOT: /data/storage
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in deploy/.env}
+      # Optional: an AI-optional / local-Ollama appliance boots without it (the
+      # Anthropic SDK tolerates a missing key at construction; only live AI calls
+      # fail until a key or AI_PROVIDER=openai-compatible is set).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_PROVIDER: ${AI_PROVIDER:-claude}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
       # Proxy hops to trust for the real client IP (per-IP AI rate limiting +
       # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare
       # Tunnel → Caddy → API set 2.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+    volumes:
+      - blobstore:/data/storage
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -88,12 +97,9 @@ services:
       retries: 5
 
   web:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.web
-      args:
-        # Baked into the browser bundle — rebuild (`--build`) if PUBLIC_ORIGIN changes.
-        EXPO_PUBLIC_API_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
+    # Origin-agnostic image (same-origin at runtime — see apps/web/lib/api-base.ts),
+    # so no PUBLIC_ORIGIN is baked and no rebuild is needed on IP change.
+    image: ghcr.io/ztur211/nodescope-web:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:
@@ -126,3 +132,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  blobstore:
