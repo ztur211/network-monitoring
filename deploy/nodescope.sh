@@ -396,6 +396,10 @@ cmd_offsite_pull() { # cmd_offsite_pull <name> [dest-dir] [--identity <file>]
 
 cmd_offsite_restore() { # cmd_offsite_restore <name> [--identity <file>]
   local dest; dest="$(cmd_offsite_pull "$@" | tail -n1)"
+  if [ ! -f "${dest}/blobs.tar.gz" ]; then
+    log "DB-only off-site backup (no blobs) — restoring the database; the model store will be emptied (3D/BCF models were not backed up off-site)."
+    tar czf "${dest}/blobs.tar.gz" -T /dev/null   # empty archive → restore clears the blob store
+  fi
   cmd_restore "${dest}"
 }
 
