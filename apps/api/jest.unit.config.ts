@@ -15,6 +15,10 @@ const config: Config = {
     '.*/monitoring/__tests__/(?!.*\\.repository\\.spec\\.ts$).*\\.spec\\.ts$',
     // Storage: pure-logic + real-tmpdir backend tests (no external service).
     '.*/storage/__tests__/.*\\.spec\\.ts$',
+    // Alerts: engine/evaluator/delivery/channel unit tests (no external service). DB-integration
+    // tests in this module use the `.repository.spec.ts` suffix (→ jest.integration.config) and
+    // are excluded here so they don't run twice / require a DB in the unit suite (mirrors monitoring).
+    '.*/alerts/__tests__/(?!.*\\.repository\\.spec\\.ts$).*\\.spec\\.ts$',
   ],
   coverageDirectory: '../coverage/unit',
 };

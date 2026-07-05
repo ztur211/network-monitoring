@@ -123,6 +123,35 @@ enum SnmpPrivProtocol {
   AES256
 }
 
+enum AlertChannelType {
+  WEBHOOK
+  EMAIL
+  INAPP
+}
+
+enum AlertTrigger {
+  STATE_TRANSITION
+  METRIC_THRESHOLD
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertEventKind {
+  FIRING
+  RESOLVED
+}
+
+enum AlertDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  GAVE_UP
+}
+
 // ─── Better Auth Models ───────────────────────────────────────────────────────
 
 model User {
@@ -463,6 +492,8 @@ model Organization {
   snmpCredentials       SnmpCredential[]
   oidProfiles           OidProfile[]
   bcfTopics             BcfTopic[]
+  alertChannels         AlertChannel[]
+  alertRules            AlertRule[]
 }
 
 model DeviceStatus {
@@ -769,6 +800,84 @@ model SnmpCredential {
   devices      Device[]
 
   @@index([organizationId])
+}
+
+model AlertChannel {
+  id             String           @id @default(uuid())
+  organizationId String
+  type           AlertChannelType
+  name           String
+  enabled        Boolean          @default(true)
+  config         Json             @default("{}")
+  secretEnc      String?
+  version        Int              @default(1)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model AlertRule {
+  id               String        @id @default(uuid())
+  organizationId   String
+  name             String
+  enabled          Boolean       @default(true)
+  trigger          AlertTrigger
+  scope            Json          @default("{\"all\":true}")
+  targetStates     String[]      @default([])
+  metric           String?
+  op               String?
+  threshold        Float?
+  forSeconds       Int?
+  severity         AlertSeverity @default(WARNING)
+  channelIds       String[]      @default([])
+  cooldownSeconds  Int           @default(300)
+  notifyOnRecovery Boolean       @default(true)
+  version          Int           @default(1)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       AlertEvent[]
+
+  @@index([organizationId])
+  @@index([trigger, enabled])
+}
+
+model AlertEvent {
+  id             String         @id @default(uuid())
+  organizationId String
+  ruleId         String
+  deviceId       String?
+  kind           AlertEventKind
+  severity       AlertSeverity
+  detail         Json           @default("{}")
+  dedupKey       String
+  createdAt      DateTime       @default(now())
+
+  rule       AlertRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  deliveries AlertDelivery[]
+
+  @@index([organizationId, createdAt])
+  @@index([dedupKey, createdAt])
+}
+
+model AlertDelivery {
+  id            String              @id @default(uuid())
+  alertEventId  String
+  channelId     String
+  status        AlertDeliveryStatus @default(PENDING)
+  attempts      Int                 @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime            @default(now())
+  lastError     String?
+  createdAt     DateTime            @default(now())
+
+  event AlertEvent @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
 }
 
 model OidProfile {
