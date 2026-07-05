@@ -130,6 +130,13 @@ export class AlertRepository {
   allEnabledRules(trigger: AlertTrigger): Promise<AlertRule[]> {
     return this.prisma.alertRule.findMany({ where: { enabled: true, trigger } });
   }
+  /** The device's networkId (for networkIds-scoped rules); null if the device is absent. */
+  async deviceNetworkId(orgId: string, deviceId: string): Promise<string | null> {
+    const d = await this.prisma.device.findFirst({
+      where: { id: deviceId, organizationId: orgId }, select: { networkId: true },
+    });
+    return d?.networkId ?? null;
+  }
 
   // ── events + deliveries ──
   createEvent(e: {

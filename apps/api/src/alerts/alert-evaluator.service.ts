@@ -26,10 +26,13 @@ export class AlertEvaluatorService implements MonitoringEmitter {
 
   async onStatusChange(p: DeviceStatusEmit): Promise<void> {
     const rules = await this.repo.enabledRules(p.organizationId, 'STATE_TRANSITION');
+    if (!rules.length) return;
     const now = new Date(p.at);
+    const needsNetwork = rules.some((r) => 'networkIds' in (r.scope as unknown as RuleScope));
+    const networkId = needsNetwork ? await this.repo.deviceNetworkId(p.organizationId, p.deviceId) : null;
     for (const rule of rules) {
       const scope = rule.scope as unknown as RuleScope;
-      if (!scopeCovers(scope, { deviceId: p.deviceId, siteId: p.governingSiteId })) continue;
+      if (!scopeCovers(scope, { deviceId: p.deviceId, networkId, siteId: p.governingSiteId })) continue;
 
       if (rule.targetStates.includes(p.state)) {
         if (await this.dedup.shouldFire(p.organizationId, rule, p.deviceId, now)) {

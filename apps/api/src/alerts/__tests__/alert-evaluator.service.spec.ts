@@ -11,6 +11,7 @@ function harness(rules: unknown[], dedup: { shouldFire?: boolean; shouldResolve?
     enabledRules: jest.fn().mockResolvedValue(rules),
     createEvent: jest.fn().mockImplementation((e) => { created.push(e); return Promise.resolve({ id: 'e1', ...e }); }),
     enqueueDeliveries: jest.fn().mockImplementation((id, ch) => { enqueued.push({ id, ch }); return Promise.resolve(); }),
+    deviceNetworkId: jest.fn().mockResolvedValue('n1'),
   } as never;
   const dedupSvc = {
     dedupKey: (r: string, d: string) => `${r}:${d}`,
@@ -55,6 +56,16 @@ describe('AlertEvaluatorService.onStatusChange', () => {
   });
   it('respects dedup (no fire when shouldFire=false)', async () => {
     const h = harness([rule()], { shouldFire: false });
+    await h.svc.onStatusChange(emit('DOWN'));
+    expect(h.created).toEqual([]);
+  });
+  it('fires a networkIds-scoped rule when the device is in that network', async () => {
+    const h = harness([rule({ scope: { networkIds: ['n1'] } })]);
+    await h.svc.onStatusChange(emit('DOWN'));
+    expect(h.created).toEqual([expect.objectContaining({ kind: 'FIRING', ruleId: 'r1' })]);
+  });
+  it('does NOT fire a networkIds-scoped rule when the device is in a different network', async () => {
+    const h = harness([rule({ scope: { networkIds: ['other'] } })]);
     await h.svc.onStatusChange(emit('DOWN'));
     expect(h.created).toEqual([]);
   });
