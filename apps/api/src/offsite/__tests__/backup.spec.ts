@@ -33,6 +33,16 @@ async function bundle(name: string): Promise<string> {
   return dir;
 }
 
+async function bigBundle(name: string): Promise<string> {
+  const base = await mkdtemp(join(tmpdir(), 'osb-big-'));
+  const dir = join(base, name);
+  await mkdir(dir);
+  await writeFile(join(dir, 'manifest.txt'), 'nodescope_version=9.9.9\n');
+  await writeFile(join(dir, 'db.sql.gz'), Buffer.alloc(400_000, 0xab)); // spans many secretstream frames
+  await writeFile(join(dir, 'blobs.tar.gz'), Buffer.alloc(400_000, 0xcd));
+  return dir;
+}
+
 function cfg(over: Partial<OffsiteConfig> = {}): OffsiteConfig {
   return {
     pubkey: '', prefix: 'nodescope', keep: 7, includeBlobs: true,
@@ -49,6 +59,7 @@ describe('offsite push/pull/list', () => {
     expect(key).toBe('nodescope/nodescope-20260101-000000.nsob');
     // stored object is ciphertext, not the plaintext db bytes
     expect(store.objs.get(key)!.subarray(0, 5).toString()).toBe('NSOB1');
+    expect(store.objs.get(key)!.includes(Buffer.from('db-nodescope-20260101-000000'))).toBe(false);
     expect(await listBackups(store, cfg({ pubkey: publicKey }))).toEqual(['nodescope-20260101-000000']);
 
     const dest = await mkdtemp(join(tmpdir(), 'osb-restore-'));
@@ -91,5 +102,20 @@ describe('offsite push/pull/list', () => {
       pullBundle(store, cfg({ pubkey: bad.publicKey }), 'nodescope-20260109-000000', dest, bad.privateKey),
     ).rejects.toThrow();
     expect(await readdir(dest)).toEqual([]); // no partial bundle
+  });
+
+  it('leaves destDir EMPTY when a correct-key pull fails mid-stream (proves temp-dir promote)', async () => {
+    const kp = await generateKeypair();
+    const store = new MemStore();
+    const key = await pushBundle(store, cfg({ pubkey: kp.publicKey }), await bigBundle('nodescope-20260110-000000'));
+    const obj = store.objs.get(key)!;
+    // corrupt a byte deep in the middle → a late data frame's AEAD fails AFTER earlier
+    // frames have decrypted+extracted (a naive extract-into-destDir would leave partial files).
+    obj[Math.floor(obj.length / 2)] ^= 0xff;
+    const dest = await mkdtemp(join(tmpdir(), 'osb-corrupt-'));
+    await expect(
+      pullBundle(store, cfg({ pubkey: kp.publicKey }), 'nodescope-20260110-000000', dest, kp.privateKey),
+    ).rejects.toThrow();
+    expect(await readdir(dest)).toEqual([]); // no partial bundle promoted
   });
 });
