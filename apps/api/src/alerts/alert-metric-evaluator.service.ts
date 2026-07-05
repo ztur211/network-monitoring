@@ -53,7 +53,8 @@ export class AlertMetricEvaluatorService implements OnModuleInit, OnModuleDestro
     for (const rule of rules) {
       if (rule.metric !== 'latencyMs' || rule.threshold == null) continue;
       const scope = rule.scope as unknown as RuleScope;
-      const deviceIds = 'deviceIds' in scope ? scope.deviceIds : null; // null = all-in-org (site/network scoping resolved by the reader/all)
+      const deviceIds = await this.repo.deviceIdsForScope(rule.organizationId, scope);
+      if (deviceIds !== null && deviceIds.length === 0) continue; // scoped to no devices — never call the reader with [] (it would mean "all")
       const rows = await this.reader.maxLatencyOverWindow(rule.organizationId, deviceIds, rule.forSeconds ?? 60);
       for (const row of rows) {
         const over = breaches(rule.op ?? 'gt', row.value, rule.threshold);

@@ -6,21 +6,26 @@ const rule = (over = {}) => ({
   channelIds: ['c1'], notifyOnRecovery: true, ...over,
 });
 
-function harness(rows: Array<{ deviceId: string; value: number | null }>, dedup = { shouldFire: true, shouldResolve: true }) {
+function harness(
+  rows: Array<{ deviceId: string; value: number | null }>,
+  dedup = { shouldFire: true, shouldResolve: true },
+  opts: { rules?: unknown[]; deviceIdsForScope?: string[] | null } = {},
+) {
   const created: unknown[] = [];
   const repo = {
-    allEnabledRules: jest.fn().mockResolvedValue([rule()]),
+    allEnabledRules: jest.fn().mockResolvedValue(opts.rules ?? [rule()]),
     createEvent: jest.fn().mockImplementation((e) => { created.push(e); return Promise.resolve({ id: 'e1' }); }),
     enqueueDeliveries: jest.fn().mockResolvedValue(undefined),
+    deviceIdsForScope: jest.fn().mockResolvedValue(opts.deviceIdsForScope === undefined ? null : opts.deviceIdsForScope),
   } as never;
   const dedupSvc = {
     dedupKey: () => 'k',
     shouldFire: jest.fn().mockResolvedValue(dedup.shouldFire),
     shouldResolve: jest.fn().mockResolvedValue(dedup.shouldResolve),
   } as never;
-  const reader = { maxLatencyOverWindow: jest.fn().mockResolvedValue(rows) } as never;
+  const reader = { maxLatencyOverWindow: jest.fn().mockResolvedValue(rows) };
   const redis = { set: jest.fn().mockResolvedValue('OK') } as never;
-  return { svc: new AlertMetricEvaluatorService(repo, dedupSvc, reader, redis), created };
+  return { svc: new AlertMetricEvaluatorService(repo, dedupSvc, reader as never, redis), created, reader };
 }
 
 describe('breaches', () => {
@@ -42,5 +47,23 @@ describe('AlertMetricEvaluatorService.evaluateOnce', () => {
     const h = harness([{ deviceId: 'd', value: 20 }]);
     await h.svc.evaluateOnce(new Date());
     expect(h.created).toEqual([expect.objectContaining({ kind: 'RESOLVED', deviceId: 'd' })]);
+  });
+  it('resolves a networkIds/siteIds scope to concrete device ids and queries only those', async () => {
+    const h = harness([{ deviceId: 'd', value: 200 }], undefined, {
+      rules: [rule({ scope: { networkIds: ['n1'] } })],
+      deviceIdsForScope: ['d'],
+    });
+    await h.svc.evaluateOnce(new Date());
+    expect(h.reader.maxLatencyOverWindow).toHaveBeenCalledWith('o', ['d'], expect.any(Number));
+    expect(h.created).toEqual([expect.objectContaining({ kind: 'FIRING', deviceId: 'd' })]);
+  });
+  it('skips a rule scoped to no devices (empty resolution) — never queries all', async () => {
+    const h = harness([], undefined, {
+      rules: [rule({ scope: { siteIds: ['s1'] } })],
+      deviceIdsForScope: [],
+    });
+    await h.svc.evaluateOnce(new Date());
+    expect(h.reader.maxLatencyOverWindow).not.toHaveBeenCalled();
+    expect(h.created).toEqual([]);
   });
 });

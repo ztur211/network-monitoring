@@ -137,6 +137,25 @@ export class AlertRepository {
     });
     return d?.networkId ?? null;
   }
+  /** Resolve a rule scope to concrete device ids. null = "all devices in org"
+   *  (the metric reader treats null as no-filter). [] = scoped to nothing. */
+  async deviceIdsForScope(orgId: string, scope: RuleScope): Promise<string[] | null> {
+    if ('all' in scope) return null;
+    if ('deviceIds' in scope) return scope.deviceIds;
+    if ('networkIds' in scope) {
+      const ds = await this.prisma.device.findMany({
+        where: { organizationId: orgId, networkId: { in: scope.networkIds } }, select: { id: true },
+      });
+      return ds.map((d) => d.id);
+    }
+    if ('siteIds' in scope) {
+      const ds = await this.prisma.device.findMany({
+        where: { organizationId: orgId, propertyId: { in: scope.siteIds } }, select: { id: true },
+      });
+      return ds.map((d) => d.id);
+    }
+    return [];
+  }
 
   // ── events + deliveries ──
   createEvent(e: {
