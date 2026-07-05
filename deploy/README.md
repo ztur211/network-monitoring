@@ -65,18 +65,28 @@ ever sees ciphertext, and the appliance holds only the *public* key (it can
 encrypt but not decrypt its own off-site backups).
 
 1. `./deploy/nodescope.sh offsite-keygen` — generates the keypair, stores the
-   public key in `deploy/.env`, and writes the private key to
-   `deploy/offsite-identity.key`. **Copy that key off the machine and delete the
-   on-box copy** (`rm deploy/offsite-identity.key`) — it is your only recovery
-   key; without it, off-site backups are unrecoverable.
+   public key in `deploy/.env`, and writes **both** keys to
+   `deploy/offsite-identity.key` (a self-contained recovery file — it works on a
+   fresh box with no other config). **Copy that key off the machine and delete
+   the on-box copy** (`rm deploy/offsite-identity.key`) — it is your only
+   recovery key; without it, off-site backups are unrecoverable.
 2. Set `OFFSITE_S3_*` in `deploy/.env` (endpoint/bucket/credentials for your
    S3-compatible provider — R2/B2/S3/Wasabi). Optionally `OFFSITE_INCLUDE_BLOBS=false`
    to ship the DB only.
 3. The daily backup timer now also pushes the newest bundle off-site. Push
-   manually with `./deploy/nodescope.sh offsite-push`; see them with `offsite-list`.
+   manually with `./deploy/nodescope.sh offsite-push`; see them with `offsite-list`;
+   download+decrypt without restoring with
+   `./deploy/nodescope.sh offsite-pull <name> [dest-dir] --identity <file>`.
 
-**Disaster recovery** (new box): `install`, bring your off-box recovery key, then
-`./deploy/nodescope.sh offsite-restore <name> --identity /path/to/offsite-identity.key`.
+**Disaster recovery** (fresh box, nothing configured yet): run `install`, set
+`OFFSITE_S3_*` in the new `deploy/.env` (same bucket/credentials as before), bring
+your off-box `offsite-identity.key` (it holds both keys, so no other setup is
+needed), then:
+```bash
+./deploy/nodescope.sh offsite-restore <name> --identity /path/to/offsite-identity.key
+```
+This pulls + decrypts the named backup using the identity file's keys, then runs
+the normal `restore` against it.
 
 ---
 
