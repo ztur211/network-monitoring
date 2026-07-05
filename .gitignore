@@ -59,3 +59,5 @@ demo/
 
 # Local appliance backups (DB dumps + blobs) — never commit these
 deploy/backups/
+# Off-site backup recovery key (private half of the sealed-box keypair) — never commit
+deploy/offsite-identity.key
