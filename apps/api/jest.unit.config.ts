@@ -15,6 +15,8 @@ const config: Config = {
     '.*/monitoring/__tests__/(?!.*\\.repository\\.spec\\.ts$).*\\.spec\\.ts$',
     // Storage: pure-logic + real-tmpdir backend tests (no external service).
     '.*/storage/__tests__/.*\\.spec\\.ts$',
+    // Off-site backup: crypto/pack/store/round-trip pure + in-memory tests (no external service).
+    '.*/offsite/__tests__/.*\\.spec\\.ts$',
   ],
   coverageDirectory: '../coverage/unit',
 };
