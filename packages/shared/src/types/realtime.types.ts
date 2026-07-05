@@ -9,6 +9,8 @@ export const WS_EVENTS = {
   DEVICE_UPDATED: 'v1:device:updated',
   DEVICE_DELETED: 'v1:device:deleted',
   DEVICE_STATUS: 'v1:device:status',
+  ALERT_FIRED: 'v1:alert:fired',
+  ALERT_RESOLVED: 'v1:alert:resolved',
   CIRCUIT_UPDATED: 'v1:circuit:updated',
   CIRCUIT_DELETED: 'v1:circuit:deleted',
   FIBER_RUN_UPDATED: 'v1:fiber-run:updated',
