@@ -32,9 +32,12 @@ jobs:
 
       - name: Resolve version tag
         id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
@@ -43,18 +46,22 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build + push api
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           docker buildx build \
             --file deploy/Dockerfile.api \
-            --tag ghcr.io/ztur211/nodescope-api:${{ steps.ver.outputs.version }} \
+            --tag "ghcr.io/ztur211/nodescope-api:${VERSION}" \
             --tag ghcr.io/ztur211/nodescope-api:latest \
             --push .
 
       - name: Build + push web
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           docker buildx build \
             --file deploy/Dockerfile.web \
             --build-arg EXPO_PUBLIC_API_URL= \
-            --tag ghcr.io/ztur211/nodescope-web:${{ steps.ver.outputs.version }} \
+            --tag "ghcr.io/ztur211/nodescope-web:${VERSION}" \
             --tag ghcr.io/ztur211/nodescope-web:latest \
             --push .
