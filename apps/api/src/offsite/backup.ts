@@ -1,4 +1,4 @@
-import { basename, join, dirname, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import { mkdir, access, mkdtemp, rename, rm, readdir } from 'node:fs/promises';
 import type { ObjectStore } from './object-store';
 import type { OffsiteConfig } from './config';
@@ -23,24 +23,19 @@ export async function pushBundle(store: ObjectStore, cfg: OffsiteConfig, bundleD
   return key;
 }
 
-/**
- * Extracts into a temp dir (sibling of destDir, same filesystem) and only
- * promotes into destDir once the whole ciphertext stream has verified.
- * Streaming AEAD yields plaintext bytes before it can detect truncation or a
- * late tamper, so extracting straight into destDir could leave a partial,
- * "restorable-looking" bundle behind on failure. On any failure destDir is
- * left with no partial files.
- */
 export async function pullBundle(
   store: ObjectStore, cfg: OffsiteConfig, name: string, destDir: string, privateKeyB64: string,
 ): Promise<void> {
   await mkdir(destDir, { recursive: true });
-  const tmp = await mkdtemp(join(dirname(resolve(destDir)), '.osb-pull-'));
+  // temp dir INSIDE destDir → renames into destDir are same-filesystem (no EXDEV,
+  // even if destDir is a fresh mount point), and finally-cleanup keeps destDir
+  // empty if the pull fails before promotion.
+  const tmp = await mkdtemp(join(destDir, '.osb-pull-'));
   try {
     const ciphertext = await store.get(keyFor(cfg, name));
-    // unseal throws on wrong-key/tamper/truncation; unpack extracts into tmp
+    // unseal throws on wrong-key/tamper/truncation; unpack extracts into tmp.
     await unpackBundle(unsealStream(cfg.pubkey, privateKeyB64, ciphertext), tmp);
-    // promote atomically (same fs): only reached if the whole stream verified
+    // promote to destDir (same-fs renames) — reached only after the full stream verified.
     for (const f of await readdir(tmp)) await rename(join(tmp, f), join(destDir, f));
   } finally {
     await rm(tmp, { recursive: true, force: true });
