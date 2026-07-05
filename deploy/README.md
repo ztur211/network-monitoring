@@ -33,6 +33,33 @@ Tunnel), and the optional cloud deploy — none of which a LAN appliance needs.
 
 ---
 
+## Appliance lifecycle
+
+Once installed (`deploy/nodescope.sh install`):
+
+- **Auto-start on boot:** `sudo ./deploy/nodescope.sh enable-boot` (installs a systemd unit;
+  `disable-boot` to remove). Or pass `--enable-boot` to `install`.
+- **Backup (DB + 3D/BCF models):** `./deploy/nodescope.sh backup [dir]` writes a timestamped
+  bundle (`nodescope-<ts>/` with `db.sql.gz`, `blobs.tar.gz`, `manifest.txt`), pruned to the
+  newest `BACKUP_KEEP` (default 7). Copy a whole bundle dir off-box for safekeeping.
+- **Scheduled backups:** `sudo ./deploy/nodescope.sh enable-backups` installs a daily systemd
+  timer (03:00, catches up missed runs). On a host without systemd, add a cron line instead:
+  `0 3 * * * cd /path/to/deploy && ./nodescope.sh backup >> /var/log/nodescope-backup.log 2>&1`.
+- **Restore:** `./deploy/nodescope.sh restore <bundle-dir>` stops the API, recreates the
+  database from `db.sql.gz` (TimescaleDB-safe), re-extracts the blobs, and brings the stack
+  back up. The DB and blobs are snapshotted back-to-back (not one transaction) — fine because
+  model versions are immutable/content-addressed.
+- **Update:** `./deploy/nodescope.sh update <version>` backs up first, pins `NODESCOPE_VERSION`,
+  pulls, restarts (schema migrates forward on boot), and smoke-tests. It prints the rollback
+  command on success.
+- **Rollback:** `./deploy/nodescope.sh rollback` restores the most recent pre-update backup and
+  re-pins that version. Migrations are **forward-only** — rollback is a restore-from-backup, not
+  a schema down-migration, so roll back promptly if an update misbehaves.
+
+Encrypted off-site backup and out-of-band alerting are separate, later capabilities.
+
+---
+
 ## 0. Why self-host (the binding constraint)
 
 NodeScope's database needs **PostgreSQL 16 with _both_ TimescaleDB _and_ PostGIS**
@@ -197,7 +224,9 @@ location → add devices on 2 floors → connection + fiber run → circuit → 
 assistant → confirm live metrics tick.
 
 ### D6 — Production hardening (single-host adaptation) · [host] + [repo]
-- **DB backups** — `deploy/backup.sh [out-dir]` writes a timestamped gzipped `pg_dump`; cron it to off-box storage (`0 3 * * * …/deploy/backup.sh /var/backups/nodescope`). (+ volume snapshots.)
+- **DB + blob backups** — `./deploy/nodescope.sh backup [out-dir]` writes a timestamped bundle
+  (DB dump + blob archive + manifest); `sudo ./deploy/nodescope.sh enable-backups` schedules it
+  daily via systemd timer. See "Appliance lifecycle" above. (+ off-box copies / volume snapshots.)
 - **Redis persistence** — AOF on (already in the compose), survives restart.
 - **Restart & health** — `restart: unless-stopped` + container `healthcheck`s so
   Docker auto-recovers crashes.
