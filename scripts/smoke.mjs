@@ -195,7 +195,7 @@ async function checkSocketIoHandshake() {
 }
 
 async function checkApiHealthDependencies() {
-  const name = 'API health — db + redis connected';
+  const name = 'API health — backing stores healthy';
   try {
     const res = await fetchWithTimeout(`${API_URL}/api/health`);
     if (res.status !== 200) {
@@ -206,27 +206,17 @@ async function checkApiHealthDependencies() {
     const svc = body.services ?? {};
     // /api/health reports per-dependency status; 'degraded' means the API is up
     // but a backing store isn't reachable — a broken deploy the shallow health
-    // check (which accepts 'degraded') would pass.
-    //
-    // `database` is a string ('ok' | 'degraded'). Since the redis-optional work,
-    // `redis` is an object { enabled, mode, clusterMode, status }: a single-node
-    // appliance reports { status: 'disabled' }, which is a HEALTHY configuration,
-    // not a failure. Treat redis 'ok' or 'disabled' as up; only 'degraded'
-    // (configured-but-unreachable) is a real failure. Tolerate the legacy string
-    // shape too, for older API builds.
+    // check (which accepts 'degraded') would pass. database is a status string;
+    // redis is an object whose status is 'ok' | 'disabled' (single-node
+    // in-memory backing — a healthy configuration) | 'degraded'.
     const dbOk = svc.database === 'ok';
-    const redis = svc.redis;
-    const redisOk =
-      typeof redis === 'string'
-        ? redis === 'ok'
-        : redis?.status === 'ok' || redis?.status === 'disabled';
+    const redisStatus = svc.redis?.status ?? svc.redis;
+    const redisOk = redisStatus === 'ok' || redisStatus === 'disabled';
     if (!dbOk || !redisOk) {
-      const redisDesc = typeof redis === 'string' ? redis : (redis?.status ?? 'missing');
-      fail(name, `not ok: database=${svc.database ?? 'missing'}, redis=${redisDesc}`);
+      fail(name, `not ok: database=${svc.database ?? 'missing'}, redis=${redisStatus ?? 'missing'}`);
       return;
     }
-    const redisState = typeof redis === 'string' ? redis : (redis?.status ?? '?');
-    pass(name, `database=ok, redis=${redisState}, version=${body.version ?? '?'}`);
+    pass(name, `database=ok, redis=${redisStatus}, version=${body.version ?? '?'}`);
   } catch (err) {
     fail(name, err.message);
   }

@@ -29,7 +29,16 @@ export async function migrateStorage(opts: {
         const dstSize = await sizeOf(await dest.get(key));
         if (dstSize === srcSize) { skipped++; continue; }
       }
-      if (!dryRun) await dest.put(key, await source.get(key), 'application/octet-stream');
+      if (!dryRun) {
+        await dest.put(key, await source.get(key), 'application/octet-stream');
+        // Verify the written size — a copy that landed truncated (torn stream,
+        // full disk) must count as failed, not silently pass.
+        const written = await sizeOf(await dest.get(key));
+        if (written !== srcSize) {
+          failed++;
+          continue;
+        }
+      }
       copied++;
     } catch {
       failed++;
