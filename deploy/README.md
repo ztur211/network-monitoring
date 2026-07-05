@@ -56,7 +56,27 @@ Once installed (`deploy/nodescope.sh install`):
   re-pins that version. Migrations are **forward-only** — rollback is a restore-from-backup, not
   a schema down-migration, so roll back promptly if an update misbehaves.
 
-Encrypted off-site backup and out-of-band alerting are separate, later capabilities.
+Out-of-band alerting is a separate, later capability.
+
+### Encrypted off-site backup (optional)
+
+Backups that leave the building are encrypted client-side — the provider only
+ever sees ciphertext, and the appliance holds only the *public* key (it can
+encrypt but not decrypt its own off-site backups).
+
+1. `./deploy/nodescope.sh offsite-keygen` — generates the keypair, stores the
+   public key in `deploy/.env`, and writes the private key to
+   `deploy/offsite-identity.key`. **Copy that key off the machine and delete the
+   on-box copy** (`rm deploy/offsite-identity.key`) — it is your only recovery
+   key; without it, off-site backups are unrecoverable.
+2. Set `OFFSITE_S3_*` in `deploy/.env` (endpoint/bucket/credentials for your
+   S3-compatible provider — R2/B2/S3/Wasabi). Optionally `OFFSITE_INCLUDE_BLOBS=false`
+   to ship the DB only.
+3. The daily backup timer now also pushes the newest bundle off-site. Push
+   manually with `./deploy/nodescope.sh offsite-push`; see them with `offsite-list`.
+
+**Disaster recovery** (new box): `install`, bring your off-box recovery key, then
+`./deploy/nodescope.sh offsite-restore <name> --identity /path/to/offsite-identity.key`.
 
 ---
 

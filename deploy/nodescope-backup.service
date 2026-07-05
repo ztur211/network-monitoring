@@ -7,3 +7,4 @@ After=docker.service
 Type=oneshot
 WorkingDirectory=__DEPLOY_DIR__
 ExecStart=__DEPLOY_DIR__/nodescope.sh backup
+ExecStart=__DEPLOY_DIR__/nodescope.sh offsite-push

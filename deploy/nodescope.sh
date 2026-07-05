@@ -16,6 +16,10 @@
 #   ./deploy/nodescope.sh disable-backups   # remove the backup timer
 #   ./deploy/nodescope.sh update [version] # backup, pin, pull, restart, smoke (prints rollback cmd)
 #   ./deploy/nodescope.sh rollback [bndl]  # restore the last (or given) pre-update backup + re-pin
+#   ./deploy/nodescope.sh offsite-keygen    # generate the off-site keypair (writes recovery key)
+#   ./deploy/nodescope.sh offsite-push [b]  # encrypt+upload the newest (or given) bundle off-site
+#   ./deploy/nodescope.sh offsite-list      # list off-site backups
+#   ./deploy/nodescope.sh offsite-restore <name> --identity <file>  # DR: pull, decrypt, restore
 set -euo pipefail
 
 # shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
@@ -128,6 +132,31 @@ prune_backups() { # prune_backups <dir> <keep> — remove all but the newest <ke
 latest_bundle() { # latest_bundle <dir> -> newest nodescope-* path (empty if none)
   # shellcheck disable=SC2012 # bundle names are plain nodescope-<timestamp>; ls+sort is fine here
   ls -1d "$1"/nodescope-* 2>/dev/null | sort | tail -n1
+}
+
+# --- off-site backup helpers -------------------------------------------------
+
+# Run the offsite CLI inside the api image. Extra args after the subcommand are
+# passed through. $1 = optional host dir to mount at /work (for push/pull).
+offsite_cli() { # offsite_cli <mount-dir-or-''> <cli-arg>...
+  local mount="$1"; shift
+  local vol=(); [ -n "${mount}" ] && vol=(--volume "${mount}:/work")
+  # Pass OFFSITE_* from deploy/.env explicitly — compose run's bare `-e VAR` reads
+  # the host PROCESS env, which doesn't hold these (they live in --env-file, used
+  # only for interpolation). OFFSITE_IDENTITY comes from the caller's shell env
+  # (set by offsite-pull), not from .env.
+  compose run --rm --no-deps --entrypoint node \
+    -e "OFFSITE_BACKUP_PUBKEY=$(get_kv OFFSITE_BACKUP_PUBKEY)" \
+    -e "OFFSITE_S3_ENDPOINT=$(get_kv OFFSITE_S3_ENDPOINT)" \
+    -e "OFFSITE_S3_REGION=$(get_kv OFFSITE_S3_REGION)" \
+    -e "OFFSITE_S3_BUCKET=$(get_kv OFFSITE_S3_BUCKET)" \
+    -e "OFFSITE_S3_ACCESS_KEY=$(get_kv OFFSITE_S3_ACCESS_KEY)" \
+    -e "OFFSITE_S3_SECRET_KEY=$(get_kv OFFSITE_S3_SECRET_KEY)" \
+    -e "OFFSITE_S3_PREFIX=$(get_kv OFFSITE_S3_PREFIX)" \
+    -e "OFFSITE_KEEP=$(get_kv OFFSITE_KEEP)" \
+    -e "OFFSITE_INCLUDE_BLOBS=$(get_kv OFFSITE_INCLUDE_BLOBS)" \
+    -e "OFFSITE_IDENTITY=${OFFSITE_IDENTITY:-}" \
+    "${vol[@]}" api dist/offsite/cli.js "$@"
 }
 
 # --- commands ---------------------------------------------------------------
@@ -294,6 +323,70 @@ cmd_disable_backups() {
   log "daily backups disabled"
 }
 
+cmd_offsite_keygen() {
+  local force=0; [ "${1:-}" = "--force" ] && force=1
+  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] && [ "${force}" -eq 0 ] \
+    && die "OFFSITE_BACKUP_PUBKEY already set — regenerating orphans every existing off-site backup. Re-run with --force to replace it."
+  local out; out="$(offsite_cli '' keygen)"
+  local pub priv
+  pub="$(printf '%s\n' "${out}" | sed -n 's/^PUBKEY=//p')"
+  priv="$(printf '%s\n' "${out}" | sed -n 's/^PRIVKEY=//p')"
+  # shellcheck disable=SC2015 # both sides are pure tests (no side effects); A&&B||C is correct here
+  [ -n "${pub}" ] && [ -n "${priv}" ] || die "keygen failed"
+  set_kv OFFSITE_BACKUP_PUBKEY "${pub}"
+  printf '%s\n' "${priv}" > "${SCRIPT_DIR}/offsite-identity.key"
+  chmod 600 "${SCRIPT_DIR}/offsite-identity.key"
+  log "off-site keypair generated. Public key stored in deploy/.env."
+  log "!!! RECOVERY KEY WRITTEN TO deploy/offsite-identity.key !!!"
+  log "!!! Copy it somewhere safe OFF this machine, then delete the on-box copy:"
+  log "!!!   rm ${SCRIPT_DIR}/offsite-identity.key"
+  log "!!! Without this key, your off-site backups are UNRECOVERABLE."
+}
+
+# Best-effort off-site push of a bundle (default: newest local). No-ops if off-site
+# isn't configured, so it's safe as a chained timer step.
+cmd_offsite_push() {
+  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] || { log "off-site not configured — skipping push"; return 0; }
+  local dir; dir="$(get_kv BACKUP_DIR)"; [ -n "${dir}" ] || dir="${SCRIPT_DIR}/backups"
+  local bundle; bundle="${1:-$(latest_bundle "${dir}")}"
+  # shellcheck disable=SC2015 # both sides are pure tests (no side effects); A&&B||C is correct here
+  [ -n "${bundle}" ] && [ -d "${bundle}" ] || die "no bundle to push (looked in ${dir})"
+  bundle="$(cd "${bundle}" && pwd)"
+  local name; name="$(basename "${bundle}")"
+  log "pushing ${name} off-site…"
+  # Mount the bundle's PARENT so the container sees the real dir name (the remote
+  # object is named after it); mounting the bundle itself at /work loses the name.
+  offsite_cli "$(dirname "${bundle}")" push "/work/${name}"
+}
+
+cmd_offsite_list() {
+  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] || die "off-site not configured"
+  offsite_cli '' list
+}
+
+cmd_offsite_pull() { # cmd_offsite_pull <name> [dest-dir] [--identity <file>]
+  [ -n "$(get_kv OFFSITE_BACKUP_PUBKEY)" ] || die "off-site not configured"
+  local name="" dest="" ident="${SCRIPT_DIR}/offsite-identity.key"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --identity) [ $# -ge 2 ] || die "--identity requires a file"; ident="$2"; shift 2 ;;
+      *) if [ -z "${name}" ]; then name="$1"; elif [ -z "${dest}" ]; then dest="$1"; fi; shift ;;
+    esac
+  done
+  [ -n "${name}" ] || die "usage: offsite-pull <name> [dest-dir] [--identity <file>]"
+  [ -f "${ident}" ] || die "identity key not found: ${ident} (bring your off-box recovery key)"
+  [ -n "${dest}" ] || dest="${SCRIPT_DIR}/backups/${name}"
+  mkdir -p "${dest}"; dest="$(cd "${dest}" && pwd)"
+  OFFSITE_IDENTITY="$(cat "${ident}")" offsite_cli "${dest}" pull "${name}" "/work"
+  log "downloaded + decrypted to ${dest}"
+  printf '%s\n' "${dest}"
+}
+
+cmd_offsite_restore() { # cmd_offsite_restore <name> [--identity <file>]
+  local dest; dest="$(cmd_offsite_pull "$@" | tail -n1)"
+  cmd_restore "${dest}"
+}
+
 cmd_update() { # cmd_update [version]
   local ver="${1:-}"
   log "backing up before update…"
@@ -343,6 +436,11 @@ main() {
     disable-backups) cmd_disable_backups "$@" ;;
     update)      cmd_update "$@" ;;
     rollback)    cmd_rollback "$@" ;;
+    offsite-keygen)  cmd_offsite_keygen "$@" ;;
+    offsite-push)    cmd_offsite_push "$@" ;;
+    offsite-list)    cmd_offsite_list "$@" ;;
+    offsite-pull)    cmd_offsite_pull "$@" ;;
+    offsite-restore) cmd_offsite_restore "$@" ;;
     ""|-h|--help|help) usage ;;
     *) die "unknown command: ${sub} (try --help)" ;;
   esac
