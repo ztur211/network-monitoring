@@ -217,47 +217,72 @@ A single cohesive management script (subcommand dispatcher):
 
 ## Phase 2 — appliance lifecycle
 
+**Decisions settled 2026-07-05:** built on `feat/appliance-packaging-phase2` (stacked on the
+Phase-1 branch); backup scheduler = **systemd timer, opt-in at install** (cron documented as the
+non-systemd fallback); backup cadence/retention = **daily, keep last 7**; backup artifact = a
+timestamped **bundle directory** (not a nested tarball). E+F+G land as one plan (all extend
+`nodescope.sh` + deploy assets); no `apps/` changes.
+
 ### E. systemd auto-start
 
-- **`deploy/nodescope.service`** — a oneshot unit with `RemainAfterExit=yes`,
+- **`deploy/nodescope.service`** — a template unit installed to `/etc/systemd/system/`:
+  `Requires=docker.service` + `After=docker.service`, `Type=oneshot`, `RemainAfterExit=yes`,
+  `WorkingDirectory=<deploy-dir>`,
   `ExecStart=docker compose -f <abs>/docker-compose.prod.yml --env-file <abs>/.env up -d`,
   `ExecStop=… down`, `WantedBy=multi-user.target`. Container `restart: unless-stopped` already
   covers crash/daemon-restart; the unit ensures `up` after a clean `down` or reboot.
-- `nodescope.sh install` offers to install + `systemctl enable --now` it (opt-in prompt / flag).
+- **`nodescope.sh enable-boot` / `disable-boot`** render the unit template with the resolved
+  absolute deploy-dir path → `/etc/systemd/system/`, `daemon-reload`, `systemctl enable --now` /
+  `disable --now`. `install` offers `enable-boot` (opt-in prompt / `--enable-boot` flag).
 
 ### F. Local backup hardening
 
-- Extend the backup to capture **both** stores into one timestamped bundle:
-  - Postgres via `pg_dump` (exists in `backup.sh`), **plus** the fs `blobstore` volume (IFC/BCF
-    models) via a `tar` of `/data/storage` from a throwaway container mounting the volume.
-  - Keep the empty-dump guard; add **retention** (keep last N, prune older).
-- **Scheduling:** `nodescope.sh install` optionally installs a cron entry / systemd timer
-  (opt-in).
-- **`nodescope.sh restore <bundle>`:** stop `api` → restore the `pg_dump` into `db` → restore the
-  blob tar into the `blobstore` volume → `up -d`. Documented + exercised in CI as far as Docker
-  allows.
-- **Consistency caveat** documented: DB and blob snapshots are taken back-to-back, not in a
-  single transaction — acceptable for this data (blobs are immutable, content-addressed
-  versions). Encrypted off-site backup remains spec #5.
+- **`nodescope.sh backup [dir]`** (default `./backups`) writes a timestamped **bundle
+  directory** `nodescope-<ts>/` containing:
+  - `db.sql.gz` — the Postgres `pg_dump` (the dump path from `deploy/backup.sh`, folded in so
+    there is one pg_dump implementation),
+  - `blobs.tar.gz` — the fs `blobstore` volume (IFC/BCF models) tarred via a throwaway container
+    mounting the named volume read-only,
+  - `manifest.txt` — `NODESCOPE_VERSION`, the timestamp, and the current applied-migration id.
+  Keeps the empty-dump guard; **prunes to the 7 most recent bundles** (configurable via
+  `BACKUP_KEEP` in `.env`). A directory (not a nested tarball) avoids double-compression and
+  scp's off-box as-is. `deploy/backup.sh` is **superseded** by this (removed).
+- **`nodescope.sh restore <bundle-dir>`** → stop `api` → `psql` restore `db.sql.gz` into `db` →
+  clear + extract `blobs.tar.gz` into the `blobstore` volume (throwaway container) → `up -d`.
+  **Consistency caveat** documented: DB and blobs are snapshotted back-to-back, not in one
+  transaction — acceptable because blob versions are immutable/content-addressed.
+- **Scheduling (systemd timer, opt-in):** `deploy/nodescope-backup.service` (oneshot →
+  `nodescope.sh backup`) + `deploy/nodescope-backup.timer` (`OnCalendar=*-*-* 03:00:00`,
+  `Persistent=true` so a run missed while the box was off/asleep catches up). `install` offers to
+  enable it (opt-in / `--enable-backups`); failures surface via `systemctl`/journald. A **cron
+  line is documented** as the fallback for non-systemd hosts. Local-only — encrypted off-site
+  backup remains spec #5.
 
 ### G. Update / rollback
 
 - **`nodescope.sh update [version]`:** `backup` first (safety) → set `NODESCOPE_VERSION` in
   `.env` → `pull` → `up -d --wait` (migrate-on-boot rolls the schema forward via
-  `prisma migrate deploy`) → `smoke.mjs`.
-- **Rollback:** Prisma migrations are **forward-only** (no auto-down) — documented prominently.
-  `nodescope.sh rollback` = restore the pre-update backup + re-pin the previous
-  `NODESCOPE_VERSION` + `up -d`. `update` therefore always backs up first and prints the exact
-  rollback command on completion.
-- **Version pinning:** default `NODESCOPE_VERSION` to a concrete published tag (never `latest`)
-  so a `docker compose pull` can't silently jump versions.
+  `prisma migrate deploy`) → `smoke.mjs` → print the exact `rollback` command.
+- **`nodescope.sh rollback`:** restore the most recent pre-update backup + re-pin the previous
+  `NODESCOPE_VERSION` + `up -d`. The prior version is read from the restored bundle's
+  `manifest.txt` (which records the `NODESCOPE_VERSION` at backup time = the pre-update version),
+  so no extra state file is needed. Prisma migrations are **forward-only** (no auto-down) —
+  surfaced prominently: rollback is a restore-from-backup, not a schema down-migration. `update`
+  therefore always backs up first, and prints the exact `rollback` command on completion.
+- **Version pinning:** document pinning `NODESCOPE_VERSION` to a concrete published tag (never
+  `latest`) so `pull` can't silently jump versions; also **pin `cloudflared`** off `:latest` to a
+  specific released tag (resolved when the plan is written).
 
 ### Phase-2 testing
 
-- `bash -n` / `shellcheck` on the new script paths and the systemd unit
-  (`systemd-analyze verify`, best-effort).
-- Self-hosted CI: extend `deploy-validate.yml` to exercise a backup → restore round-trip
-  (dump + blob tar produced, restore re-imports, smoke still passes).
+- **In-sandbox:** `shellcheck` + `bash -n` on the new script paths; `systemd-analyze verify` on
+  the units (best-effort); unit-check the **pure** helpers (retention-prune selection, manifest
+  render) via the sourced-function pattern used for the Phase-1 installer.
+- **Self-hosted CI:** extend `deploy-validate.yml` with a **backup → restore round-trip** (bundle
+  produced with `db.sql.gz` + `blobs.tar.gz`, restore re-imports, smoke still passes); this
+  replaces the Phase-1 standalone `backup.sh` check.
+- **Honesty note:** the running-stack parts (backup/restore round-trip, systemd on a real host)
+  are CI/host-only — not runnable in the sandbox.
 
 ---
 
@@ -268,20 +293,26 @@ A single cohesive management script (subcommand dispatcher):
   `build:` → `image:` (GHCR); version pins. *(A)*
 - `deploy/docker-compose.demo.yml` — slim to the seed one-shot. *(A)*
 - `deploy/Dockerfile.web` — `EXPO_PUBLIC_API_URL` ARG default → empty. *(B)*
-- `deploy/.env.example` — new/updated vars + docs. *(D/H)*
-- `deploy/README.md` — LAN-first reframe. *(H)*
-- `deploy/backup.sh` — grows blob-volume capture + retention; `nodescope.sh backup` wraps it
-  (and cron/timer calls it directly). *(F)*
-- `.github/workflows/deploy-validate.yml` — `SECRET_ENCRYPTION_KEY`, build overlay, self-hosted. *(H)*
+- `deploy/.env.example` — P1 vars (`SECRET_ENCRYPTION_KEY`/`STORAGE_DRIVER`/`NODESCOPE_VERSION`);
+  P2 adds `BACKUP_KEEP`. *(D/H/F)*
+- `deploy/README.md` — P1 LAN-first reframe; P2 documents backup/restore/update + the cron
+  fallback. *(H/F/G)*
+- `.github/workflows/deploy-validate.yml` — P1: `SECRET_ENCRYPTION_KEY`, build overlay,
+  self-hosted. P2: add a backup→restore round-trip + drop the standalone `backup.sh` check. *(H/F)*
 - `apps/web/lib/{api.service,auth-client,websocket.service,browser-collector}.ts`,
   `apps/web/app/(auth)/login.tsx` — use `resolveApiBaseUrl()`. *(B)*
 
 **Added**
-- `deploy/docker-compose.build.yml` — build overlay. *(A)*
-- `deploy/nodescope.sh` — installer + lifecycle. *(D/E/F/G)*
-- `deploy/nodescope.service` — systemd unit. *(E)*
-- `.github/workflows/publish-images.yml` — GHCR publish. *(C)*
-- `apps/web/lib/api-base.ts` (+ `api-base.test.ts`) — same-origin resolver. *(B)*
+- `deploy/docker-compose.build.yml` — build overlay. *(A, P1)*
+- `deploy/nodescope.sh` — installer + lifecycle; P2 adds `enable-boot`/`disable-boot`/`backup`/
+  `restore`/`update`/`rollback`. *(D P1; E/F/G P2)*
+- `.github/workflows/publish-images.yml` — GHCR publish. *(C, P1)*
+- `apps/web/lib/api-base.ts` (+ `__tests__/api-base.spec.ts`) — same-origin resolver. *(B, P1)*
+- `deploy/nodescope.service` — systemd auto-start unit (template). *(E, P2)*
+- `deploy/nodescope-backup.service` + `deploy/nodescope-backup.timer` — scheduled backup. *(F, P2)*
+
+**Removed**
+- `deploy/backup.sh` — superseded by `nodescope.sh backup` (the single pg_dump path). *(F, P2)*
 
 ## Assumptions, dependencies, risks
 
@@ -298,6 +329,9 @@ A single cohesive management script (subcommand dispatcher):
   LAN.
 - **Forward-only migrations** make rollback a restore-from-backup operation, not a schema
   down-migration — surfaced in the `update` UX and docs.
+- **(Phase 2) Appliance host has systemd** — E's auto-start unit and F's backup timer install to
+  `/etc/systemd/system/`. A non-systemd host still runs everything via `nodescope.sh` manually and
+  uses the documented cron line for scheduled backups.
 
 ## Success criteria
 
@@ -308,6 +342,7 @@ A single cohesive management script (subcommand dispatcher):
    rebuild. *(Phase 1)*
 3. `deploy-validate.yml` builds + boots the appliance and passes smoke on the self-hosted runner.
    *(Phase 1)*
-4. After a reboot the stack is back up automatically; `nodescope.sh backup` captures DB + blobs
-   and `restore` round-trips; `nodescope.sh update` moves versions and prints a working rollback
-   command. *(Phase 2)*
+4. `nodescope.sh enable-boot` makes the stack return automatically after a reboot; an enabled
+   backup timer produces daily bundles pruned to 7; `nodescope.sh backup` captures DB + blobs and
+   `restore <bundle>` round-trips; `nodescope.sh update` moves versions (backing up first) and
+   prints a working `rollback` command. *(Phase 2)*
