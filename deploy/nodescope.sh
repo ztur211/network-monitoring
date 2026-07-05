@@ -107,7 +107,8 @@ write_manifest() { # write_manifest <bundle-dir> <version> <migration> <timestam
   printf 'nodescope_version=%s\nmigration=%s\ntimestamp=%s\n' "$2" "$3" "$4" > "$1/manifest.txt"
 }
 
-manifest_version() { # manifest_version <bundle-dir> -> prints nodescope_version
+manifest_version() { # manifest_version <bundle-dir> -> prints nodescope_version ('' if no manifest)
+  [ -f "$1/manifest.txt" ] || return 0
   sed -n 's/^nodescope_version=//p' "$1/manifest.txt" | head -n1
 }
 
