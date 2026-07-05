@@ -99,6 +99,7 @@ jobs:
           C="docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml --env-file deploy/.env"
           # Attach a standalone MinIO (the off-site S3 target) to the api's own compose network.
           NET="$(docker inspect -f '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}' "$($C ps -q api)")"
+          docker rm -f osb-minio >/dev/null 2>&1 || true   # a persistent runner may hold a leftover from a crashed run
           docker run -d --name osb-minio --network "$NET" \
             -e MINIO_ROOT_USER=osbadmin -e MINIO_ROOT_PASSWORD=osbadmin123 \
             minio/minio server /data >/dev/null
