@@ -94,10 +94,48 @@ jobs:
           node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
           echo "backup→restore round-trip OK (db + blob sentinels recovered)"
 
+      - name: Encrypted off-site backup round-trip (MinIO)
+        run: |
+          set -e
+          C="docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml --env-file deploy/.env"
+          # Attach a standalone MinIO (the off-site S3 target) to the api's own compose network.
+          NET="$(docker inspect -f '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}' "$($C ps -q api)")"
+          docker run -d --name osb-minio --network "$NET" \
+            -e MINIO_ROOT_USER=osbadmin -e MINIO_ROOT_PASSWORD=osbadmin123 \
+            minio/minio server /data >/dev/null
+          # Wait for MinIO to answer, then create the off-site bucket.
+          ok=0
+          for _ in $(seq 1 30); do
+            if docker run --rm --network "$NET" --entrypoint sh minio/mc -c \
+                 "mc alias set m http://osb-minio:9000 osbadmin osbadmin123 && mc mb -p m/offsite" >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          [ "$ok" = 1 ] || { echo "MinIO/bucket setup failed"; exit 1; }
+          # Configure off-site: keygen writes OFFSITE_BACKUP_PUBKEY + the identity file; then the S3 creds.
+          deploy/nodescope.sh offsite-keygen
+          cat >> deploy/.env <<'ENV'
+          OFFSITE_S3_ENDPOINT=http://osb-minio:9000
+          OFFSITE_S3_BUCKET=offsite
+          OFFSITE_S3_ACCESS_KEY=osbadmin
+          OFFSITE_S3_SECRET_KEY=osbadmin123
+          ENV
+          # Push the existing local bundle off-site, confirm it's listed, then DR-pull it to a
+          # fresh dir with the identity file and prove the encrypted db dump decrypts back.
+          b="$(ls -1d /tmp/ns-backups/nodescope-* | sort | tail -1)"
+          name="$(basename "$b")"
+          deploy/nodescope.sh offsite-push "$b"
+          deploy/nodescope.sh offsite-list | grep -qx "$name" || { echo "offsite-list missing $name"; exit 1; }
+          deploy/nodescope.sh offsite-pull "$name" /tmp/osb-restore --identity deploy/offsite-identity.key
+          gunzip -c /tmp/osb-restore/db.sql.gz | grep -q "PostgreSQL database dump" || { echo "offsite pull: no valid db dump"; exit 1; }
+          test -f /tmp/osb-restore/blobs.tar.gz || { echo "offsite pull: missing blobs.tar.gz"; exit 1; }
+          echo "off-site round-trip OK (keygen → push → list → pull → decrypt, verified against MinIO)"
+
       - name: Dump container logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs --no-color --tail 200
 
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env down -v
+        run: |
+          docker rm -f osb-minio >/dev/null 2>&1 || true
+          docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env down -v
