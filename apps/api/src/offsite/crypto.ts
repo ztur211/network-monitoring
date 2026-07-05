@@ -3,6 +3,10 @@ import _sodium from 'libsodium-wrappers';
 
 export const MAGIC = Buffer.from('NSOB1');
 
+// Seal emits normal Node stream chunks; a frame far larger than that means a
+// corrupt or hostile ciphertext — reject it before allocating (untrusted input).
+const MAX_FRAME = 64 * 1024 * 1024;
+
 async function sodium(): Promise<typeof _sodium> {
   await _sodium.ready;
   return _sodium;
@@ -80,6 +84,7 @@ export function unsealStream(publicKeyB64: string, privateKeyB64: string, input:
 
     for (;;) {
       await need(4); const frameLen = take(4).readUInt32BE();
+      if (frameLen > MAX_FRAME) throw new Error('offsite: frame length exceeds cap (corrupt or hostile ciphertext)');
       await need(frameLen); const frame = take(frameLen);
       const res = s.crypto_secretstream_xchacha20poly1305_pull(state, frame, null);
       if (!res) throw new Error('offsite: ciphertext authentication failed (tampered or corrupt)');
