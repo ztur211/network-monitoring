@@ -13,33 +13,37 @@ export async function runCli(argv: string[]): Promise<number> {
     return 0;
   }
 
+  // Validate the subcommand BEFORE requiring config, so a typo on a fresh (unconfigured)
+  // install reports the real problem instead of "off-site not configured".
+  if (cmd !== 'push' && cmd !== 'pull' && cmd !== 'list') {
+    return err(`unknown command: ${cmd ?? '(none)'} (keygen|push|pull|list)`);
+  }
+
   const cfg = offsiteConfigFromEnv();
   if (!cfg) return err('off-site not configured (set OFFSITE_BACKUP_PUBKEY + OFFSITE_S3_BUCKET + creds)');
   const store = s3StoreFromConfig(cfg);
 
-  switch (cmd) {
-    case 'push': {
+  try {
+    if (cmd === 'push') {
       const dir = rest[0];
       if (!dir) return err('usage: push <bundle-dir>');
       const key = await pushBundle(store, cfg, dir);
       process.stdout.write(`${key}\n`);
       return 0;
     }
-    case 'pull': {
+    if (cmd === 'pull') {
       const [name, dest] = rest;
       if (!name || !dest) return err('usage: pull <name> <dest-dir>');
       const priv = process.env.OFFSITE_IDENTITY ?? '';
       if (!priv) return err('OFFSITE_IDENTITY (base64 private key) is required to decrypt');
       await pullBundle(store, cfg, name, dest, priv);
-      process.stderr.write(`[offsite] restored ${name} -> ${dest}\n`); // stderr: keep stdout clean for callers
+      process.stderr.write(`[offsite] restored ${name} -> ${dest}\n`);
       return 0;
     }
-    case 'list': {
-      for (const n of await listBackups(store, cfg)) process.stdout.write(`${n}\n`);
-      return 0;
-    }
-    default:
-      return err(`unknown command: ${cmd ?? '(none)'} (keygen|push|pull|list)`);
+    for (const n of await listBackups(store, cfg)) process.stdout.write(`${n}\n`);
+    return 0;
+  } catch (e) {
+    return err((e as Error)?.message ?? String(e));
   }
 }
 

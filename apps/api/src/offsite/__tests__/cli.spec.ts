@@ -17,16 +17,23 @@ describe('offsite cli', () => {
 
   it('push errors (non-zero) when off-site is not configured', async () => {
     process.env = { ...origEnv, OFFSITE_BACKUP_PUBKEY: '', OFFSITE_S3_BUCKET: '' };
-    const spy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const out: string[] = [];
+    const spy = jest.spyOn(process.stderr, 'write').mockImplementation((s) => (out.push(String(s)), true));
     const code = await runCli(['push', '/tmp/whatever']);
     spy.mockRestore();
     expect(code).not.toBe(0);
+    expect(out.join('')).toMatch(/not configured/);
   });
 
   it('unknown command returns non-zero', async () => {
-    const spy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // No/empty OFFSITE env — must still report "unknown command", not "not configured",
+    // proving the command is validated before config is required.
+    process.env = { ...origEnv, OFFSITE_BACKUP_PUBKEY: '', OFFSITE_S3_BUCKET: '' };
+    const out: string[] = [];
+    const spy = jest.spyOn(process.stderr, 'write').mockImplementation((s) => (out.push(String(s)), true));
     const code = await runCli(['frobnicate']);
     spy.mockRestore();
     expect(code).not.toBe(0);
+    expect(out.join('')).toMatch(/unknown command/);
   });
 });
