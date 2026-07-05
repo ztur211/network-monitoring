@@ -56,3 +56,6 @@ demo/
 
 # run-desktop.sh runtime logs + pid files
 .run/
+
+# Local appliance backups (DB dumps + blobs) — never commit these
+deploy/backups/
