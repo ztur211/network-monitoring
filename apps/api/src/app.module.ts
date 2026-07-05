@@ -39,6 +39,7 @@ import { SpatialModule } from './spatial/spatial.module';
 import { DesktopAuthModule } from './desktop-auth/desktop-auth.module';
 import { ExportModule } from './export/export.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { AlertModule } from './alerts/alerts.module';
 import { AgentModule } from './agents/agents.module';
 import { SnmpModule } from './snmp/snmp.module';
 import { BcfModule } from './bcf/bcf.module';
@@ -106,6 +107,7 @@ import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
     BuildingModelsModule,
     SpatialModule,
     MonitoringModule,
+    AlertModule,
     AgentModule,
     SnmpModule,
     BcfModule,

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AlertChannel, AlertEvent } from '@prisma/client';
 import { createTransport, Transporter } from 'nodemailer';
 import { CryptoService } from '../../common/crypto/crypto.service';
@@ -7,7 +7,9 @@ type Cfg = { host: string; port: number; fromAddr: string; toAddrs: string[]; us
 
 @Injectable()
 export class EmailChannel {
-  constructor(private readonly crypto: CryptoService, private readonly make: typeof createTransport = createTransport) {}
+  // `make` is test-injected; @Optional() stops Nest from trying to resolve the bare
+  // `Function` design-type as a DI token (see webhook.channel.ts for the full rationale).
+  constructor(private readonly crypto: CryptoService, @Optional() private readonly make: typeof createTransport = createTransport) {}
 
   async send(channel: AlertChannel, event: AlertEvent): Promise<void> {
     const c = channel.config as unknown as Cfg;

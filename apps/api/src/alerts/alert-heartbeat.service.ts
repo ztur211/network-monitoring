@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -10,7 +10,9 @@ export class AlertHeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertHeartbeatService.name);
   private timer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, private readonly fetchFn: Fetch = fetch) {}
+  // fetchFn is test-injected; @Optional() stops Nest from trying to resolve the bare
+  // `Function` design-type as a DI token (see webhook.channel.ts for the full rationale).
+  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, @Optional() private readonly fetchFn: Fetch = fetch) {}
 
   onModuleInit(): void {
     const ms = Number(process.env.ALERT_HEARTBEAT_INTERVAL_SECONDS ?? 60) * 1000;

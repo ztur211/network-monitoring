@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AlertChannel, AlertEvent } from '@prisma/client';
 import { CryptoService } from '../../common/crypto/crypto.service';
 
@@ -8,7 +8,11 @@ const WEBHOOK_TIMEOUT_MS = Number(process.env.ALERT_WEBHOOK_TIMEOUT_MS ?? 10000)
 
 @Injectable()
 export class WebhookChannel {
-  constructor(private readonly crypto: CryptoService, private readonly fetchFn: Fetch = fetch) {}
+  // fetchFn is test-injected; @Optional() stops Nest from trying to resolve the
+  // bare `Function` design-type as a DI token (it has no provider) — without it,
+  // real app boot throws "can't resolve dependencies ... Function". Optional lets
+  // Nest pass `undefined` when nothing is bound, so the JS default (`= fetch`) applies.
+  constructor(private readonly crypto: CryptoService, @Optional() private readonly fetchFn: Fetch = fetch) {}
 
   async send(channel: AlertChannel, event: AlertEvent): Promise<void> {
     const url = (channel.config as { url?: string })?.url;

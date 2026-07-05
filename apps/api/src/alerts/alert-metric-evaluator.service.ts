@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { AlertRule, Prisma } from '@prisma/client';
 import { AlertRepository } from './alert.repository';
 import { AlertDedupService } from './alert-dedup.service';
@@ -26,7 +26,7 @@ export class AlertMetricEvaluatorService implements OnModuleInit, OnModuleDestro
   constructor(
     private readonly repo: AlertRepository,
     private readonly dedup: AlertDedupService,
-    private readonly reader: MetricReader,
+    @Inject(METRIC_READER) private readonly reader: MetricReader,
     private readonly redis: RedisService,
   ) {}
 
