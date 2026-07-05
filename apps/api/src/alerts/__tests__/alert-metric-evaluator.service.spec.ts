@@ -76,9 +76,10 @@ describe('AlertMetricEvaluatorService.evaluateOnce', () => {
 
   // I3: the design's success criterion is "breaches for forSeconds continuously" — a single
   // spike must not fire. The reader itself is mocked here; the aggregate-choice logic (MIN for
-  // gt / MAX for lt) lives in timescale-metric-reader.ts and is exercised end-to-end via the
-  // real DB in the integration tier. This proves the evaluator's FIRING decision is driven by
-  // whatever "sustained" value the reader hands back, not a raw peak.
+  // gt / MAX for lt) lives in timescale-metric-reader.ts. The sustained-vs-spike SQL semantics
+  // are covered by timescale-metric-reader.repository.spec.ts (integration tier, real DB); this
+  // suite covers the evaluator logic over a mocked reader. This proves the evaluator's FIRING
+  // decision is driven by whatever "sustained" value the reader hands back, not a raw peak.
   describe('sustained vs. spike (I3)', () => {
     it('does NOT fire when the sustained value (min-over-window for gt) is under threshold, even though a spike could have occurred', async () => {
       // A single-sample spike would have been way over 100 (say 500ms once), but the sustained
