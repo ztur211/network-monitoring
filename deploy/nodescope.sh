@@ -96,8 +96,8 @@ cmd_install() {
   local origin=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --origin) origin="${2:-}"; shift 2 ;;
-      --web-port) set_kv WEB_PORT "${2:-}"; shift 2 ;;
+      --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
+      --web-port) [ $# -ge 2 ] || die "--web-port requires a value"; set_kv WEB_PORT "$2"; shift 2 ;;
       *) die "unknown install option: $1" ;;
     esac
   done
@@ -120,8 +120,8 @@ cmd_reconfigure() {
   local origin=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --origin) origin="${2:-}"; shift 2 ;;
-      --web-port) set_kv WEB_PORT "${2:-}"; shift 2 ;;
+      --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
+      --web-port) [ $# -ge 2 ] || die "--web-port requires a value"; set_kv WEB_PORT "$2"; shift 2 ;;
       *) die "unknown reconfigure option: $1" ;;
     esac
   done
