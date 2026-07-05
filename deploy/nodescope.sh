@@ -10,6 +10,10 @@
 #   ./deploy/nodescope.sh up | down     # start / stop the stack
 #   ./deploy/nodescope.sh enable-boot   # install+enable the systemd unit (auto-start on boot; needs sudo)
 #   ./deploy/nodescope.sh disable-boot  # remove the systemd unit
+#   ./deploy/nodescope.sh backup [dir]      # DB+blobs bundle (prunes to BACKUP_KEEP)
+#   ./deploy/nodescope.sh restore <bundle>  # restore a bundle (stops api, recreates DB, restores blobs)
+#   ./deploy/nodescope.sh enable-backups    # install+enable the daily backup timer (needs sudo)
+#   ./deploy/nodescope.sh disable-backups   # remove the backup timer
 set -euo pipefail
 
 # shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
@@ -127,12 +131,13 @@ preflight() {
 }
 
 cmd_install() {
-  local origin="" enable_boot=0
+  local origin="" enable_boot=0 enable_backups=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
       --web-port) [ $# -ge 2 ] || die "--web-port requires a value"; set_kv WEB_PORT "$2"; shift 2 ;;
       --enable-boot) enable_boot=1; shift ;;
+      --enable-backups) enable_backups=1; shift ;;
       *) die "unknown install option: $1" ;;
     esac
   done
@@ -150,6 +155,7 @@ cmd_install() {
   log "NodeScope is up at ${origin_url}"
   log "create your first account there, then point the desktop app at ${origin_url}/api"
   [ "${enable_boot}" -eq 1 ] && cmd_enable_boot
+  [ "${enable_backups}" -eq 1 ] && cmd_enable_backups
 }
 
 cmd_reconfigure() {
@@ -229,6 +235,57 @@ cmd_backup() { # cmd_backup [output-dir]
   printf '%s\n' "${bundle}"                          # last line = bundle path (used by update)
 }
 
+cmd_restore() { # cmd_restore <bundle-dir>
+  local bundle="${1:-}"
+  [ -n "${bundle}" ] || die "usage: nodescope.sh restore <bundle-dir>"
+  [ -d "${bundle}" ] || die "no such bundle: ${bundle}"
+  [ -f "${bundle}/db.sql.gz" ] || die "bundle missing db.sql.gz"
+  [ -f "${bundle}/blobs.tar.gz" ] || die "bundle missing blobs.tar.gz"
+  bundle="$(cd "${bundle}" && pwd)"                 # absolutize for the -v mount
+
+  log "stopping api (releasing DB connections)…"
+  compose stop api
+
+  log "recreating the database…"
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
+  compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$POSTGRES_DB\" WITH (FORCE)"'
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
+  compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$POSTGRES_DB\""'
+
+  log "restoring database (TimescaleDB pre/post-restore)…"
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
+  compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS timescaledb; SELECT timescaledb_pre_restore();"'
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
+  gunzip -c "${bundle}/db.sql.gz" | compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+  # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
+  compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "SELECT timescaledb_post_restore();"'
+
+  log "restoring blob storage…"
+  compose run --rm --no-deps --entrypoint sh --volume "${bundle}:/backup:ro" api \
+    -c 'rm -rf /data/storage/* && tar xzf /backup/blobs.tar.gz -C /data/storage'
+
+  log "starting the stack…"
+  compose up -d --wait
+  log "restore complete from ${bundle}"
+}
+
+cmd_enable_backups() {
+  require_systemd_root
+  render_unit "${SCRIPT_DIR}/nodescope-backup.service" "${SCRIPT_DIR}" > /etc/systemd/system/nodescope-backup.service
+  render_unit "${SCRIPT_DIR}/nodescope-backup.timer" "${SCRIPT_DIR}" > /etc/systemd/system/nodescope-backup.timer
+  systemctl daemon-reload
+  systemctl enable --now nodescope-backup.timer
+  log "daily backups enabled (check: systemctl list-timers nodescope-backup)"
+}
+
+cmd_disable_backups() {
+  require_systemd_root
+  systemctl disable --now nodescope-backup.timer 2>/dev/null || true
+  rm -f /etc/systemd/system/nodescope-backup.timer /etc/systemd/system/nodescope-backup.service
+  systemctl daemon-reload
+  log "daily backups disabled"
+}
+
 usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d'; }
 
 main() {
@@ -243,6 +300,9 @@ main() {
     enable-boot)  cmd_enable_boot "$@" ;;
     disable-boot) cmd_disable_boot "$@" ;;
     backup)      cmd_backup "$@" ;;
+    restore)         cmd_restore "$@" ;;
+    enable-backups)  cmd_enable_backups "$@" ;;
+    disable-backups) cmd_disable_backups "$@" ;;
     ""|-h|--help|help) usage ;;
     *) die "unknown command: ${sub} (try --help)" ;;
   esac
