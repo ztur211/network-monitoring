@@ -44,4 +44,24 @@ describe('offsite crypto (hybrid sealed-box)', () => {
     const truncated = sealed.subarray(0, sealed.length - 10); // drop the tail
     await expect(collect(unsealStream(publicKey, privateKey, Readable.from(truncated)))).rejects.toThrow();
   });
+
+  it('decrypts when the ciphertext is fed one byte per source chunk (cross-chunk parser)', async () => {
+    const { publicKey, privateKey } = await generateKeypair();
+    const plain = Buffer.alloc(2000, 3);
+    const sealed = await collect(sealStream(publicKey, Readable.from(plain)));
+    const drip = Readable.from((function* () { for (const b of sealed) yield Buffer.from([b]); })());
+    const out = await collect(unsealStream(publicKey, privateKey, drip));
+    expect(out.equals(plain)).toBe(true);
+  });
+
+  it('rejects a forged oversized frame length before allocating', async () => {
+    const { publicKey, privateKey } = await generateKeypair();
+    const sealed = await collect(sealStream(publicKey, Readable.from(Buffer.from('hi'))));
+    // walk the header to the first frame's u32 length prefix, then forge it huge
+    let o = 5; // MAGIC
+    const sealedLen = sealed.readUInt16BE(o); o += 2 + sealedLen;
+    const headerLen = sealed.readUInt16BE(o); o += 2 + headerLen;
+    sealed.writeUInt32BE(0xffffffff, o);
+    await expect(collect(unsealStream(publicKey, privateKey, Readable.from(sealed)))).rejects.toThrow(/exceeds|cap|too large/i);
+  });
 });
