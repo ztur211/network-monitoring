@@ -28,7 +28,7 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.prod.yml"
 WEB_PORT_DEFAULT=8080
 
 compose() { docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"; }
-log() { printf '[nodescope] %s\n' "$*"; }
+log() { printf '[nodescope] %s\n' "$*" >&2; }
 die() { printf '[nodescope] ERROR: %s\n' "$*" >&2; exit 1; }
 
 # --- env-file helpers -------------------------------------------------------
@@ -297,15 +297,18 @@ cmd_disable_backups() {
 cmd_update() { # cmd_update [version]
   local ver="${1:-}"
   log "backing up before update…"
-  cmd_backup >/dev/null
-  local prev; prev="$(get_kv NODESCOPE_VERSION)"; [ -n "${prev}" ] || prev="latest"
+  local bundle prev origin_url
+  bundle="$(cmd_backup)"                            # stdout is just the bundle path (log→stderr)
+  prev="$(get_kv NODESCOPE_VERSION)"; [ -n "${prev}" ] || prev="latest"
   [ -n "${ver}" ] && set_kv NODESCOPE_VERSION "${ver}"
-  log "pulling images (${ver:-current pin})…"; compose pull
-  log "applying update (migrate-on-boot)…"; compose up -d --wait
-  local origin_url; origin_url="$(get_kv PUBLIC_ORIGIN)"
-  log "smoke-testing…"
-  node "${REPO_ROOT}/scripts/smoke.mjs" "${origin_url}" "${origin_url}"
-  log "update OK. To roll back to ${prev}: ./deploy/nodescope.sh rollback"
+  origin_url="$(get_kv PUBLIC_ORIGIN)"
+  if ! { log "pulling images (${ver:-current pin})…" && compose pull \
+         && log "applying update (migrate-on-boot)…" && compose up -d --wait \
+         && log "smoke-testing…" && node "${REPO_ROOT}/scripts/smoke.mjs" "${origin_url}" "${origin_url}"; }; then
+    set_kv NODESCOPE_VERSION "${prev}"
+    die "update failed — reverted the version pin to ${prev}. If the stack is broken, restore the pre-update backup: ./deploy/nodescope.sh rollback ${bundle}"
+  fi
+  log "update OK. To roll back to ${prev}: ./deploy/nodescope.sh rollback ${bundle}"
 }
 
 cmd_rollback() { # cmd_rollback [bundle-dir]
