@@ -256,7 +256,7 @@ cmd_restore() { # cmd_restore <bundle-dir>
   # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
   compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS timescaledb; SELECT timescaledb_pre_restore();"'
   # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
-  gunzip -c "${bundle}/db.sql.gz" | compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+  gunzip -c "${bundle}/db.sql.gz" | compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
   # shellcheck disable=SC2016 # $POSTGRES_USER/$POSTGRES_DB MUST expand inside the db container, not here
   compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "SELECT timescaledb_post_restore();"'
 
