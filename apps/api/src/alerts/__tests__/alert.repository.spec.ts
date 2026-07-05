@@ -107,6 +107,15 @@ describe('AlertRepository (integration)', () => {
     expect(await repo.getRule(orgId, rule.id)).toBeNull();
   });
 
+  // I2: `{all: false}` must resolve to NO devices (mirrors scopeCovers in
+  // alert-evaluator.service.ts, which only treats `scope.all === true` as "covers everything").
+  // Before the fix, `'all' in scope` alone returned null ("all devices in org") for ANY object
+  // carrying an `all` key, regardless of its value — a per-org over-fire bug.
+  it('resolves {all:false} to [] (no devices), and {all:true} to null (no filter = all devices)', async () => {
+    expect(await repo.deviceIdsForScope(orgId, { all: false } as never)).toEqual([]);
+    expect(await repo.deviceIdsForScope(orgId, { all: true })).toBeNull();
+  });
+
   it('lists rules for an org', async () => {
     await repo.createRule(orgId, {
       name: 'rule-a',

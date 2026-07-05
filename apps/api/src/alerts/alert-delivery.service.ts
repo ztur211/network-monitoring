@@ -13,6 +13,11 @@ export function backoffMs(attempts: number): number {
 export class AlertDeliveryService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertDeliveryService.name);
   private timer?: ReturnType<typeof setInterval>;
+  // Per-process re-entrancy guard: a slow sequential drainOnce (up to 50 deliveries × ~10s
+  // each) can outrun the Redis lock's TTL (ALERT_DELIVER_INTERVAL_SECONDS), letting the next
+  // setInterval tick re-acquire the lock and start a second concurrent drain in THIS process —
+  // re-dispatching the same rows. This flag makes that a no-op regardless of the lock TTL.
+  private draining = false;
 
   constructor(
     private readonly repo: AlertRepository,
@@ -28,10 +33,16 @@ export class AlertDeliveryService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
 
   private async cycle(): Promise<void> {
+    if (this.draining) return;
     try {
       const ok = await this.redis.set(LOCK, '1', 'EX', Number(process.env.ALERT_DELIVER_INTERVAL_SECONDS ?? 15), 'NX');
       if (!ok) return;
-      await this.drainOnce(new Date());
+      this.draining = true;
+      try {
+        await this.drainOnce(new Date());
+      } finally {
+        this.draining = false;
+      }
     } catch (err) {
       this.logger.error({ err }, 'delivery cycle failed');
     }

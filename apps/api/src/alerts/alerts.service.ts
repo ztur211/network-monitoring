@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AlertRepository } from './alert.repository';
 import { CHANNEL_DISPATCHER, ChannelDispatcher } from './channel-dispatcher';
 import { CreateChannelDto, CreateRuleDto } from './alerts.dto';
+import { NodeScopeException } from '../common/filters/global-exception.filter';
 import type { RuleScope } from './alerts.types';
 
 @Injectable()
@@ -21,7 +22,14 @@ export class AlertsService {
   listChannels(orgId: string) { return this.repo.listChannels(orgId); }
   deleteChannel(orgId: string, id: string) { return this.repo.deleteChannel(orgId, id); }
 
-  createRule(orgId: string, dto: CreateRuleDto) {
+  async createRule(orgId: string, dto: CreateRuleDto) {
+    if (dto.channelIds.length) {
+      const orgChannelIds = new Set((await this.repo.listChannels(orgId)).map((c) => c.id));
+      const foreign = dto.channelIds.some((id) => !orgChannelIds.has(id));
+      if (foreign) {
+        throw new NodeScopeException('ALERT_001', 'CHANNEL_NOT_FOUND', HttpStatus.BAD_REQUEST);
+      }
+    }
     return this.repo.createRule(orgId, { ...dto, scope: dto.scope as unknown as RuleScope, targetStates: dto.targetStates ?? [] });
   }
   listRules(orgId: string) { return this.repo.listRules(orgId); }

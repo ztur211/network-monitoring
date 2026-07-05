@@ -9,21 +9,23 @@ type Fetch = typeof fetch;
 export class AlertHeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertHeartbeatService.name);
   private timer?: ReturnType<typeof setInterval>;
+  // Parsed once so the interval and the lock TTL can never drift apart (they used to be
+  // parsed independently in onModuleInit and cycle).
+  private readonly intervalSeconds = Number(process.env.ALERT_HEARTBEAT_INTERVAL_SECONDS ?? 60);
 
   // fetchFn is test-injected; @Optional() stops Nest from trying to resolve the bare
   // `Function` design-type as a DI token (see webhook.channel.ts for the full rationale).
   constructor(private readonly prisma: PrismaService, private readonly redis: RedisService, @Optional() private readonly fetchFn: Fetch = fetch) {}
 
   onModuleInit(): void {
-    const ms = Number(process.env.ALERT_HEARTBEAT_INTERVAL_SECONDS ?? 60) * 1000;
-    this.timer = setInterval(() => void this.cycle(), ms);
+    this.timer = setInterval(() => void this.cycle(), this.intervalSeconds * 1000);
     if (this.timer.unref) this.timer.unref();
   }
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
 
   private async cycle(): Promise<void> {
     try {
-      const ok = await this.redis.set(LOCK, '1', 'EX', Number(process.env.ALERT_HEARTBEAT_INTERVAL_SECONDS ?? 60), 'NX');
+      const ok = await this.redis.set(LOCK, '1', 'EX', this.intervalSeconds, 'NX');
       if (!ok) return;
       await this.beatOnce();
     } catch (err) {

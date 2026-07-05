@@ -6,8 +6,11 @@ import { RedisService } from '../redis/redis.service';
 import type { RuleScope } from './alerts.types';
 
 export interface MetricReader {
-  /** Max latency per device over the last `sinceSeconds`, for the given devices (null = all in org). */
-  maxLatencyOverWindow(orgId: string, deviceIds: string[] | null, sinceSeconds: number): Promise<Array<{ deviceId: string; value: number | null }>>;
+  /** Sustained latency per device over the last `sinceSeconds`, for the given devices (null = all
+   *  in org). "Sustained" means the whole window breached, not a single spike: callers should pass
+   *  MIN(value) semantics for `op === 'gt'` (every sample above threshold) and MAX(value) semantics
+   *  for `op === 'lt'` (every sample below threshold) — see TimescaleMetricReader. */
+  sustainedLatencyOverWindow(orgId: string, deviceIds: string[] | null, sinceSeconds: number, op: string): Promise<Array<{ deviceId: string; value: number | null }>>;
 }
 export const METRIC_READER = Symbol('METRIC_READER');
 
@@ -55,7 +58,7 @@ export class AlertMetricEvaluatorService implements OnModuleInit, OnModuleDestro
       const scope = rule.scope as unknown as RuleScope;
       const deviceIds = await this.repo.deviceIdsForScope(rule.organizationId, scope);
       if (deviceIds !== null && deviceIds.length === 0) continue; // scoped to no devices — never call the reader with [] (it would mean "all")
-      const rows = await this.reader.maxLatencyOverWindow(rule.organizationId, deviceIds, rule.forSeconds ?? 60);
+      const rows = await this.reader.sustainedLatencyOverWindow(rule.organizationId, deviceIds, rule.forSeconds ?? 60, rule.op ?? 'gt');
       for (const row of rows) {
         const over = breaches(rule.op ?? 'gt', row.value, rule.threshold);
         if (over) {

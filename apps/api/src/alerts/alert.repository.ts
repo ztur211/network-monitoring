@@ -140,7 +140,9 @@ export class AlertRepository {
   /** Resolve a rule scope to concrete device ids. null = "all devices in org"
    *  (the metric reader treats null as no-filter). [] = scoped to nothing. */
   async deviceIdsForScope(orgId: string, scope: RuleScope): Promise<string[] | null> {
-    if ('all' in scope) return null;
+    // Mirrors scopeCovers in alert-evaluator.service.ts: only `all: true` means "no filter".
+    // `all: false` (or any other falsy value) must resolve to "no devices", not all-org.
+    if ('all' in scope) return scope.all === true ? null : [];
     if ('deviceIds' in scope) return scope.deviceIds;
     if ('networkIds' in scope) {
       const ds = await this.prisma.device.findMany({
