@@ -8,6 +8,29 @@
 > wiring (`.do/app.yaml`, `.github/workflows/deploy.yml`) stays as the paid
 > reference; **nothing here changes it.**
 
+## Quick start — LAN appliance (one command)
+
+On any Linux host with Docker + the compose plugin:
+
+```bash
+git clone https://github.com/ztur211/nodescope.git
+cd nodescope
+./deploy/nodescope.sh install
+```
+
+`install` generates the secrets, auto-detects this box's LAN IP, pulls the
+prebuilt images from GHCR, brings the stack up, and smoke-tests it. When it
+finishes it prints the URL — open `http://<box-ip>:8080` on any machine on the
+LAN, create the first account, and point the desktop app at
+`http://<box-ip>:8080/api`.
+
+- **The IP changed?** `./deploy/nodescope.sh reconfigure` — no rebuild.
+- **Fixed origin / HTTPS?** `./deploy/nodescope.sh install --origin https://nodescope.example.com`.
+- **Everyday ops:** `./deploy/nodescope.sh status | logs | up | down`.
+
+The sections below cover manual setup, remote access (Tailscale / Cloudflare
+Tunnel), and the optional cloud deploy — none of which a LAN appliance needs.
+
 ---
 
 ## 0. Why self-host (the binding constraint)
