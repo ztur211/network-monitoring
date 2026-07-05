@@ -66,14 +66,32 @@ jobs:
       - name: Smoke test the running stack
         run: node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
 
-      - name: Verify the backup bundle
+      - name: Backup → restore round-trip (with data sentinel)
         run: |
+          C="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env"
+          # seed a DB sentinel + a blob sentinel BEFORE backing up
+          $C exec -T db psql -U nodescope nodescope -c "CREATE TABLE restore_probe(v text); INSERT INTO restore_probe VALUES ('sentinel-42');"
+          $C run --rm --no-deps --entrypoint sh api -c 'echo blob-sentinel > /data/storage/_probe'
+          # back up
           deploy/nodescope.sh backup /tmp/ns-backups
           b="$(ls -1d /tmp/ns-backups/nodescope-* | sort | tail -1)"
           gunzip -c "$b/db.sql.gz" | grep -q "PostgreSQL database dump" || { echo "no valid pg_dump in $b"; exit 1; }
-          test -f "$b/blobs.tar.gz" || { echo "missing blobs.tar.gz in $b"; exit 1; }
-          test -f "$b/manifest.txt" || { echo "missing manifest.txt in $b"; exit 1; }
-          echo "backup bundle OK ($b)"
+          test -f "$b/blobs.tar.gz" && test -f "$b/manifest.txt" || { echo "bundle incomplete"; exit 1; }
+          # destroy the sentinels to prove restore actually recovers them
+          $C exec -T db psql -U nodescope nodescope -c "DROP TABLE restore_probe;"
+          $C run --rm --no-deps --entrypoint sh api -c 'rm -f /data/storage/_probe'
+          # restore
+          deploy/nodescope.sh restore "$b"
+          # assert the DB sentinel came back (proves data, not just schema, round-trips)
+          got="$($C exec -T db psql -tAqX -U nodescope nodescope -c 'SELECT v FROM restore_probe')"
+          got="$(printf '%s' "$got" | tr -d '[:space:]')"
+          [ "$got" = "sentinel-42" ] || { echo "DB sentinel not recovered (got: '$got')"; exit 1; }
+          # assert the blob sentinel came back
+          blob="$($C run --rm --no-deps --entrypoint sh api -c 'cat /data/storage/_probe 2>/dev/null || true')"
+          printf '%s' "$blob" | grep -q 'blob-sentinel' || { echo "blob sentinel not recovered (got: '$blob')"; exit 1; }
+          # final smoke on the restored stack
+          node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
+          echo "backup→restore round-trip OK (db + blob sentinels recovered)"
 
       - name: Dump container logs on failure
         if: failure()
