@@ -14,6 +14,8 @@
 #   ./deploy/nodescope.sh restore <bundle>  # restore a bundle (stops api, recreates DB, restores blobs)
 #   ./deploy/nodescope.sh enable-backups    # install+enable the daily backup timer (needs sudo)
 #   ./deploy/nodescope.sh disable-backups   # remove the backup timer
+#   ./deploy/nodescope.sh update [version] # backup, pin, pull, restart, smoke (prints rollback cmd)
+#   ./deploy/nodescope.sh rollback [bndl]  # restore the last (or given) pre-update backup + re-pin
 set -euo pipefail
 
 # shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
@@ -120,6 +122,11 @@ prune_backups() { # prune_backups <dir> <keep> — remove all but the newest <ke
     [ -n "${old}" ] && rm -rf "${old}"
   done
   return 0
+}
+
+latest_bundle() { # latest_bundle <dir> -> newest nodescope-* path (empty if none)
+  # shellcheck disable=SC2012 # bundle names are plain nodescope-<timestamp>; ls+sort is fine here
+  ls -1d "$1"/nodescope-* 2>/dev/null | sort | tail -n1
 }
 
 # --- commands ---------------------------------------------------------------
@@ -286,6 +293,33 @@ cmd_disable_backups() {
   log "daily backups disabled"
 }
 
+cmd_update() { # cmd_update [version]
+  local ver="${1:-}"
+  log "backing up before update…"
+  cmd_backup >/dev/null
+  local prev; prev="$(get_kv NODESCOPE_VERSION)"; [ -n "${prev}" ] || prev="latest"
+  [ -n "${ver}" ] && set_kv NODESCOPE_VERSION "${ver}"
+  log "pulling images (${ver:-current pin})…"; compose pull
+  log "applying update (migrate-on-boot)…"; compose up -d --wait
+  local origin_url; origin_url="$(get_kv PUBLIC_ORIGIN)"
+  log "smoke-testing…"
+  node "${REPO_ROOT}/scripts/smoke.mjs" "${origin_url}" "${origin_url}"
+  log "update OK. To roll back to ${prev}: ./deploy/nodescope.sh rollback"
+}
+
+cmd_rollback() { # cmd_rollback [bundle-dir]
+  local dir bundle prev
+  dir="$(get_kv BACKUP_DIR)"; [ -n "${dir}" ] || dir="${SCRIPT_DIR}/backups"
+  bundle="${1:-$(latest_bundle "${dir}")}"
+  # shellcheck disable=SC2015 # both sides are pure tests (no side effects); A&&B||C is correct here
+  [ -n "${bundle}" ] && [ -d "${bundle}" ] || die "no backup bundle to roll back to (looked in ${dir})"
+  prev="$(manifest_version "${bundle}")"; [ -n "${prev}" ] || prev="latest"
+  log "re-pinning NODESCOPE_VERSION=${prev} and restoring ${bundle}…"
+  set_kv NODESCOPE_VERSION "${prev}"
+  cmd_restore "${bundle}"
+  log "rolled back to ${prev}"
+}
+
 usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d'; }
 
 main() {
@@ -303,6 +337,8 @@ main() {
     restore)         cmd_restore "$@" ;;
     enable-backups)  cmd_enable_backups "$@" ;;
     disable-backups) cmd_disable_backups "$@" ;;
+    update)      cmd_update "$@" ;;
+    rollback)    cmd_rollback "$@" ;;
     ""|-h|--help|help) usage ;;
     *) die "unknown command: ${sub} (try --help)" ;;
   esac
