@@ -1,10 +1,15 @@
-# NodeScope self-hosted demo stack. See deploy/README.md for the full runbook.
+# NodeScope self-hosted appliance stack. See deploy/README.md for the full runbook,
+# or run `deploy/nodescope.sh install` for a one-command setup.
 #
 #   cp deploy/.env.example deploy/.env     # then fill in secrets + PUBLIC_ORIGIN
-#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+#
+# This pulls prebuilt images (ghcr.io/ztur211/nodescope-*). To build locally
+# instead, add the build overlay and --build:
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml \
+#     --env-file deploy/.env up -d --build
 #
 # Add `--profile tunnel` to also run cloudflared (needs CLOUDFLARE_TUNNEL_TOKEN).
-# Build context is the repo root (..), so the -f path is all you need.
 
 name: nodescope
 

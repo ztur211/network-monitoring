@@ -178,8 +178,9 @@ A single cohesive management script (subcommand dispatcher):
      `PUBLIC_ORIGIN=http://<ip>:<WEB_PORT>`.
   4. **Bring up:** `docker compose -f docker-compose.prod.yml --env-file .env pull` then
      `up -d --wait` (waits on healthchecks).
-  5. **Verify:** run `scripts/smoke.mjs <origin> <origin>` (6 checks: API health, unauth
-     session, CORS preflight, web root, web catch-all).
+  5. **Verify:** run `scripts/smoke.mjs <origin> <origin>` (9 checks: API health, health
+     db+redis dependencies, unauth session, auth-enforced, CORS preflight, socket.io
+     handshake, web root, web bundle, web catch-all).
   6. **Report:** print the LAN URL, the "create your first account" hint, and how to point the
      desktop app at `http://<ip>:<WEB_PORT>/api`.
 - **`reconfigure`:** re-detect / change the origin or web port → rewrite `.env` → `up -d` (no

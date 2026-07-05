@@ -207,12 +207,26 @@ async function checkApiHealthDependencies() {
     // /api/health reports per-dependency status; 'degraded' means the API is up
     // but a backing store isn't reachable — a broken deploy the shallow health
     // check (which accepts 'degraded') would pass.
-    const down = ['database', 'redis'].filter((k) => svc[k] !== 'ok');
-    if (down.length > 0) {
-      fail(name, `not ok: ${down.map((k) => `${k}=${svc[k] ?? 'missing'}`).join(', ')}`);
+    //
+    // `database` is a string ('ok' | 'degraded'). Since the redis-optional work,
+    // `redis` is an object { enabled, mode, clusterMode, status }: a single-node
+    // appliance reports { status: 'disabled' }, which is a HEALTHY configuration,
+    // not a failure. Treat redis 'ok' or 'disabled' as up; only 'degraded'
+    // (configured-but-unreachable) is a real failure. Tolerate the legacy string
+    // shape too, for older API builds.
+    const dbOk = svc.database === 'ok';
+    const redis = svc.redis;
+    const redisOk =
+      typeof redis === 'string'
+        ? redis === 'ok'
+        : redis?.status === 'ok' || redis?.status === 'disabled';
+    if (!dbOk || !redisOk) {
+      const redisDesc = typeof redis === 'string' ? redis : (redis?.status ?? 'missing');
+      fail(name, `not ok: database=${svc.database ?? 'missing'}, redis=${redisDesc}`);
       return;
     }
-    pass(name, `database=ok, redis=ok, version=${body.version ?? '?'}`);
+    const redisState = typeof redis === 'string' ? redis : (redis?.status ?? '?');
+    pass(name, `database=ok, redis=${redisState}, version=${body.version ?? '?'}`);
   } catch (err) {
     fail(name, err.message);
   }
