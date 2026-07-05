@@ -66,13 +66,14 @@ jobs:
       - name: Smoke test the running stack
         run: node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
 
-      - name: Verify the DB backup script
+      - name: Verify the backup bundle
         run: |
-          deploy/backup.sh /tmp/ns-backups
-          f="$(ls -1 /tmp/ns-backups/*.sql.gz | head -1)"
-          gunzip -c "$f" | grep -q "PostgreSQL database dump" \
-            && echo "backup OK ($f)" \
-            || { echo "backup did not contain a valid pg_dump"; exit 1; }
+          deploy/nodescope.sh backup /tmp/ns-backups
+          b="$(ls -1d /tmp/ns-backups/nodescope-* | sort | tail -1)"
+          gunzip -c "$b/db.sql.gz" | grep -q "PostgreSQL database dump" || { echo "no valid pg_dump in $b"; exit 1; }
+          test -f "$b/blobs.tar.gz" || { echo "missing blobs.tar.gz in $b"; exit 1; }
+          test -f "$b/manifest.txt" || { echo "missing manifest.txt in $b"; exit 1; }
+          echo "backup bundle OK ($b)"
 
       - name: Dump container logs on failure
         if: failure()
