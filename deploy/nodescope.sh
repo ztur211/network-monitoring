@@ -8,8 +8,8 @@
 #   ./deploy/nodescope.sh status        # docker compose ps
 #   ./deploy/nodescope.sh logs [svc]    # tail logs
 #   ./deploy/nodescope.sh up | down     # start / stop the stack
-#
-# Backup, restore and update land in Phase 2.
+#   ./deploy/nodescope.sh enable-boot   # install+enable the systemd unit (auto-start on boot; needs sudo)
+#   ./deploy/nodescope.sh disable-boot  # remove the systemd unit
 set -euo pipefail
 
 # shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
@@ -84,6 +84,17 @@ set_origin() { # set_origin [explicit-url]
   log "PUBLIC_ORIGIN = ${origin}"
 }
 
+# --- systemd unit rendering -------------------------------------------------
+
+render_unit() { # render_unit <template-file> <deploy-dir> -> unit text on stdout
+  sed "s#__DEPLOY_DIR__#$2#g" "$1"
+}
+
+require_systemd_root() {
+  command -v systemctl >/dev/null 2>&1 || die "systemctl not found — this host has no systemd (see README for the manual/cron path)"
+  [ -w /etc/systemd/system ] || die "writing systemd units needs root — re-run with sudo"
+}
+
 # --- commands ---------------------------------------------------------------
 
 preflight() {
@@ -93,11 +104,12 @@ preflight() {
 }
 
 cmd_install() {
-  local origin=""
+  local origin="" enable_boot=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
       --web-port) [ $# -ge 2 ] || die "--web-port requires a value"; set_kv WEB_PORT "$2"; shift 2 ;;
+      --enable-boot) enable_boot=1; shift ;;
       *) die "unknown install option: $1" ;;
     esac
   done
@@ -114,6 +126,7 @@ cmd_install() {
   node "${REPO_ROOT}/scripts/smoke.mjs" "${origin_url}" "${origin_url}"
   log "NodeScope is up at ${origin_url}"
   log "create your first account there, then point the desktop app at ${origin_url}/api"
+  [ "${enable_boot}" -eq 1 ] && cmd_enable_boot
 }
 
 cmd_reconfigure() {
@@ -137,7 +150,23 @@ cmd_logs() { compose logs "$@"; }
 cmd_up() { compose up -d --wait; }
 cmd_down() { compose down; }
 
-usage() { sed -n '2,12p' "${BASH_SOURCE[0]}"; }
+cmd_enable_boot() {
+  require_systemd_root
+  render_unit "${SCRIPT_DIR}/nodescope.service" "${SCRIPT_DIR}" > /etc/systemd/system/nodescope.service
+  systemctl daemon-reload
+  systemctl enable --now nodescope.service
+  log "boot auto-start enabled (check: systemctl status nodescope)"
+}
+
+cmd_disable_boot() {
+  require_systemd_root
+  systemctl disable --now nodescope.service 2>/dev/null || true
+  rm -f /etc/systemd/system/nodescope.service
+  systemctl daemon-reload
+  log "boot auto-start disabled"
+}
+
+usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d'; }
 
 main() {
   local sub="${1:-}"; shift || true
@@ -148,6 +177,8 @@ main() {
     logs)        cmd_logs "$@" ;;
     up)          cmd_up "$@" ;;
     down)        cmd_down "$@" ;;
+    enable-boot)  cmd_enable_boot "$@" ;;
+    disable-boot) cmd_disable_boot "$@" ;;
     ""|-h|--help|help) usage ;;
     *) die "unknown command: ${sub} (try --help)" ;;
   esac
