@@ -10,11 +10,12 @@ export function offsiteConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Offs
   const pubkey = env.OFFSITE_BACKUP_PUBKEY ?? '';
   const bucket = env.OFFSITE_S3_BUCKET ?? '';
   if (!pubkey || !bucket) return null; // off-site disabled
-  const keep = Number.parseInt(env.OFFSITE_KEEP ?? '', 10);
+  const keepRaw = (env.OFFSITE_KEEP ?? '').trim();
+  const keepNum = keepRaw === '' ? NaN : Number(keepRaw);
   return {
     pubkey,
     prefix: env.OFFSITE_S3_PREFIX ?? 'nodescope',
-    keep: Number.isInteger(keep) && keep >= 1 ? keep : 7,
+    keep: Number.isInteger(keepNum) && keepNum >= 1 ? keepNum : 7,
     includeBlobs: (env.OFFSITE_INCLUDE_BLOBS ?? 'true') !== 'false',
     s3: {
       endpoint: env.OFFSITE_S3_ENDPOINT ?? '',
