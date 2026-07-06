@@ -19,6 +19,9 @@ import { useAiStore } from '../../store/ai.store';
 import { useUiStore } from '../../store/ui.store';
 import { useNetworkStore } from '../../store/network.store';
 import { useOnboardingStore } from '../../store/onboarding.store';
+import { useAccessStore, isOrgAdmin } from '../../store/access.store';
+import { getAccessSummary } from '../../lib/api.service';
+import { subscribeToAlertEvents } from '../../lib/alert-events.service';
 import { WS_EVENTS, DeviceDto, CircuitDto, FiberRunDto, DeviceConnectionDto } from '@nodescope/shared';
 import type { SessionUser } from '@nodescope/shared';
 
@@ -29,6 +32,7 @@ export default function AppLayout() {
   const { upsertCircuit, removeCircuit, flushOfflineQueue: flushCircuits } = useCircuitStore();
   const { appendTokenToCurrentMessage, completeCurrentMessage, setError: setAiError } = useAiStore();
   const { syncPreferencesFromServer, flushMapPreferences } = useUiStore();
+  const role = useAccessStore((s) => s.role);
 
   useEffect(() => {
     // WS subscriptions can be registered synchronously here — websocketService
@@ -44,6 +48,7 @@ export default function AppLayout() {
     });
     const unsubscribeOnHome = subscribeToOnHomeUpdates();
     const unsubscribeNetworkUpdates = subscribeToNetworkUpdates();
+    const offAlerts = subscribeToAlertEvents();
 
     // Flush queued offline mutations whenever the socket comes (back) up.
     // Bind BOTH events: socket.io's manager-driven recovery fires 'reconnect',
@@ -65,6 +70,13 @@ export default function AppLayout() {
         websocketService.connect();
         browserCollectorService.start();
         void syncPreferencesFromServer();
+
+        // Populate the access store (role + F3 scope) so admin-gated UI
+        // (Alerts tab/settings sections) renders correctly app-wide. Best
+        // effort — a failure just leaves role null, which gates UI closed.
+        getAccessSummary()
+          .then((s) => useAccessStore.getState().setAccess(s))
+          .catch(() => undefined);
 
         // Load the user's network and open the wizard if they don't have one.
         // The wizard auto-fires its welcome turn from the WizardSheet effect,
@@ -97,6 +109,7 @@ export default function AppLayout() {
       unsubscribeAi();
       unsubscribeOnHome();
       unsubscribeNetworkUpdates();
+      offAlerts();
       websocketService.off('connect', handleConnected);
       websocketService.off('reconnect', handleConnected);
       websocketService.disconnect();
@@ -172,6 +185,19 @@ export default function AppLayout() {
             title: 'AI',
             tabBarIcon: ({ color, size }) => (
               <TabIcon name="ai-assistant" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="alerts"
+          options={{
+            title: 'Alerts',
+            // Admin-only feature: hide the tab entirely for non-admins (the
+            // screen also shows an admin-required notice as a defense-in-depth
+            // fallback for direct navigation / role loading before boot).
+            href: isOrgAdmin(role) ? undefined : null,
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon name="alerts" size={size} color={color} />
             ),
           }}
         />
