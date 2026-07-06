@@ -6,6 +6,11 @@ import type {
   OidProfileDto,
   CreateOidProfileDto,
   AccessSummaryDto,
+  AlertChannelDto,
+  CreateAlertChannelDto,
+  AlertRuleDto,
+  CreateAlertRuleDto,
+  AlertEventDto,
 } from '@nodescope/shared';
 
 /** Shape sent to POST /snmp/assign */
@@ -100,6 +105,53 @@ export async function createOidProfile(dto: CreateOidProfileDto): Promise<OidPro
 /** Assign (or unassign) a credential/profile to a network or device. */
 export async function assignSnmp(dto: AssignSnmpPayload): Promise<void> {
   await api.post('/snmp/assign', dto);
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+
+/** List alert channels (webhook/email/in-app) for the current org. */
+export async function listChannels(): Promise<AlertChannelDto[]> {
+  const res = await api.get<{ success: true; data: AlertChannelDto[] }>('/alerts/channels');
+  return res.data.data;
+}
+
+/** Create a new alert channel. */
+export async function createChannel(dto: CreateAlertChannelDto): Promise<AlertChannelDto> {
+  const res = await api.post<{ success: true; data: AlertChannelDto }>('/alerts/channels', dto);
+  return res.data.data;
+}
+
+/** Delete an alert channel by id. */
+export async function deleteChannel(id: string): Promise<void> {
+  await api.delete(`/alerts/channels/${id}`);
+}
+
+/** Send a test notification through an alert channel. */
+export async function testChannel(id: string): Promise<void> {
+  await api.post(`/alerts/channels/${id}/test`);
+}
+
+/** List alert rules for the current org. */
+export async function listRules(): Promise<AlertRuleDto[]> {
+  const res = await api.get<{ success: true; data: AlertRuleDto[] }>('/alerts/rules');
+  return res.data.data;
+}
+
+/** Create a new alert rule. */
+export async function createRule(dto: CreateAlertRuleDto): Promise<AlertRuleDto> {
+  const res = await api.post<{ success: true; data: AlertRuleDto }>('/alerts/rules', dto);
+  return res.data.data;
+}
+
+/** Delete an alert rule by id. */
+export async function deleteRule(id: string): Promise<void> {
+  await api.delete(`/alerts/rules/${id}`);
+}
+
+/** List recent alert events (firing/resolved history) for the current org. */
+export async function listAlertEvents(): Promise<AlertEventDto[]> {
+  const res = await api.get<{ success: true; data: AlertEventDto[] }>('/alerts/events');
+  return res.data.data;
 }
 
 // ─── Access / role ───────────────────────────────────────────────────────────
