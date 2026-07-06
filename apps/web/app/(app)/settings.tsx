@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { useAuthStore } from '../../store/auth.store';
+import { useAccessStore, isOrgAdmin } from '../../store/access.store';
 import {
   api,
   listAgents,
@@ -21,10 +22,19 @@ import {
   listOidProfiles,
   createOidProfile,
   assignSnmp,
+  listChannels,
+  createChannel,
+  deleteChannel,
+  testChannel,
+  listRules,
+  createRule,
+  deleteRule,
 } from '../../lib/api.service';
 import type { UserDto } from '@nodescope/shared';
 import { AgentsSettings } from '../../components/AgentsSettings';
 import { SnmpSettings } from '../../components/SnmpSettings';
+import { AlertsChannels } from '../../components/AlertsChannels';
+import { AlertsRules } from '../../components/AlertsRules';
 
 interface DataSourceStatus {
   type: string;
@@ -37,6 +47,7 @@ export default function SettingsScreen() {
   const { user, setUser } = useAuthStore();
   const { colorScheme, setColorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const role = useAccessStore((s) => s.role);
 
   // Profile editing
   const [name, setName] = useState(user?.name ?? '');
@@ -278,6 +289,14 @@ export default function SettingsScreen() {
           assignSnmp,
         }}
       />
+
+      {/* Alerting Sections (OWNER/ADMIN only) */}
+      {isOrgAdmin(role) && (
+        <>
+          <AlertsChannels client={{ listChannels, createChannel, deleteChannel, testChannel }} />
+          <AlertsRules client={{ listRules, createRule, deleteRule, listChannels }} />
+        </>
+      )}
 
       {/* Data Sources Section */}
       <View className="px-4 mt-6 mb-8">
