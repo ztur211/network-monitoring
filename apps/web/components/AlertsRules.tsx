@@ -176,6 +176,15 @@ export function AlertsRules({ client }: Props) {
     if (selectedChannelIds.length === 0) return false;
     if (scopeKind !== 'all' && parseIds(scopeIdsInput).length === 0) return false;
     if (trigger === 'STATE_TRANSITION' && targetStates.length === 0) return false;
+    // Same bug class as threshold/forSeconds below: `parseInt('-5', 10) || 0`
+    // is `-5` (truthy, so the `|| 0` fallback never kicks in) — validate the
+    // parsed value is a real non-negative integer before enabling submit,
+    // rather than sending a value the backend's `@Min(0)` rejects as an
+    // opaque 400.
+    const cooldownNum = Number(cooldownSeconds);
+    if (!cooldownSeconds.trim() || !Number.isInteger(cooldownNum) || cooldownNum < 0) {
+      return false;
+    }
     if (trigger === 'METRIC_THRESHOLD') {
       const thresholdNum = Number(threshold);
       const forSecondsNum = Number(forSeconds);
@@ -205,7 +214,10 @@ export function AlertsRules({ client }: Props) {
         scope,
         severity,
         channelIds: selectedChannelIds,
-        cooldownSeconds: parseInt(cooldownSeconds, 10) || 0,
+        // canSubmit guarantees this parses to a non-negative integer before we
+        // ever get here — no `|| 0` fallback, which previously masked negative
+        // values (`parseInt('-5', 10) || 0` is `-5`, not `0`).
+        cooldownSeconds: Number(cooldownSeconds),
         notifyOnRecovery,
         ...(trigger === 'STATE_TRANSITION'
           ? { targetStates }

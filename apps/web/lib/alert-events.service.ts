@@ -16,7 +16,7 @@ import type { AlertRealtimePayload, AlertEventDto, AlertEventKind } from '@nodes
 import { websocketService } from './websocket.service';
 import { useAlertsStore } from '../store/alerts.store';
 
-function toFeedItem(payload: AlertRealtimePayload, kind: AlertEventKind): AlertEventDto {
+export function toFeedItem(payload: AlertRealtimePayload, kind: AlertEventKind): AlertEventDto {
   return {
     id: payload.id,
     organizationId: '',

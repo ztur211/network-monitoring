@@ -9,7 +9,9 @@
  *      WEBHOOK → name, url, secret? (bearer token, write-only)
  *      EMAIL   → name, host, port, fromAddr, toAddrs (comma → string[]), username?, password? (write-only)
  *      INAPP   → name, siteId?
- *  - Delete a channel
+ *  - Delete a channel — AlertRule.channelIds has no FK, so this never fails
+ *    server-side even if rules reference the channel; we check `listRules()`
+ *    first and warn (via confirm) when any rule would be orphaned
  *  - Test a channel (fires a test notification through it)
  *
  * All server interaction goes through the injected `client` prop so this
@@ -33,6 +35,7 @@ import type {
   AlertChannelDto,
   CreateAlertChannelDto,
   AlertChannelType,
+  AlertRuleDto,
 } from '@nodescope/shared';
 
 // ─── Client interface ─────────────────────────────────────────────────────────
@@ -42,6 +45,7 @@ export interface AlertsChannelsClient {
   createChannel: (dto: CreateAlertChannelDto) => Promise<AlertChannelDto>;
   deleteChannel: (id: string) => Promise<void>;
   testChannel: (id: string) => Promise<void>;
+  listRules: () => Promise<AlertRuleDto[]>;
 }
 
 interface Props {
@@ -120,7 +124,15 @@ export function AlertsChannels({ client }: Props) {
     if (!newName.trim()) return false;
     if (newType === 'WEBHOOK') return !!webhookUrl.trim();
     if (newType === 'EMAIL') {
-      return !!emailHost.trim() && !!emailFromAddr.trim() && !!emailToAddrs.trim();
+      if (!emailHost.trim() || !emailFromAddr.trim() || !emailToAddrs.trim()) return false;
+      // Port is optional (backend defaults to 587), but if the admin typed
+      // something, it must be a real port — otherwise it's silently coerced
+      // (or rejected as an opaque 400) server-side.
+      if (emailPort.trim()) {
+        const portNum = Number(emailPort);
+        if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return false;
+      }
+      return true;
     }
     return true; // INAPP — siteId optional
   })();
@@ -178,11 +190,27 @@ export function AlertsChannels({ client }: Props) {
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
+      // AlertRule.channelIds is a plain array with no FK, so deleting a channel
+      // never fails on the backend — it just leaves referencing rules pointing
+      // at a dead channel (their deliveries then silently GAVE_UP). Warn the
+      // admin up front instead of letting that happen invisibly. If the rules
+      // list fails to load, don't let that block deletion — fall through as if
+      // nothing references it.
+      const rules = await client.listRules().catch(() => []);
+      const referencing = rules.filter((r) => r.channelIds.includes(id));
+      if (referencing.length > 0) {
+        const confirmed =
+          typeof window !== 'undefined' &&
+          window.confirm(
+            `${referencing.length} alert rule(s) use this channel and will stop delivering to it. Delete anyway?`,
+          );
+        if (!confirmed) return;
+      }
       await client.deleteChannel(id);
       setChannels((prev) => prev.filter((c) => c.id !== id));
     } catch {
       if (typeof window !== 'undefined') {
-        window.alert('Failed to delete channel. It may be in use by an alert rule.');
+        window.alert('Failed to delete channel.');
       }
     } finally {
       setDeletingId(null);

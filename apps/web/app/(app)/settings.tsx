@@ -293,7 +293,9 @@ export default function SettingsScreen() {
       {/* Alerting Sections (OWNER/ADMIN only) */}
       {isOrgAdmin(role) && (
         <>
-          <AlertsChannels client={{ listChannels, createChannel, deleteChannel, testChannel }} />
+          <AlertsChannels
+            client={{ listChannels, createChannel, deleteChannel, testChannel, listRules }}
+          />
           <AlertsRules client={{ listRules, createRule, deleteRule, listChannels }} />
         </>
       )}
