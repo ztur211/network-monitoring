@@ -63,6 +63,9 @@ const SCOPE_KINDS = ['all', 'deviceIds', 'siteIds', 'networkIds'] as const;
 type ScopeKind = (typeof SCOPE_KINDS)[number];
 const OPS = ['gt', 'lt'] as const;
 
+/** Parse a comma-separated id input into a trimmed, non-empty-only id list. */
+const parseIds = (s: string): string[] => s.split(',').map((t) => t.trim()).filter(Boolean);
+
 /** Derive a display label for a rule's scope kind from its stored `scope` blob. */
 function scopeKindOf(scope: Record<string, unknown>): string {
   if (scope?.all === true) return 'all';
@@ -171,9 +174,18 @@ export function AlertsRules({ client }: Props) {
   const canSubmit = (() => {
     if (!name.trim()) return false;
     if (selectedChannelIds.length === 0) return false;
-    if (scopeKind !== 'all' && !scopeIdsInput.trim()) return false;
+    if (scopeKind !== 'all' && parseIds(scopeIdsInput).length === 0) return false;
     if (trigger === 'STATE_TRANSITION' && targetStates.length === 0) return false;
-    if (trigger === 'METRIC_THRESHOLD' && (!threshold.trim() || !forSeconds.trim())) return false;
+    if (trigger === 'METRIC_THRESHOLD') {
+      const thresholdNum = Number(threshold);
+      const forSecondsNum = Number(forSeconds);
+      // `Number('')` is 0 (not NaN), so keep the non-empty check alongside the
+      // finite/integer checks — otherwise a blank field would silently submit as 0.
+      if (!threshold.trim() || !Number.isFinite(thresholdNum)) return false;
+      if (!forSeconds.trim() || !Number.isInteger(forSecondsNum) || forSecondsNum <= 0) {
+        return false;
+      }
+    }
     return true;
   })();
 
@@ -185,14 +197,7 @@ export function AlertsRules({ client }: Props) {
     setCreateError(null);
     try {
       const scope: Record<string, unknown> =
-        scopeKind === 'all'
-          ? { all: true }
-          : {
-              [scopeKind]: scopeIdsInput
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            };
+        scopeKind === 'all' ? { all: true } : { [scopeKind]: parseIds(scopeIdsInput) };
 
       const dto: CreateAlertRuleDto = {
         name: name.trim(),
@@ -207,6 +212,8 @@ export function AlertsRules({ client }: Props) {
           : {
               metric: 'latencyMs',
               op,
+              // canSubmit guarantees these parse to finite/positive-integer
+              // numbers before we ever get here.
               threshold: Number(threshold),
               forSeconds: parseInt(forSeconds, 10),
             }),
