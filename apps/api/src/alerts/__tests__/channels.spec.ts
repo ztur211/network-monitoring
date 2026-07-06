@@ -4,6 +4,7 @@ import { InAppChannel } from '../channels/inapp.channel';
 import { ChannelDispatcherImpl } from '../channels/channel-dispatcher.impl';
 
 const evt = { id: 'e1', organizationId: 'o', ruleId: 'r', deviceId: 'd', kind: 'FIRING', severity: 'CRITICAL', detail: { state: 'DOWN' }, dedupKey: 'k', createdAt: new Date() } as never;
+const resolvedEvt = { id: 'e1', organizationId: 'o', ruleId: 'r', deviceId: 'd', kind: 'RESOLVED', severity: 'CRITICAL', detail: { state: 'DOWN' }, dedupKey: 'k', createdAt: new Date() } as never;
 const chan = (over = {}) => ({ id: 'c1', organizationId: 'o', type: 'WEBHOOK', name: 'w', enabled: true, config: { url: 'https://hooks.test/x' }, secretEnc: null, ...over }) as never;
 
 describe('WebhookChannel', () => {
@@ -49,11 +50,17 @@ describe('EmailChannel', () => {
 });
 
 describe('InAppChannel', () => {
-  it('emits the scoped alert event', async () => {
-    const emitScoped = jest.fn().mockResolvedValue(undefined);
-    const ch = new InAppChannel({ emitScoped } as never);
-    await ch.send(chan({ type: 'INAPP', config: { siteId: 's' } }), evt);
-    expect(emitScoped).toHaveBeenCalledWith('o', 's', 'v1:alert:fired', expect.any(Object));
+  it('emits org-wide on FIRING', async () => {
+    const emitEntityEvent = jest.fn();
+    const ch = new InAppChannel({ emitEntityEvent } as never);
+    await ch.send(chan({ type: 'INAPP' }), evt);
+    expect(emitEntityEvent).toHaveBeenCalledWith('v1:alert:fired', expect.objectContaining({ id: 'e1' }), 'o');
+  });
+  it('emits org-wide on RESOLVED', async () => {
+    const emitEntityEvent = jest.fn();
+    const ch = new InAppChannel({ emitEntityEvent } as never);
+    await ch.send(chan({ type: 'INAPP' }), resolvedEvt);
+    expect(emitEntityEvent).toHaveBeenCalledWith('v1:alert:resolved', expect.objectContaining({ id: 'e1' }), 'o');
   });
 });
 
