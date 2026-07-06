@@ -5,6 +5,7 @@ import type {
   CreateSnmpCredentialDto,
   OidProfileDto,
   CreateOidProfileDto,
+  AccessSummaryDto,
 } from '@nodescope/shared';
 
 /** Shape sent to POST /snmp/assign */
@@ -99,4 +100,12 @@ export async function createOidProfile(dto: CreateOidProfileDto): Promise<OidPro
 /** Assign (or unassign) a credential/profile to a network or device. */
 export async function assignSnmp(dto: AssignSnmpPayload): Promise<void> {
   await api.post('/snmp/assign', dto);
+}
+
+// ─── Access / role ───────────────────────────────────────────────────────────
+
+/** The current user's org role + F3 scope. Used to gate admin-only UI. */
+export async function getAccessSummary(): Promise<AccessSummaryDto> {
+  const res = await api.get<{ success: true; data: AccessSummaryDto }>('/access/me');
+  return res.data.data;
 }
