@@ -72,12 +72,6 @@ services:
       # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
       REDIS_URL: ${REDIS_URL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-false}
-      # Required for crypto (SNMP credential encryption). The appliance generates
-      # this once at install time; the API refuses to boot without it.
-      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env}
-      # Single-node appliance stores blobs (IFC/BCF models) on a local volume — no MinIO/S3.
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-fs}
-      STORAGE_FS_ROOT: /data/storage
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
       # CryptoModule (SNMP credential encryption) refuses to boot without a
       # base64-encoded 32-byte key: `openssl rand -base64 32`.
