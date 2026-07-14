@@ -30,23 +30,11 @@ export class PermissionsRepository {
     return this.prisma.memberProperty.create({ data });
   }
 
-  /** The property + all descendants (org-scoped), via a recursive CTE.
-   *  Mirrors PropertiesRepository.getSubtreeIds — kept here to avoid a circular
-   *  module dependency between PermissionsModule and PropertiesModule. */
-  async subtreePropertyIds(organizationId: string, rootId: string): Promise<string[]> {
-    // Org filter is re-asserted on the recursive step (defence-in-depth), matching
-    // PropertyTreeRepository.ancestorIds — so the walk can never cross into another org
-    // even if a row's parentId ever pointed outside it. This CTE backs scopePropertyIds,
-    // the basis of every F3 authorization decision.
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      WITH RECURSIVE subtree AS (
-        SELECT id FROM "Property" WHERE id = ${rootId} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id AND p."organizationId" = ${organizationId}
-      )
-      SELECT id FROM subtree;
-    `;
-    return rows.map((r) => r.id);
+  /** The property + all descendants (org-scoped). Backs scopePropertyIds, the basis of every F3
+   *  authorization decision. Delegates to the shared PropertyTreeRepository, which is the single
+   *  source of the downward walk and guards it against cycles in the stored tree. */
+  subtreePropertyIds(organizationId: string, rootId: string): Promise<string[]> {
+    return this.tree.subtreeIds(organizationId, rootId);
   }
 
   /** The property and every ancestor up to the root (org-scoped). Used by the scoped realtime

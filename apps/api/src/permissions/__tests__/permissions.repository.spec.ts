@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PropertyTreeRepository } from '../../property-tree/property-tree.repository';
+import {
+  breakCycles,
+  createCycle,
+  expectPropertyTreeCycle,
+} from '../../property-tree/__tests__/tree-cycle.helpers';
 import { PermissionsRepository } from '../permissions.repository';
 
 describe('PermissionsRepository (integration)', () => {
@@ -29,7 +34,11 @@ describe('PermissionsRepository (integration)', () => {
     const member = await prisma.organizationMember.create({ data: { organizationId: orgId, userId: memberUser.id, role: 'MEMBER' } });
     ownerId = owner.id; memberId = member.id;
   });
-  afterEach(async () => { await prisma.organization.delete({ where: { id: orgId } }); });
+  afterEach(async () => {
+    // parentId is ON DELETE RESTRICT: a cycle would block teardown and leak into the test DB.
+    await breakCycles(prisma, orgId);
+    await prisma.organization.delete({ where: { id: orgId } });
+  });
 
   async function makeSite(name: string) {
     return prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name } });
@@ -66,5 +75,21 @@ describe('PermissionsRepository (integration)', () => {
     const flr = await prisma.property.create({ data: { organizationId: orgId, parentId: bld.id, type: 'FLOOR', name: '1' } });
     const ids = await repo.ancestorPropertyIds(orgId, flr.id);
     expect(ids.sort()).toEqual([site.id, bld.id, flr.id].sort());
+  });
+
+  // subtreePropertyIds backs PermissionsService.scopePropertyIds -> scopeFilter, which runs on the
+  // authorization path of nearly every request. A cycle in the stored tree used to make it spin
+  // forever inside Postgres, pinning one connection per request until the pool was exhausted and the
+  // whole API stopped serving. It must now terminate and refuse.
+  describe('with a cycle in the stored property tree', () => {
+    it('subtreePropertyIds terminates and refuses instead of hanging the authorization path', async () => {
+      const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'HQ' } });
+      const bld = await prisma.property.create({ data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'A' } });
+      const flr = await prisma.property.create({ data: { organizationId: orgId, parentId: bld.id, type: 'FLOOR', name: '1' } });
+      await createCycle(prisma, site.id, flr.id); // HQ's parent becomes the floor beneath it
+
+      await expectPropertyTreeCycle(() => repo.subtreePropertyIds(orgId, flr.id));
+      await expectPropertyTreeCycle(() => repo.ancestorPropertyIds(orgId, flr.id));
+    });
   });
 });

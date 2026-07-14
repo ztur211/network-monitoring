@@ -7,6 +7,7 @@ import compression from 'compression';
 import { AppModule } from './app.module';
 import { RedisService } from './redis/redis.service';
 import { resolveTrustProxy } from './common/config/trust-proxy.config';
+import { INGEST_BODY_LIMIT } from './monitoring/ingest/ingest.dto';
 
 // Safety net: a rejected promise with no local catch (e.g. a transient backend blip
 // inside a fire-and-forget path) must be logged, never crash the process. Individual
@@ -22,6 +23,15 @@ async function bootstrap() {
   });
 
   app.useLogger(app.get(Logger));
+
+  // Body size is a stated contract, not an accident. Nest passes no `limit` to express.json(),
+  // so body-parser's 100 kB DEFAULT applied silently - and the monitoring ingest endpoint, whose
+  // batches grow with the customer's fleet, quietly started 413ing at roughly 800 devices while
+  // the agent threw the rejected batches away. Set it explicitly, out loud, and derive it from the
+  // endpoint that actually needs the headroom (see apps/api/src/monitoring/ingest/ingest.dto.ts:
+  // the per-batch ITEM caps are what bound ingest now, and they bind well before this byte cap).
+  // Applies to the inflated body, so a gzipped batch is measured after decompression.
+  app.useBodyParser('json', { limit: INGEST_BODY_LIMIT });
 
   // Log how Redis is wired so an operator can see single-node vs multi-node at a glance.
   const redis = app.get(RedisService);

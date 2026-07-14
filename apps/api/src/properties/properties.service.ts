@@ -82,11 +82,13 @@ export class PropertiesService {
         await this.permissions.assertCanConfigure(member, nextParentId);
       }
 
-      // cycle: the new parent must not be the node itself or any of its descendants
-      if (nextParentId) {
-        if (nextParentId === id) throw new NodeScopeException('PROP_005', 'PROPERTY_CYCLE', HttpStatus.UNPROCESSABLE_ENTITY);
-        const subtree = await this.repo.getSubtreeIds(organizationId, id);
-        if (subtree.includes(nextParentId)) throw new NodeScopeException('PROP_005', 'PROPERTY_CYCLE', HttpStatus.UNPROCESSABLE_ENTITY);
+      // Cycle: the new parent must not be the node itself, nor any of its descendants. Asking
+      // "is the new parent at-or-under me?" walks UP from the new parent (bounded by the tree's
+      // depth) instead of materializing this node's entire subtree, and reuses the shared
+      // cycle-guarded walk - so this check can only ever reject or raise PROPERTY_TREE_CYCLE on an
+      // already-corrupt tree. It cannot hang, which the old downward UNION ALL scan could.
+      if (nextParentId && (await this.repo.isAtOrUnder(organizationId, nextParentId, id))) {
+        throw new NodeScopeException('PROP_005', 'PROPERTY_CYCLE', HttpStatus.UNPROCESSABLE_ENTITY);
       }
       const newParentType = await this.resolveParentType(organizationId, nextParentId);
       assertValidNesting(newParentType, current.type);

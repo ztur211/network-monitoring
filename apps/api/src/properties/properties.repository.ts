@@ -67,48 +67,27 @@ export class PropertiesRepository {
     await this.prisma.property.deleteMany({ where: { id, organizationId } });
   }
 
-  /** The property + all descendants (org-scoped), via a recursive CTE. */
-  async getSubtreeIds(organizationId: string, rootId: string): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      WITH RECURSIVE subtree AS (
-        SELECT id FROM "Property" WHERE id = ${rootId} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p.id FROM "Property" p JOIN subtree s ON p."parentId" = s.id AND p."organizationId" = ${organizationId}
-      )
-      SELECT id FROM subtree;
-    `;
-    return rows.map((r) => r.id);
+  /** The property + all descendants (org-scoped). Delegates to the shared PropertyTreeRepository
+   *  (single, cycle-guarded source of the downward walk). */
+  getSubtreeIds(organizationId: string, rootId: string): Promise<string[]> {
+    return this.tree.subtreeIds(organizationId, rootId);
   }
 
   /** True if `descendantId` is `ancestorId` or sits anywhere beneath it (org-scoped). */
-  async isAtOrUnder(organizationId: string, descendantId: string, ancestorId: string): Promise<boolean> {
-    const rows = await this.prisma.$queryRaw<{ ok: number }[]>`
-      WITH RECURSIVE ancestors AS (
-        SELECT id, "parentId" FROM "Property" WHERE id = ${descendantId} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p.id, p."parentId" FROM "Property" p JOIN ancestors a ON p.id = a."parentId" AND p."organizationId" = ${organizationId}
-      )
-      SELECT 1 AS ok FROM ancestors WHERE id = ${ancestorId} LIMIT 1;
-    `;
-    return rows.length > 0;
+  isAtOrUnder(organizationId: string, descendantId: string, ancestorId: string): Promise<boolean> {
+    return this.tree.isAtOrUnder(organizationId, descendantId, ancestorId);
   }
 
-  /** Self + all ancestors (org-scoped). Delegates to the shared PropertyTreeRepository (single
-   *  source of the upward CTE). */
+  /** Self + all ancestors (org-scoped). Delegates to the shared PropertyTreeRepository (single,
+   *  cycle-guarded source of the upward walk). */
   getAncestorIds(organizationId: string, id: string): Promise<string[]> {
     return this.tree.ancestorIds(organizationId, id);
   }
 
-  /** Self → root ordered by depth ASC, returning type + code for naming-token resolution. */
+  /** Self -> root ordered by depth ASC, returning type + code for naming-token resolution. */
   async getAncestorChain(organizationId: string, id: string): Promise<{ type: PropertyType; code: string | null }[]> {
-    const rows = await this.prisma.$queryRaw<{ type: PropertyType; code: string | null; depth: number }[]>`
-      WITH RECURSIVE chain AS (
-        SELECT id, "parentId", type, code, 0 AS depth FROM "Property" WHERE id = ${id} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p.id, p."parentId", p.type, p.code, c.depth + 1 FROM "Property" p JOIN chain c ON p.id = c."parentId" AND p."organizationId" = ${organizationId}
-      )
-      SELECT type, code, depth FROM chain ORDER BY depth ASC;`;
-    return rows.map((r) => ({ type: r.type, code: r.code }));
+    const chain = await this.tree.ancestorChain(organizationId, id);
+    return chain.map((n) => ({ type: n.type, code: n.code }));
   }
 
   devicesUnder(organizationId: string, propertyIds: string[]): Promise<{ id: string; networkId: string; propertyId: string }[]> {

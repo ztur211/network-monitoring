@@ -16,7 +16,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NetworksRepository } from '../networks/networks.repository';
 import type { OrgMemberContext } from '../organizations/org-context.types';
 import { SnmpRepository } from './snmp.repository';
+import type { DeviceSnmpRow } from './snmp.repository';
 import type { AssignSnmpDto } from './snmp.dto';
+
+/** The effective credential (+ optional OID profile) a device resolves to, before any decrypt. */
+interface CredProfRef {
+  credId: string;
+  profId: string | null;
+}
 
 @Injectable()
 export class SnmpService {
@@ -223,9 +230,18 @@ export class SnmpService {
   private async resolveCredProf(
     organizationId: string,
     deviceId: string,
-  ): Promise<{ credId: string; profId: string | null } | null> {
+  ): Promise<CredProfRef | null> {
     const device = await this.repo.deviceWithSnmp(organizationId, deviceId);
     if (!device) return null;
+    return this.pickCredProf(device);
+  }
+
+  /**
+   * Override-wins pick over a single loaded device row: the device's own assignment beats
+   * its network's default, per field. Pure - the single-device and batch paths MUST share it
+   * so the two can never drift into resolving the same device differently.
+   */
+  private pickCredProf(device: DeviceSnmpRow): CredProfRef | null {
     const credId = device.snmpCredentialId ?? device.network?.snmpCredentialId ?? null;
     if (!credId) return null;
     const profId = device.oidProfileId ?? device.network?.oidProfileId ?? null;
@@ -233,8 +249,7 @@ export class SnmpService {
   }
 
   /**
-   * Fetch the credential + profile and assemble the target. The ONLY place encrypted
-   * secrets are decrypted; the returned DTO must NEVER be persisted or logged.
+   * Fetch the credential + profile and assemble the target.
    */
   private async buildTarget(
     organizationId: string,
@@ -244,6 +259,20 @@ export class SnmpService {
     const cred = await this.repo.findCredential(organizationId, credId);
     if (!cred) return null;
     const profile = profId ? await this.repo.findProfile(organizationId, profId) : null;
+    return this.assembleTarget(cred, profile);
+  }
+
+  /**
+   * Assemble the wire target from an already-loaded credential + profile. The ONLY place
+   * encrypted secrets are decrypted; the returned DTO must NEVER be persisted or logged.
+   *
+   * A profile id that resolves to no row is treated exactly like no profile at all
+   * (empty OID list, no interface metrics) - a missing profile never suppresses the target.
+   */
+  private assembleTarget(
+    cred: SnmpCredential,
+    profile: (OidProfile & { entries: OidEntry[] }) | null,
+  ): SnmpTargetDto {
     const dec = (b: string | null): string | undefined => (b ? this.crypto.decrypt(b) : undefined);
 
     return {
@@ -265,26 +294,63 @@ export class SnmpService {
    * array with `snmp` populated where a credential is resolved (or omitted if null).
    * Designed for use in the agent device-sync payload (Phase C Task 3).
    *
-   * A credential+profile pair shared by many devices is fetched + decrypted ONCE per
-   * call — the assembled target is memoized by id (promise-cached so concurrent devices
-   * sharing a key dedupe to a single fetch/decrypt). Decryption is the costly part.
+   * The list here is the agent's ENTIRE org fleet, polled on a schedule, so the work per
+   * device must not be a query. Everything is loaded up front in a bounded number of round
+   * trips - devices, then the distinct credentials and profiles they reference - and each
+   * device is then resolved in memory. A per-device query would fan out one concurrent
+   * Prisma call per device from a single request, drain the API-wide connection pool, and
+   * take every other request and socket push down with it (P2024).
+   *
+   * A credential+profile pair shared by many devices is assembled - and its secrets
+   * decrypted - ONCE per call; decryption is the costly part.
    */
   async attachTargets(organizationId: string, devices: AgentDeviceDto[]): Promise<AgentDeviceDto[]> {
-    const targetCache = new Map<string, Promise<SnmpTargetDto | null>>();
-    return Promise.all(
-      devices.map(async (d) => {
-        const ref = await this.resolveCredProf(organizationId, d.id);
-        if (!ref) return { ...d };
-        const key = `${ref.credId}:${ref.profId ?? ''}`;
-        let pending = targetCache.get(key);
-        if (!pending) {
-          pending = this.buildTarget(organizationId, ref.credId, ref.profId);
-          targetCache.set(key, pending);
-        }
-        const snmp = await pending;
-        return snmp ? { ...d, snmp } : { ...d };
-      }),
-    );
+    if (devices.length === 0) return [];
+
+    // Devices absent from the result (deleted, or belonging to another org) get no ref and
+    // therefore no `snmp` - identical to the per-device path, which org-scoped every load.
+    const rows = await this.repo.devicesWithSnmp(organizationId, devices.map((d) => d.id));
+    const refByDeviceId = new Map<string, CredProfRef>();
+    for (const row of rows) {
+      const ref = this.pickCredProf(row);
+      if (ref) refByDeviceId.set(row.id, ref);
+    }
+
+    const credIds = new Set<string>();
+    const profIds = new Set<string>();
+    for (const ref of refByDeviceId.values()) {
+      credIds.add(ref.credId);
+      if (ref.profId) profIds.add(ref.profId);
+    }
+
+    // Both loads stay org-scoped, so a dangling assignment can never leak another org's
+    // credential into this org's payload: an id that does not resolve within the org is
+    // treated as absent, exactly as the org-scoped findCredential/findProfile were.
+    const [creds, profiles] = await Promise.all([
+      this.repo.findCredentialsByIds(organizationId, [...credIds]),
+      this.repo.findProfilesByIds(organizationId, [...profIds]),
+    ]);
+    const credById = new Map(creds.map((c) => [c.id, c]));
+    const profById = new Map(profiles.map((p) => [p.id, p]));
+
+    const targetCache = new Map<string, SnmpTargetDto | null>();
+    const targetFor = (ref: CredProfRef): SnmpTargetDto | null => {
+      const key = `${ref.credId}:${ref.profId ?? ''}`;
+      let target = targetCache.get(key);
+      if (target === undefined) {
+        const cred = credById.get(ref.credId);
+        const profile = ref.profId ? (profById.get(ref.profId) ?? null) : null;
+        target = cred ? this.assembleTarget(cred, profile) : null;
+        targetCache.set(key, target);
+      }
+      return target;
+    };
+
+    return devices.map((d) => {
+      const ref = refByDeviceId.get(d.id);
+      const snmp = ref ? targetFor(ref) : null;
+      return snmp ? { ...d, snmp } : { ...d };
+    });
   }
 
   // ─── Mappers — secrets NEVER exposed ──────────────────────────────────────

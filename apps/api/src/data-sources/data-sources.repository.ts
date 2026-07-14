@@ -66,7 +66,9 @@ export class DataSourcesRepository {
       FROM "DeviceMetric"
       WHERE "organizationId" = ${organizationId}
         AND "userId" IN (${idList})
-        AND time > now() - make_interval(hours => ${liveMetricsMaxAgeHours()})
+        -- The ::int cast is required: Prisma binds a JS number as bigint, and there is no
+        -- make_interval(hours => bigint) overload, so without it every push threw 42883.
+        AND time > now() - make_interval(hours => ${liveMetricsMaxAgeHours()}::int)
       ORDER BY "userId", time DESC
     `;
   }
