@@ -109,6 +109,42 @@ describe('useDeviceMetricSeries', () => {
     expect(result.current.points[0].v).toBe(99);
   });
 
+  it('skips a tick while a fetch is in flight, so a slow response cannot overwrite a newer one', async () => {
+    vi.useFakeTimers();
+
+    const slow = [{ bucket: new Date(Date.now() - 30_000).toISOString(), avg: 10 }];
+    const next = [{ bucket: new Date(Date.now() - 10_000).toISOString(), avg: 99 }];
+
+    let releaseSlow!: (rows: unknown) => void;
+    const getDeviceMetrics = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseSlow = resolve)))
+      .mockResolvedValue(next);
+
+    vi.spyOn(clientsModule, 'getClients').mockReturnValue({ rest: { getDeviceMetrics } } as any);
+
+    const pollMs = 15_000;
+    const { result } = renderHook(() => useDeviceMetricSeries('d1', 'cpu', 60_000, pollMs));
+
+    // The initial load hangs; ticks that fire while it is outstanding must not start a second fetch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(pollMs * 3);
+    });
+    expect(getDeviceMetrics).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseSlow(slow);
+    });
+    expect(result.current.points[0].v).toBe(10);
+
+    // Once it settles, polling resumes and the newer window wins.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(pollMs);
+    });
+    expect(getDeviceMetrics).toHaveBeenCalledTimes(2);
+    expect(result.current.points[0].v).toBe(99);
+  });
+
   it('clears interval on unmount (no further calls after unmount)', async () => {
     vi.useFakeTimers();
 
@@ -126,7 +162,7 @@ describe('useDeviceMetricSeries', () => {
 
     unmount();
 
-    // Advance timers — interval should be cleared so no more calls
+    // Advance timers - interval should be cleared so no more calls
     await act(async () => {
       await vi.advanceTimersByTimeAsync(pollMs * 3);
     });

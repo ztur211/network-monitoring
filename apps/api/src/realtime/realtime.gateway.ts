@@ -14,6 +14,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { fromNodeHeaders } from 'better-auth/node';
 import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
+import { nonOverlapping } from '@nodescope/shared';
+import { envInt } from '../config/env';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { NetworksService } from '../networks/networks.service';
@@ -36,6 +38,15 @@ interface MetricsSubmitPayload {
   latency?: number;
   connectionQuality?: string;
   tag?: string;
+}
+
+/**
+ * Drives BOTH the push-scheduler tick and the lock TTL, so they can never disagree. Read
+ * through envInt: an empty or malformed REFRESH_INTERVAL_SECONDS previously became NaN, and
+ * setInterval(fn, NaN) silently means 1ms - a 30-second job firing ~1000 times a second.
+ */
+function refreshIntervalSeconds(): number {
+  return envInt('REFRESH_INTERVAL_SECONDS', 30, { min: 1 });
 }
 
 /**
@@ -89,10 +100,26 @@ export class RealtimeGateway
       server.adapter(createAdapter(pubClient, subClient));
     }
 
-    const intervalMs =
-      parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10) * 1000;
+    const intervalMs = refreshIntervalSeconds() * 1000;
+
+    // Two DIFFERENT jobs, and the Redis lock in runPushScheduler only does one of them.
+    // That lock is set with `EX <interval> NX` and never released, so it dedupes the push
+    // ACROSS REPLICAS within a window - but its TTL equals the tick interval, which means it
+    // expires exactly as the next tick fires. A push cycle that overruns the interval (many
+    // orgs, a slow getLatestMetrics) therefore does NOT block the next tick: the lock is
+    // already gone, the tick re-acquires it, and a second cycle runs on top of the first.
+    // nonOverlapping is the missing IN-PROCESS guard; the lock stays for the cross-replica job.
+    const tick = nonOverlapping(
+      () => this.runPushScheduler(),
+      () =>
+        this.logger.warn(
+          { intervalMs },
+          'metrics push still running when the next tick fired - skipping it. Pushes are taking ' +
+            'longer than REFRESH_INTERVAL_SECONDS; raise it or speed up getLatestMetrics.',
+        ),
+    );
     this.pushSchedulerTimer = setInterval(() => {
-      void this.runPushScheduler();
+      void tick();
     }, intervalMs);
 
     this.logger.log('RealtimeGateway initialized');
@@ -318,14 +345,15 @@ export class RealtimeGateway
   }
 
   private async runPushScheduler(): Promise<void> {
-    // Fired as `void this.runPushScheduler()` from setInterval with no global
-    // unhandledRejection handler, so this must never reject. The lock-acquisition
-    // redis.set was previously outside the try: a Redis blip there became an
-    // unhandled rejection and a silently-dropped tick. Wrap the whole cycle so a
-    // transient Redis error is logged and the tick is simply skipped (next one
-    // retries).
+    // Fired from setInterval, so this must never reject: the lock-acquisition redis.set was
+    // once outside the try, and a Redis blip there became an unhandled rejection and a
+    // silently-dropped tick. Wrap the whole cycle so a transient Redis error is logged and the
+    // tick is simply skipped (the next one retries).
+    //
+    // The lock below elects ONE replica per window. It is not an overlap guard - see the
+    // nonOverlapping wrapper in afterInit for that, and why this lock cannot do that job.
     try {
-      const ttl = parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10);
+      const ttl = refreshIntervalSeconds();
       const acquired = await this.redis.set(
         REDIS_KEY_PUSH_SCHEDULER_LOCK,
         '1',

@@ -6,6 +6,27 @@ type ExecFileFn = typeof nodeExecFile;
 export interface ProbeResult {
   ok: boolean;
   latencyMs?: number;
+  /** ICMP could not even be attempted (no `ping` binary). Distinct from "host did not reply". */
+  icmpUnavailable?: boolean;
+}
+
+/**
+ * Latched once ICMP is proven impossible on this host, so we stop spawning a child process per
+ * device per cycle that can only ever fail. Process-local: a probe worker is one process, and a
+ * missing binary does not come back mid-run.
+ */
+let icmpUnavailable = false;
+
+/** Reports the misconfiguration once. Overridable so a host app can route it to its logger. */
+let onIcmpUnavailable: (message: string) => void = (message) => console.error(`[probe] ${message}`);
+
+export function setIcmpUnavailableHandler(handler: (message: string) => void): void {
+  onIcmpUnavailable = handler;
+}
+
+/** Test seam: forget that ICMP was found unavailable. */
+export function resetIcmpAvailability(): void {
+  icmpUnavailable = false;
 }
 
 /** TCP-connect reachability: a completed handshake = reachable. No data is sent. */
@@ -39,6 +60,7 @@ export function tcpProbe(ip: string, port: number, timeoutMs: number): Promise<P
  */
 export function icmpProbe(ip: string, timeoutMs: number, exec: ExecFileFn = nodeExecFile): Promise<ProbeResult> {
   return new Promise((resolve) => {
+    if (icmpUnavailable) return resolve({ ok: false, icmpUnavailable: true });
     const pingSecs = Math.max(1, Math.ceil(timeoutMs / 1000));
     let settled = false;
     const done = (r: ProbeResult) => {
@@ -51,7 +73,25 @@ export function icmpProbe(ip: string, timeoutMs: number, exec: ExecFileFn = node
       ['-c', '1', '-W', String(pingSecs), ip],
       { timeout: pingSecs * 1000 + 1000, killSignal: 'SIGKILL' },
       (err, stdout) => {
-        if (err) return done({ ok: false });
+        if (err) {
+          // ENOENT = there is no `ping` binary on this host. That is a broken deployment,
+          // NOT a dead device, and conflating the two is how a monitoring product invents
+          // outages: every ICMP-only device (printers, cameras, switches with no open
+          // 443/80/22) gets reported DOWN. Latch it, say so once, and stop paying for a
+          // child process per device per cycle that can only ever fail.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            if (!icmpUnavailable) {
+              icmpUnavailable = true;
+              onIcmpUnavailable(
+                'ICMP probing is DISABLED: no `ping` binary on this host (install iputils-ping, ' +
+                  'or set MONITORING_ICMP_ENABLED=false to silence this). Probes now fall back to ' +
+                  'TCP only, so a device that answers ping but exposes no probed port reads as DOWN.',
+              );
+            }
+            return done({ ok: false, icmpUnavailable: true });
+          }
+          return done({ ok: false });
+        }
         const m = /time[=<]\s*([\d.]+)\s*ms/.exec(stdout);
         done({ ok: true, latencyMs: m ? parseFloat(m[1]) : undefined });
       },

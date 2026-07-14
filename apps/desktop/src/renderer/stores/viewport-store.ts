@@ -106,6 +106,24 @@ export const initialViewportState = () => ({
   cameraSnapshot: null as { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; fov: number } | null,
 });
 
+/**
+ * Keep only the statuses of devices that are actually loaded. Returns the SAME map when
+ * nothing needs dropping, so a device reload that changes nothing does not churn the
+ * reference and re-render every status subscriber.
+ */
+function retainStatuses(current: Map<string, NodeStatus>, devices: DeviceDto[]): Map<string, NodeStatus> {
+  const live = new Set(devices.map((d) => d.id));
+  let stale = false;
+  for (const id of current.keys()) {
+    if (!live.has(id)) {
+      stale = true;
+      break;
+    }
+  }
+  if (!stale) return current;
+  return new Map([...current].filter(([id]) => live.has(id)));
+}
+
 export const useViewportStore = create<ViewportState>()((set) => ({
   ...initialViewportState(),
   setActiveBuilding: (activeBuildingPropertyId) =>
@@ -146,7 +164,17 @@ export const useViewportStore = create<ViewportState>()((set) => ({
   selectElement: (expressID) => set({ selection: { kind: 'element', expressID } }),
   selectNode: (deviceId) => set({ selection: { kind: 'device', deviceId } }),
   clearSelection: () => set({ selection: null }),
-  setDevices: (devices) => set({ devices }),
+  // nodeStatus is an overlay of realtime v1:device:status events, which fan out for every
+  // device in the socket's SCOPE - not just the open building - once per probe cycle. Nothing
+  // used to remove from it, so a long-lived session (a NOC wall display) accumulated an entry
+  // for every device it had ever seen in any building, plus entries for deleted devices. Since
+  // setNodeStatus clones the whole map on every event, that unbounded map also made each event
+  // progressively more expensive. Prune it to the devices actually loaded.
+  setDevices: (devices) =>
+    set((s) => ({
+      devices,
+      nodeStatus: retainStatuses(s.nodeStatus, devices),
+    })),
   upsertDevice: (d) =>
     set((s) => ({
       devices: s.devices.some((x) => x.id === d.id)
@@ -154,10 +182,15 @@ export const useViewportStore = create<ViewportState>()((set) => ({
         : [...s.devices, d],
     })),
   removeDevice: (id) =>
-    set((s) => ({
-      devices: s.devices.filter((x) => x.id !== id),
-      selection: s.selection?.kind === 'device' && s.selection.deviceId === id ? null : s.selection,
-    })),
+    set((s) => {
+      const nodeStatus = new Map(s.nodeStatus);
+      nodeStatus.delete(id);
+      return {
+        devices: s.devices.filter((x) => x.id !== id),
+        nodeStatus,
+        selection: s.selection?.kind === 'device' && s.selection.deviceId === id ? null : s.selection,
+      };
+    }),
   beginPlace: (placingDeviceId) => set({ placingDeviceId, linkingDeviceId: null }),
   cancelPlace: () => set({ placingDeviceId: null }),
   beginLink: (linkingDeviceId) => set({ linkingDeviceId, placingDeviceId: null }),

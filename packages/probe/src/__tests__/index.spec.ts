@@ -1,6 +1,12 @@
 import { createServer, Server } from 'node:net';
 import type { execFile as NodeExecFile } from 'node:child_process';
-import { tcpProbe, probeDevice, icmpProbe } from '../index';
+import {
+  tcpProbe,
+  probeDevice,
+  icmpProbe,
+  resetIcmpAvailability,
+  setIcmpUnavailableHandler,
+} from '../index';
 
 const listen = (): Promise<{ srv: Server; port: number }> =>
   new Promise((resolve) => {
@@ -54,5 +60,70 @@ describe('probe', () => {
     const r = await icmpProbe('10.0.0.1', 2000, exec);
     expect(r).toEqual({ ok: false });
     expect(capturedTimeout).toBeGreaterThan(0); // the fix: a positive kill-timeout is set
+  });
+
+  /**
+   * The API image shipped without a `ping` binary (node:*-slim has none), so execFile failed
+   * with ENOENT on every probe and we reported it as `{ok: false}` - i.e. "the device is down".
+   * A broken deployment read as a fleet-wide outage, and every ICMP-only device (no 443/80/22
+   * open) was a false alarm. A missing binary must be loud, and must not be mistaken for a
+   * dead host.
+   */
+  describe('missing ping binary', () => {
+    const enoent = (() => Object.assign(new Error('spawn ping ENOENT'), { code: 'ENOENT' }))();
+    const execEnoent = ((_f: string, _a: string[], _o: unknown, cb: (e: Error) => void) => {
+      cb(enoent);
+      return {} as never;
+    }) as unknown as typeof NodeExecFile;
+
+    beforeEach(() => resetIcmpAvailability());
+    afterEach(() => {
+      resetIcmpAvailability();
+      setIcmpUnavailableHandler((m) => console.error(`[probe] ${m}`));
+    });
+
+    it('flags ICMP as unavailable rather than silently reporting the host down', async () => {
+      setIcmpUnavailableHandler(() => {});
+      const r = await icmpProbe('10.0.0.1', 2000, execEnoent);
+      expect(r).toEqual({ ok: false, icmpUnavailable: true });
+    });
+
+    it('reports the misconfiguration exactly once, not once per probe', async () => {
+      const messages: string[] = [];
+      setIcmpUnavailableHandler((m) => messages.push(m));
+
+      await icmpProbe('10.0.0.1', 2000, execEnoent);
+      await icmpProbe('10.0.0.2', 2000, execEnoent);
+      await icmpProbe('10.0.0.3', 2000, execEnoent);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain('iputils-ping');
+    });
+
+    it('stops spawning a doomed child process once ICMP is known to be impossible', async () => {
+      setIcmpUnavailableHandler(() => {});
+      let spawns = 0;
+      const counting = ((_f: string, _a: string[], _o: unknown, cb: (e: Error) => void) => {
+        spawns++;
+        cb(enoent);
+        return {} as never;
+      }) as unknown as typeof NodeExecFile;
+
+      for (let i = 0; i < 50; i++) await icmpProbe(`10.0.0.${i}`, 2000, counting);
+
+      // One probe learns ping is missing; the other 49 must not pay for a child process that
+      // can only fail. At 20 devices x every cycle, that spawn storm is not free.
+      expect(spawns).toBe(1);
+    });
+
+    it('still falls back to TCP, so a device with an open port is correctly UP', async () => {
+      setIcmpUnavailableHandler(() => {});
+      await icmpProbe('10.0.0.1', 2000, execEnoent); // latch unavailable
+
+      const { srv, port } = await listen();
+      const r = await probeDevice('127.0.0.1', { icmpEnabled: true, ports: [port], timeoutMs: 1000 });
+      expect(r.ok).toBe(true);
+      await new Promise((res) => srv.close(res));
+    });
   });
 });

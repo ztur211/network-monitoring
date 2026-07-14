@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { nonOverlapping } from '@nodescope/shared';
 import { getClients } from '../../data/clients';
 
 export interface MetricPoint {
@@ -71,23 +72,23 @@ export function useDeviceMetricSeries(
 
     let active = true;
 
-    const load = () => {
+    // Serialised, not just fired on a timer: a slow tick can otherwise resolve after a later one
+    // and overwrite the chart with an older window. Skipping the tick keeps responses in order.
+    const load = nonOverlapping(async () => {
       const now = new Date();
       const fromISO = new Date(now.getTime() - windowMs).toISOString();
       const toISO = now.toISOString();
 
-      rest
-        .getDeviceMetrics(deviceId, metric, fromISO, toISO)
-        .then((rows) => {
-          if (!active) return;
-          setPoints(rows.map((r) => ({ t: new Date(r.bucket).getTime(), v: r.avg })));
-        })
-        .catch(() => {
-          // swallow errors — keep last points
-        });
-    };
+      try {
+        const rows = await rest.getDeviceMetrics(deviceId, metric, fromISO, toISO);
+        if (!active) return;
+        setPoints(rows.map((r) => ({ t: new Date(r.bucket).getTime(), v: r.avg })));
+      } catch {
+        // swallow errors - keep last points
+      }
+    });
 
-    load();
+    void load();
     const id = setInterval(load, pollMs);
 
     return () => {

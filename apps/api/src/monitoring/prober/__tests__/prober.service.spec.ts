@@ -1,6 +1,31 @@
 import { IngestService } from '../../ingest/ingest.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ProberService } from '../prober.service';
+import { ProberService, parsePorts } from '../prober.service';
+
+describe('parsePorts', () => {
+  it('parses a normal port list', () => {
+    expect(parsePorts('443,80,22')).toEqual([443, 80, 22]);
+  });
+
+  it('tolerates whitespace', () => {
+    expect(parsePorts(' 443 , 80 ')).toEqual([443, 80]);
+  });
+
+  it('defaults when unset or empty', () => {
+    expect(parsePorts(undefined)).toEqual([443, 80, 22]);
+    expect(parsePorts('')).toEqual([443, 80, 22]);
+  });
+
+  /**
+   * A NaN port used to survive into the probe, so every device paid a doomed TCP connect and
+   * the full timeout for it - silently making each cycle longer, which is exactly what tips a
+   * cycle past its interval.
+   */
+  it('drops entries that are not real ports rather than probing NaN', () => {
+    expect(parsePorts('443,http,,80')).toEqual([443, 80]);
+    expect(parsePorts('0,70000,-1,443')).toEqual([443]);
+  });
+});
 
 /**
  * The prober's failure mode under load is a *pileup*: a probe cycle whose wall-time

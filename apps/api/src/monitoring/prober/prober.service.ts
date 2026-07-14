@@ -1,17 +1,33 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IngestService } from '../ingest/ingest.service';
-import { probeDevice, ProbeResult } from '@nodescope/probe';
+import { probeDevice, ProbeResult, setIcmpUnavailableHandler } from '@nodescope/probe';
 import { nonOverlapping } from '@nodescope/shared';
+import { envInt } from '../../config/env';
 
+// Every numeric knob goes through envInt: `Number('')` is 0, so an env var that is set but
+// empty used to yield intervalMs=0 (a hot loop pegging a core) or concurrency=0 (a worker pool
+// with no workers, which never drains its queue). A bad value must degrade to the default.
 const cfg = () => ({
   enabled: process.env.MONITORING_PROBER_ENABLED === 'true',
-  intervalMs: Number(process.env.MONITORING_PROBE_INTERVAL_MS ?? 30000),
-  concurrency: Number(process.env.MONITORING_PROBE_CONCURRENCY ?? 20),
+  intervalMs: envInt('MONITORING_PROBE_INTERVAL_MS', 30000, { min: 1000 }),
+  concurrency: envInt('MONITORING_PROBE_CONCURRENCY', 20, { min: 1, max: 500 }),
   icmpEnabled: process.env.MONITORING_ICMP_ENABLED !== 'false',
-  ports: (process.env.MONITORING_PROBE_PORTS ?? '443,80,22').split(',').map((p) => Number(p.trim())),
-  timeoutMs: Number(process.env.MONITORING_PROBE_TIMEOUT_MS ?? 2000),
+  ports: parsePorts(process.env.MONITORING_PROBE_PORTS),
+  timeoutMs: envInt('MONITORING_PROBE_TIMEOUT_MS', 2000, { min: 100 }),
 });
+
+/**
+ * A malformed port ("http", "") used to become NaN and get probed as-is, so every device paid
+ * a doomed connect + the full timeout. Drop anything that is not a real port instead.
+ */
+export function parsePorts(raw: string | undefined): number[] {
+  const source = raw === undefined || raw.trim() === '' ? '443,80,22' : raw;
+  return source
+    .split(',')
+    .map((p) => Number(p.trim()))
+    .filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
+}
 
 /** Run an async fn over items with a bounded concurrency (a worker pool draining a queue). */
 export async function mapLimit<T>(items: T[], limit: number, fn: (t: T) => Promise<void>): Promise<void> {
@@ -62,6 +78,10 @@ export class ProberService implements OnModuleInit, OnModuleDestroy {
     const c = cfg();
     if (!c.enabled) return; // OFF by default - cloud uses the Agent
     this.logger.log(`Embedded prober enabled (interval ${c.intervalMs}ms, concurrency ${c.concurrency})`);
+
+    // Route the probe's "there is no ping binary here" alarm into the app logger, so a broken
+    // image shows up in `docker logs` instead of being mistaken for every device being down.
+    setIcmpUnavailableHandler((message) => this.logger.error(message));
 
     // A cycle's wall-time is devices x probe timeout / concurrency, so a large or unreachable
     // fleet can outlast intervalMs. Ticks that land on a running cycle are SKIPPED, never
