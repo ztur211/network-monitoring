@@ -17,6 +17,9 @@ const cfg = () => ({
   timeoutMs: envInt('MONITORING_PROBE_TIMEOUT_MS', 2000, { min: 100 }),
 });
 
+/** Devices pulled per page in a probe cycle. Bounds the cycle's peak memory, not its total work. */
+const PAGE_SIZE = 500;
+
 /**
  * A malformed port ("http", "") used to become NaN and get probed as-is, so every device paid
  * a doomed connect + the full timeout. Drop anything that is not a real port instead.
@@ -99,17 +102,47 @@ export class ProberService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
+  /**
+   * The single point where a cycle touches the network. Split out as a seam so the scheduling and
+   * paging above can be tested without opening 1200 sockets, and so a future collector (SNMP,
+   * agent-relayed) can be swapped in without touching the loop.
+   */
+  protected probeIp(ip: string, c: ReturnType<typeof cfg>): Promise<ProbeResult> {
+    return probeDevice(ip, { icmpEnabled: c.icmpEnabled, ports: c.ports, timeoutMs: c.timeoutMs });
+  }
+
+  /**
+   * Probe every device with an IP, one page at a time.
+   *
+   * This used to be a single unpaginated findMany across ALL orgs, so peak memory was the whole
+   * fleet: 100k devices materialized ~10MB of JS objects, plus a 100k-entry work queue, every
+   * single tick. Keyset pagination (order by id, cursor on the last id) keeps peak memory at one
+   * page no matter how large the fleet grows, and the new @@index([ipAddress]) means each page is
+   * an index range scan rather than a fresh sequential scan of Device.
+   */
   async cycle(): Promise<void> {
     const c = cfg();
-    const devices = await this.prisma.device.findMany({
-      where: { ipAddress: { not: null } },
-      select: { id: true, organizationId: true, ipAddress: true },
-    });
-    await runProbeCycle(
-      devices as { id: string; organizationId: string; ipAddress: string }[],
-      (ip) => probeDevice(ip, { icmpEnabled: c.icmpEnabled, ports: c.ports, timeoutMs: c.timeoutMs }),
-      this.ingest,
-      c.concurrency,
-    );
+    let cursor: string | undefined;
+
+    for (;;) {
+      const page = await this.prisma.device.findMany({
+        where: { ipAddress: { not: null } },
+        select: { id: true, organizationId: true, ipAddress: true },
+        orderBy: { id: 'asc' },
+        take: PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
+      });
+      if (page.length === 0) return;
+
+      await runProbeCycle(
+        page as { id: string; organizationId: string; ipAddress: string }[],
+        (ip) => this.probeIp(ip, c),
+        this.ingest,
+        c.concurrency,
+      );
+
+      if (page.length < PAGE_SIZE) return;
+      cursor = page[page.length - 1].id;
+    }
   }
 }

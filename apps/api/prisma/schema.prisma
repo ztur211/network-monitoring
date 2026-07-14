@@ -268,6 +268,10 @@ model Device {
   @@index([organizationId, createdAt])
   // Resolves a clicked BIM element's GlobalId → linked device (org-scoped reverse lookup).
   @@index([organizationId, ifcGlobalId])
+  // The embedded prober selects every probeable device across ALL orgs on every tick, so it is
+  // the one hot query that is deliberately not org-scoped and could not use any index above.
+  // Without this it was a full sequential scan of Device every MONITORING_PROBE_INTERVAL_MS.
+  @@index([ipAddress])
 }
 
 model Network {
@@ -399,6 +403,11 @@ model DeviceMetric {
   @@index([organizationId, time(sort: Desc)])
   @@index([organizationId, sourceType, time(sort: Desc)])
   @@index([organizationId, deviceId, time(sort: Desc)])
+  // The live-metrics push runs DISTINCT ON ("userId") ... ORDER BY "userId", time DESC once per
+  // org, every REFRESH_INTERVAL_SECONDS. No index carried userId, so that was a scan-and-sort of
+  // the org's whole 30-day retention on every tick. This index matches the query's sort order, so
+  // it can walk straight to the newest row per user.
+  @@index([organizationId, userId, time(sort: Desc)])
 }
 
 model ChangeLog {

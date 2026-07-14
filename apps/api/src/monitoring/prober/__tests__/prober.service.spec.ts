@@ -114,6 +114,76 @@ describe('ProberService (cycle scheduling)', () => {
     expect(state.started).toBeLessThanOrEqual(3);
   });
 
+  /**
+   * The cycle used to load EVERY device in EVERY org in one unpaginated findMany, so peak memory
+   * was the whole fleet on every tick. It now pages; these pin that it pages correctly, because a
+   * paging bug that silently skips devices is worse than the memory it saves.
+   */
+  describe('paging', () => {
+    /** Replaces the one network call, so paging is tested without opening a socket. */
+    class OfflineProber extends ProberService {
+      protected override probeIp(): Promise<{ ok: boolean }> {
+        return Promise.resolve({ ok: true });
+      }
+    }
+
+    /** A prisma stub that serves `total` devices out of a real keyset-paginated store. */
+    function pagedPrisma(total: number) {
+      const all = Array.from({ length: total }, (_, i) => ({
+        id: `dev-${String(i).padStart(5, '0')}`,
+        organizationId: 'org',
+        ipAddress: `10.0.${Math.floor(i / 256)}.${i % 256}`,
+      }));
+      const pages: number[] = [];
+      const prisma = {
+        device: {
+          findMany: jest.fn((args: { take: number; cursor?: { id: string }; skip?: number }) => {
+            const start = args.cursor ? all.findIndex((d) => d.id === args.cursor!.id) + (args.skip ?? 0) : 0;
+            const page = all.slice(start, start + args.take);
+            pages.push(page.length);
+            return Promise.resolve(page);
+          }),
+        },
+      } as unknown as PrismaService;
+      return { prisma, all, pages };
+    }
+
+    it('probes every device exactly once across page boundaries', async () => {
+      // 1200 devices against a 500 page size: two full pages and a partial one.
+      const { prisma, all } = pagedPrisma(1200);
+      const probed: string[] = [];
+      const ingest = {
+        reportStatusCheck: jest.fn((c: { deviceId: string }) => {
+          probed.push(c.deviceId);
+          return Promise.resolve();
+        }),
+      } as unknown as IngestService;
+
+      const service = new OfflineProber(prisma, ingest);
+      await service.cycle();
+
+      expect(probed).toHaveLength(all.length);
+      expect(new Set(probed).size).toBe(all.length); // no device probed twice
+    });
+
+    it('never holds more than one page in memory', async () => {
+      const { prisma, pages } = pagedPrisma(1200);
+      const service = new OfflineProber(prisma, { reportStatusCheck: jest.fn() } as unknown as IngestService);
+      await service.cycle();
+
+      expect(Math.max(...pages)).toBeLessThanOrEqual(500);
+      expect(pages).toEqual([500, 500, 200]);
+    });
+
+    it('stops after an empty page instead of looping forever', async () => {
+      const { prisma } = pagedPrisma(0);
+      const service = new OfflineProber(prisma, { reportStatusCheck: jest.fn() } as unknown as IngestService);
+      await service.cycle();
+
+      expect((prisma.device.findMany as jest.Mock).mock.calls).toHaveLength(1);
+    });
+  });
+
   it('keeps probing on the next tick after a cycle throws', async () => {
     const prisma = {
       device: { findMany: jest.fn().mockRejectedValue(new Error('db down')) },

@@ -14,8 +14,14 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { fromNodeHeaders } from 'better-auth/node';
 import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
-import { nonOverlapping } from '@nodescope/shared';
+import { mapLimit, nonOverlapping } from '@nodescope/shared';
 import { envInt } from '../config/env';
+
+/**
+ * Orgs whose latest-metrics query may be in flight at once during a push. Deliberately small:
+ * the Prisma pool is shared with every HTTP handler, so a wide push would starve the API.
+ */
+const PUSH_ORG_CONCURRENCY = 4;
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { NetworksService } from '../networks/networks.service';
@@ -369,9 +375,16 @@ export class RealtimeGateway
     }
   }
 
+  /**
+   * One query per org, but the orgs used to run STRICTLY SERIALLY: cycle wall-time was the number
+   * of orgs with a connected user times the query latency, so a few hundred online orgs pushed the
+   * cycle past its interval - which is what made the missing overlap guard fatal rather than
+   * merely untidy. Run them with a bounded fan-out instead: fast enough that the cycle fits, and
+   * capped so a busy push cannot drain the Prisma pool that every HTTP handler shares.
+   */
   private async pushLatestMetricsToConnectedUsers(): Promise<void> {
     const orgToUsers = await this.connectedUsersByOrg();
-    for (const [orgId, userIds] of orgToUsers) {
+    await mapLimit([...orgToUsers], PUSH_ORG_CONCURRENCY, async ([orgId, userIds]) => {
       const metricsMap = await this.dataSourcesService.getLatestMetrics(orgId, [...userIds]);
       for (const [userId, metrics] of metricsMap) {
         this.pushToUser(userId, WS_EVENTS.METRICS_UPDATE, {
@@ -379,7 +392,7 @@ export class RealtimeGateway
           sourceTypes: ['browser'],
         } satisfies { metrics: MetricsDto; sourceTypes: string[] });
       }
-    }
+    });
   }
 
   /**
