@@ -272,6 +272,7 @@ model Device {
   // the one hot query that is deliberately not org-scoped and could not use any index above.
   // Without this it was a full sequential scan of Device every MONITORING_PROBE_INTERVAL_MS.
   @@index([ipAddress])
+  @@index([location], type: Gist, map: "device_location_idx")
 }
 
 model Network {
@@ -403,6 +404,9 @@ model DeviceMetric {
   @@index([organizationId, time(sort: Desc)])
   @@index([organizationId, sourceType, time(sort: Desc)])
   @@index([organizationId, deviceId, time(sort: Desc)])
+  // Declared so Prisma stops proposing to DROP it: the hypertable migration created this index
+  // by raw SQL, and an index absent from this schema but present in the database is drift.
+  @@index([time(sort: Desc)])
   // The live-metrics push runs DISTINCT ON ("userId") ... ORDER BY "userId", time DESC once per
   // org, every REFRESH_INTERVAL_SECONDS. No index carried userId, so that was a scan-and-sort of
   // the org's whole 30-day retention on every tick. This index matches the query's sort order, so
@@ -902,3 +906,45 @@ model BcfTopicDevice {
 //
 //   @@index([userId, floor])
 // }
+
+// ---------------------------------------------------------------------------
+// TimescaleDB hypertables created by raw SQL in earlier migrations (spec7).
+//
+// These are declared here for ONE reason: so Prisma knows they exist. They were
+// absent from this schema while being present in the database, which is drift -
+// and `prisma migrate dev` resolves drift by proposing to DROP the strays. Anyone
+// running the ordinary Prisma workflow got a migration that silently destroyed the
+// monitoring tables, and the only thing standing between that and production was
+// someone reading the generated SQL carefully.
+//
+// @@ignore keeps them out of Prisma Client (they have no primary key - the
+// application reads and writes them with $queryRaw/$executeRaw, and the hypertable
+// partitioning, retention and compression policies live in the raw migrations).
+// So these blocks change nothing at runtime; they exist to stop Prisma proposing to
+// delete a table it did not know about.
+// ---------------------------------------------------------------------------
+
+model DeviceStatusEvent {
+  time           DateTime @db.Timestamptz(6)
+  organizationId String
+  deviceId       String
+  state          String
+  source         String?
+
+  @@index([time(sort: Desc)])
+  @@index([deviceId, time(sort: Desc)], map: "device_status_event_dev_time")
+  @@ignore
+}
+
+model MonitoringMetric {
+  time           DateTime @db.Timestamptz(6)
+  organizationId String
+  deviceId       String
+  metric         String
+  value          Float
+  source         String?
+
+  @@index([time(sort: Desc)])
+  @@index([deviceId, metric, time(sort: Desc)], map: "monitoring_metric_dev_metric_time")
+  @@ignore
+}
