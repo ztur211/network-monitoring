@@ -43,6 +43,7 @@ export interface ViewportState {
   // Mutually exclusive with placingDeviceId.
   linkingDeviceId: string | null;
   nodeFilter: NodeFilter;
+  // Status overlay for `devices`, keyed by device id. Only ever holds ids that are in `devices`.
   nodeStatus: Map<string, NodeStatus>;
   access: AccessSummaryDto | null;
   // Spec 3 actions:
@@ -107,21 +108,24 @@ export const initialViewportState = () => ({
 });
 
 /**
- * Keep only the statuses of devices that are actually loaded. Returns the SAME map when
- * nothing needs dropping, so a device reload that changes nothing does not churn the
- * reference and re-render every status subscriber.
+ * nodeStatus is an overlay on `devices`, not a cache of its own: every consumer reads it as
+ * `nodeStatus.get(d.id) ?? 'unknown'` for a `d` in `devices`, so an entry for anything else is
+ * unreadable by construction. It is fed by v1:device:status events, which fan out for every device
+ * in the socket's SCOPE - not just the open building - once per probe cycle. Left unpruned it grows
+ * an entry for every device the session has ever seen, in any building, plus dead entries for
+ * deleted devices, for the life of the renderer.
+ *
+ * So keep it pinned to the loaded device set. Returns the SAME map when nothing needs dropping, so
+ * a reload that changes nothing does not churn the reference and re-render every status subscriber.
  */
-function retainStatuses(current: Map<string, NodeStatus>, devices: DeviceDto[]): Map<string, NodeStatus> {
-  const live = new Set(devices.map((d) => d.id));
-  let stale = false;
-  for (const id of current.keys()) {
-    if (!live.has(id)) {
-      stale = true;
-      break;
-    }
+function pruneStatus(current: Map<string, NodeStatus>, devices: DeviceDto[]): Map<string, NodeStatus> {
+  const next = new Map<string, NodeStatus>();
+  for (const d of devices) {
+    const st = current.get(d.id);
+    if (st !== undefined) next.set(d.id, st);
   }
-  if (!stale) return current;
-  return new Map([...current].filter(([id]) => live.has(id)));
+  // next only holds keys taken from current, so equal sizes means an identical key set.
+  return next.size === current.size ? current : next;
 }
 
 export const useViewportStore = create<ViewportState>()((set) => ({
@@ -138,6 +142,8 @@ export const useViewportStore = create<ViewportState>()((set) => ({
       devices: [],
       placingDeviceId: null,
       linkingDeviceId: null,
+      // Reset with the device set it overlays; the new building re-seeds it on load.
+      nodeStatus: new Map(),
     }),
   isolate: (isolated) => set({ isolated }),
   clearIsolation: () => set({ isolated: null }),
@@ -164,17 +170,7 @@ export const useViewportStore = create<ViewportState>()((set) => ({
   selectElement: (expressID) => set({ selection: { kind: 'element', expressID } }),
   selectNode: (deviceId) => set({ selection: { kind: 'device', deviceId } }),
   clearSelection: () => set({ selection: null }),
-  // nodeStatus is an overlay of realtime v1:device:status events, which fan out for every
-  // device in the socket's SCOPE - not just the open building - once per probe cycle. Nothing
-  // used to remove from it, so a long-lived session (a NOC wall display) accumulated an entry
-  // for every device it had ever seen in any building, plus entries for deleted devices. Since
-  // setNodeStatus clones the whole map on every event, that unbounded map also made each event
-  // progressively more expensive. Prune it to the devices actually loaded.
-  setDevices: (devices) =>
-    set((s) => ({
-      devices,
-      nodeStatus: retainStatuses(s.nodeStatus, devices),
-    })),
+  setDevices: (devices) => set((s) => ({ devices, nodeStatus: pruneStatus(s.nodeStatus, devices) })),
   upsertDevice: (d) =>
     set((s) => ({
       devices: s.devices.some((x) => x.id === d.id)
@@ -183,8 +179,13 @@ export const useViewportStore = create<ViewportState>()((set) => ({
     })),
   removeDevice: (id) =>
     set((s) => {
-      const nodeStatus = new Map(s.nodeStatus);
-      nodeStatus.delete(id);
+      let nodeStatus = s.nodeStatus;
+      if (nodeStatus.has(id)) {
+        // Clone only when there is something to drop: DEVICE_DELETED also fans out for devices
+        // outside the open building, and a new map reference re-renders every status subscriber.
+        nodeStatus = new Map(nodeStatus);
+        nodeStatus.delete(id);
+      }
       return {
         devices: s.devices.filter((x) => x.id !== id),
         nodeStatus,
@@ -198,6 +199,14 @@ export const useViewportStore = create<ViewportState>()((set) => ({
   setNodeFilter: (p) => set((s) => ({ nodeFilter: { ...s.nodeFilter, ...p } })),
   setNodeStatus: (id, st) =>
     set((s) => {
+      // Ignore devices that are not loaded: their status is unreadable (see pruneStatus) and
+      // recording it is what let the map outgrow the device list. Statuses that arrive while the
+      // list is still loading are not lost - loadStatusFor re-seeds once the devices land.
+      if (!s.devices.some((d) => d.id === id)) return s;
+      // Unchanged status: return the same state so the map is not cloned and no subscriber
+      // re-renders. Most devices are steady, so this drops nearly every event of every cycle -
+      // without it, N devices produce N full-map copies per probe cycle.
+      if (s.nodeStatus.get(id) === st) return s;
       const n = new Map(s.nodeStatus);
       n.set(id, st);
       return { nodeStatus: n };

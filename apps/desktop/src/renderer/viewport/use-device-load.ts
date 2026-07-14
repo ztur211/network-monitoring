@@ -27,7 +27,7 @@ export async function loadDevicesFor(
 
 /**
  * Spec 7: seed the store's nodeStatus map from the building's device-status read.
- * Best-effort — on any failure markers simply stay 'unknown'. A stale resolve
+ * Best-effort - on any failure markers simply stay 'unknown'. A stale resolve
  * (building switched) is discarded via isCurrent, matching loadDevicesFor.
  */
 export async function loadStatusFor(
@@ -89,11 +89,14 @@ export function useDeviceLoad(): void {
     let active = true;
     const isCurrent = () =>
       active && useViewportStore.getState().activeBuildingPropertyId === propertyId;
-    void loadDevicesFor(propertyId, rest, isCurrent);
-    // Spec 7: seed live health status for the building's devices (best-effort).
-    if (rest.getBuildingDeviceStatus) {
-      void loadStatusFor(propertyId, rest as Required<Pick<RestLike, 'getBuildingDeviceStatus'>>, isCurrent);
-    }
+    // Devices first, then status: the store keeps nodeStatus pinned to the loaded device set, so a
+    // seed that lands before the devices would be dropped. loadDevicesFor never rejects.
+    void loadDevicesFor(propertyId, rest, isCurrent).then(() => {
+      // Spec 7: seed live health status for the building's devices (best-effort).
+      if (rest.getBuildingDeviceStatus && isCurrent()) {
+        void loadStatusFor(propertyId, rest as Required<Pick<RestLike, 'getBuildingDeviceStatus'>>, isCurrent);
+      }
+    });
     return () => {
       active = false;
     };

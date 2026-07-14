@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { reachabilityCollector, pollDevices, mapLimit } from '../poller.js';
+import { reachabilityCollector, pollDevices } from '../poller.js';
+import { mapLimit } from '@nodescope/shared';
 
 const devices = [{ id: 'a', name: 'A', ipAddress: '10.0.0.1' }, { id: 'b', name: 'B', ipAddress: '10.0.0.2' }];
 

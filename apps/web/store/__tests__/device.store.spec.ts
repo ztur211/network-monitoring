@@ -84,9 +84,9 @@ describe('device.store', () => {
 
   describe('upsertManyDevices()', () => {
     it('inserts new + updates existing in a single merge', () => {
-      useDeviceStore.setState({ devices: [freshDevice({ id: 'a', name: 'A' })] });
+      useDeviceStore.setState({ devices: [freshDevice({ id: 'a', name: 'A', version: 1 })] });
       useDeviceStore.getState().upsertManyDevices([
-        freshDevice({ id: 'a', name: 'A2' }), // update
+        freshDevice({ id: 'a', name: 'A2', version: 2 }), // update (a write bumps version)
         freshDevice({ id: 'b', name: 'B' }), // insert
       ]);
       const devices = useDeviceStore.getState().devices;
@@ -100,6 +100,50 @@ describe('device.store', () => {
       const before = useDeviceStore.getState().devices;
       useDeviceStore.getState().upsertManyDevices([]);
       expect(useDeviceStore.getState().devices).toBe(before);
+    });
+
+    // The map's viewport load re-delivers rows the store already holds on every pan
+    // (loadDevices() seeds it with the whole fleet). A fresh array each time would
+    // invalidate MapView's visibleDevices memo and re-sync every marker for nothing.
+    it('a batch of already-current devices leaves the array reference unchanged', () => {
+      useDeviceStore.setState({
+        devices: [freshDevice({ id: 'a', version: 3 }), freshDevice({ id: 'b', version: 1 })],
+      });
+      const before = useDeviceStore.getState().devices;
+
+      useDeviceStore
+        .getState()
+        .upsertManyDevices([freshDevice({ id: 'a', version: 3 }), freshDevice({ id: 'b', version: 1 })]);
+
+      expect(useDeviceStore.getState().devices).toBe(before);
+    });
+
+    it('keeps an in-flight optimistic edit rather than reverting it to a stale server row', () => {
+      // A pan can land while a PATCH is in flight and return the pre-edit row. It
+      // carries the version we already hold, so it must not clobber the optimistic name.
+      useDeviceStore.setState({ devices: [freshDevice({ id: 'a', name: 'Renamed', version: 1 })] });
+
+      useDeviceStore.getState().upsertManyDevices([freshDevice({ id: 'a', name: 'Stale', version: 1 })]);
+
+      expect(useDeviceStore.getState().devices[0].name).toBe('Renamed');
+    });
+
+    it('preserves order and does not duplicate on a large merge', () => {
+      const existing = Array.from({ length: 50 }, (_, i) => freshDevice({ id: `d${i}` }));
+      useDeviceStore.setState({ devices: existing });
+
+      // Half already current, half genuinely updated, plus one new device.
+      useDeviceStore.getState().upsertManyDevices([
+        ...Array.from({ length: 25 }, (_, i) => freshDevice({ id: `d${i}` })),
+        ...Array.from({ length: 25 }, (_, i) => freshDevice({ id: `d${i + 25}`, version: 2 })),
+        freshDevice({ id: 'new' }),
+      ]);
+
+      const devices = useDeviceStore.getState().devices;
+      expect(devices).toHaveLength(51);
+      expect(new Set(devices.map((d) => d.id)).size).toBe(51);
+      expect(devices.slice(0, 50).map((d) => d.id)).toEqual(existing.map((d) => d.id));
+      expect(devices[50].id).toBe('new');
     });
   });
 

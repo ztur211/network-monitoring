@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { PrismaService } from '../../prisma/prisma.service';
 import { IngestService } from '../ingest/ingest.service';
 import { probeDevice, ProbeResult, setIcmpUnavailableHandler } from '@nodescope/probe';
-import { nonOverlapping } from '@nodescope/shared';
+import { mapLimit, nonOverlapping } from '@nodescope/shared';
 import { envInt } from '../../config/env';
 
 // Every numeric knob goes through envInt: `Number('')` is 0, so an env var that is set but
@@ -27,17 +27,6 @@ export function parsePorts(raw: string | undefined): number[] {
     .split(',')
     .map((p) => Number(p.trim()))
     .filter((p) => Number.isInteger(p) && p > 0 && p <= 65535);
-}
-
-/** Run an async fn over items with a bounded concurrency (a worker pool draining a queue). */
-export async function mapLimit<T>(items: T[], limit: number, fn: (t: T) => Promise<void>): Promise<void> {
-  const queue = [...items];
-  const n = Math.max(1, Math.min(limit, items.length || 1));
-  await Promise.all(
-    Array.from({ length: n }, async () => {
-      while (queue.length) await fn(queue.shift()!);
-    }),
-  );
 }
 
 export async function runProbeCycle(
