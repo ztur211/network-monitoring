@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseArgs, runCli, nonOverlapping, AGENT_VERSION } from '../cli.js';
+import { parseArgs, runCli, AGENT_VERSION } from '../cli.js';
 import type { CliDeps } from '../cli.js';
+import { nonOverlapping } from '@nodescope/shared';
 
 describe('nonOverlapping', () => {
   it('skips a tick while the previous cycle is still running, then resumes', async () => {

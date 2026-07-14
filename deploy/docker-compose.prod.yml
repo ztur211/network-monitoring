@@ -20,11 +20,26 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Bound container RESOURCES for the same reason we bound the logs: a single misbehaving
+# service must degrade itself, not the box. Without a limit a container inherits the whole
+# host, so a runaway (a probe-cycle pileup, a leak, a runaway query) starves every other
+# service and the host itself instead of being contained and restarted.
+#
+# The defaults target a modest 4GB/2-core appliance host and are deliberately conservative;
+# raise them in deploy/.env on a bigger box. A container that exceeds its memory limit is
+# OOM-killed and restarted by `restart: unless-stopped` - a loud, recoverable failure, which
+# is the point. CPU limits throttle rather than kill.
+
 services:
   db:
     image: timescale/timescaledb-ha:pg16
     restart: unless-stopped
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: ${DB_MEMORY_LIMIT:-1g}
+          cpus: "${DB_CPU_LIMIT:-1.0}"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-nodescope}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
@@ -36,17 +51,32 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    # No host port published — reachable only inside the compose network.
+    # No host port published - reachable only inside the compose network.
 
-  # Redis is OPTIONAL — only needed for MULTI-REPLICA deployments. The single-node
+  # Redis is OPTIONAL - only needed for MULTI-REPLICA deployments. The single-node
   # appliance runs the API against an in-memory backing and never starts this service.
   # Enable it with `--profile redis` and set REDIS_URL + CLUSTER_MODE in deploy/.env.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
-    command: ["redis-server", "--appendonly", "yes"]
+    # maxmemory + an eviction policy so Redis bounds its own heap *inside* the container
+    # limit: it evicts cold keys rather than growing until the OOM killer takes the whole
+    # service down. Kept just under the container limit to leave room for overhead/AOF.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-192mb}
+      - --maxmemory-policy
+      - allkeys-lru
     profiles: ["redis"]
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT:-256m}
+          cpus: "${REDIS_CPU_LIMIT:-0.5}"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -64,9 +94,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${API_MEMORY_LIMIT:-1g}
+          cpus: "${API_CPU_LIMIT:-1.0}"
     environment:
       NODE_ENV: production
       PORT: "3000"
+      # Cap V8's old-space *below* the container limit (default ~75% of 1g), so heap growth
+      # hits a GC ceiling and throws inside Node - where it is logged and recoverable -
+      # instead of the container being OOM-killed with no explanation. Keep this in step
+      # with API_MEMORY_LIMIT if you raise it.
+      NODE_OPTIONS: ${API_NODE_OPTIONS:---max-old-space-size=768}
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
       # Empty by default = single-node in-memory backing. For multi-replica set this to
       # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
@@ -89,6 +129,14 @@ services:
       # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare
       # Tunnel → Caddy → API set 2.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Embedded prober: OFF unless the appliance sits on the network it monitors.
+      # A cycle that outlasts the interval is skipped (with a warning), never stacked -
+      # see deploy/.env.example for how to size the interval to the fleet.
+      MONITORING_PROBER_ENABLED: ${MONITORING_PROBER_ENABLED:-false}
+      MONITORING_PROBE_INTERVAL_MS: ${MONITORING_PROBE_INTERVAL_MS:-30000}
+      MONITORING_PROBE_CONCURRENCY: ${MONITORING_PROBE_CONCURRENCY:-20}
+      MONITORING_PROBE_TIMEOUT_MS: ${MONITORING_PROBE_TIMEOUT_MS:-2000}
+      MONITORING_PROBE_PORTS: ${MONITORING_PROBE_PORTS:-443,80,22}
       # Single-node appliance default: blobs on the local blobstore volume (no
       # MinIO/S3 to run). To use S3/MinIO instead, set STORAGE_DRIVER=s3 in
       # deploy/.env and add the STORAGE_ENDPOINT/…/SECRET_KEY env here.
@@ -104,13 +152,18 @@ services:
       retries: 5
 
   web:
-    # Origin-agnostic image (same-origin at runtime — see apps/web/lib/api-base.ts),
+    # Origin-agnostic image (same-origin at runtime - see apps/web/lib/api-base.ts),
     # so no PUBLIC_ORIGIN is baked and no rebuild is needed on IP change.
     image: ghcr.io/ztur211/nodescope-web:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:
       - api
+    deploy:
+      resources:
+        limits:
+          memory: ${WEB_MEMORY_LIMIT:-192m}
+          cpus: "${WEB_CPU_LIMIT:-0.5}"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       API_UPSTREAM: api:3000
@@ -126,9 +179,14 @@ services:
     restart: unless-stopped
     logging: *default-logging
     command: ["tunnel", "--no-autoupdate", "run"]
+    deploy:
+      resources:
+        limits:
+          memory: ${TUNNEL_MEMORY_LIMIT:-128m}
+          cpus: "${TUNNEL_CPU_LIMIT:-0.5}"
     environment:
       # Plain default (not `:?`) so `docker compose config/up` without the
-      # `tunnel` profile don't fail on a missing token — compose interpolates
+      # `tunnel` profile don't fail on a missing token - compose interpolates
       # every service's env at parse time regardless of active profiles.
       # cloudflared only runs under `--profile tunnel`, where an empty token
       # makes it exit with a clear error.

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { PrismaService } from '../../prisma/prisma.service';
 import { IngestService } from '../ingest/ingest.service';
 import { probeDevice, ProbeResult } from '@nodescope/probe';
+import { nonOverlapping } from '@nodescope/shared';
 
 const cfg = () => ({
   enabled: process.env.MONITORING_PROBER_ENABLED === 'true',
@@ -43,13 +44,14 @@ export async function runProbeCycle(
 
 /**
  * The embedded collector for on-network / self-host deploys. OFF by default
- * (MONITORING_PROBER_ENABLED) — managed cloud cannot reach a customer LAN and uses
+ * (MONITORING_PROBER_ENABLED) - managed cloud cannot reach a customer LAN and uses
  * the Agent instead. setInterval (not @nestjs/schedule) keeps the dep surface small.
  */
 @Injectable()
 export class ProberService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ProberService.name);
   private timer?: ReturnType<typeof setInterval>;
+  private skippedTicks = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,10 +60,29 @@ export class ProberService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     const c = cfg();
-    if (!c.enabled) return; // OFF by default — cloud uses the Agent
+    if (!c.enabled) return; // OFF by default - cloud uses the Agent
     this.logger.log(`Embedded prober enabled (interval ${c.intervalMs}ms, concurrency ${c.concurrency})`);
+
+    // A cycle's wall-time is devices x probe timeout / concurrency, so a large or unreachable
+    // fleet can outlast intervalMs. Ticks that land on a running cycle are SKIPPED, never
+    // queued: an unguarded setInterval would stack cycles, each with its own `concurrency`
+    // sockets and spawned `ping` children, and the contention would make every cycle slower
+    // still - an unbounded pileup that blows the container's CPU/memory budget. Skipping caps
+    // steady-state cost at one cycle and degrades by probing less often instead.
+    const tick = nonOverlapping(
+      () => this.cycle(),
+      () => {
+        this.skippedTicks++;
+        this.logger.warn(
+          { skippedTicks: this.skippedTicks, intervalMs: c.intervalMs },
+          'probe cycle still running when the next tick fired - skipping it. The fleet no longer ' +
+            'fits in MONITORING_PROBE_INTERVAL_MS; raise the interval or the concurrency.',
+        );
+      },
+    );
+
     this.timer = setInterval(() => {
-      void this.cycle().catch((e) => this.logger.warn({ e }, 'probe cycle failed'));
+      void tick().catch((e) => this.logger.warn({ e }, 'probe cycle failed'));
     }, c.intervalMs);
   }
 
