@@ -101,5 +101,32 @@ describe('NetworkContextProvider', () => {
       expect(result).toContain('10.0.0.1');
       expect(result).toContain('ETHERNET');
     });
+
+    it('hard-bounds the assembled section so a single huge notes field cannot blow the budget', async () => {
+      // A device with a novel pasted into `notes` slips past the repository row
+      // caps (it's a single row) — the provider must still truncate the string.
+      // Budget is ~40% of AI_MAX_INPUT_TOKENS (default 8000) = 3200 tokens ≈
+      // 12800 chars; the raw assembled string here is ~60k chars.
+      mockPermRepo.findMember.mockResolvedValue(ownerMember);
+      mockPermService.scopeFilter.mockResolvedValue(null);
+      mockRepo.getNetworkEntities.mockResolvedValue({
+        devices: [{
+          name: 'Router', category: 'ROUTER', ipAddress: '10.0.0.1',
+          floor: null, floorLabel: null, notes: 'x'.repeat(60000),
+        }],
+        connections: [],
+        fiberRuns: [],
+        circuits: [],
+      });
+
+      const result = await provider.getContext('org-1', 'user-owner');
+
+      // Bounded to the network-section budget (3200 tokens ≈ 12800 chars) …
+      expect(result.length).toBeLessThanOrEqual(3200 * 4);
+      // … the important header still survives at the front …
+      expect(result.startsWith('## Documented Network')).toBe(true);
+      // … and the model is told the content is partial.
+      expect(result).toContain('context truncated');
+    });
   });
 });

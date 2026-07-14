@@ -16,12 +16,6 @@ import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
 import { mapLimit, nonOverlapping } from '@nodescope/shared';
 import { envInt } from '../config/env';
-
-/**
- * Orgs whose latest-metrics query may be in flight at once during a push. Deliberately small:
- * the Prisma pool is shared with every HTTP handler, so a wide push would starve the API.
- */
-const PUSH_ORG_CONCURRENCY = 4;
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { NetworksService } from '../networks/networks.service';
@@ -44,6 +38,43 @@ interface MetricsSubmitPayload {
   latency?: number;
   connectionQuality?: string;
   tag?: string;
+}
+
+/**
+ * Orgs whose latest-metrics query may be in flight at once during a push. Deliberately small:
+ * the Prisma pool is shared with every HTTP handler, so a wide push would starve the API.
+ */
+const PUSH_ORG_CONCURRENCY = 4;
+
+/**
+ * Per-user fixed-window rate limit for metrics:submit (see handleMetricsSubmit). The global
+ * @nestjs/throttler ThrottlerGuard only inspects context.switchToHttp(), so it provides NO
+ * limit for @SubscribeMessage handlers - an authenticated socket could otherwise emit
+ * metrics:submit as fast as it can write, driving unbounded INSERTs into the DeviceMetric
+ * TimescaleDB hypertable (a client-driven disk/DB-growth runaway).
+ *
+ * The legitimate browser collector emits one submission per COLLECT_INTERVAL_MS (30s) per open
+ * tab - 2/min for a single tab (apps/web/lib/browser-collector.service.ts). A 60/min cap gives
+ * ~30x headroom over one tab and comfortably covers a user with several tabs/devices open at
+ * once, while capping a flooding client to a flat 60 INSERTs/min instead of an unbounded stream.
+ * Overridable so an operator can tighten or loosen it without a code change (mirrors the AI
+ * rate limiter's env-configurable caps).
+ */
+const WS_METRICS_WINDOW_SECONDS = 60;
+export const WS_METRICS_MAX_PER_WINDOW = envInt('WS_METRICS_RATE_LIMIT', 60, { min: 1 });
+
+/** Minute-resolution window tag, e.g. '2026-07-14T12:34'. */
+function currentMinuteTag(): string {
+  return new Date().toISOString().slice(0, 16);
+}
+
+/**
+ * Per-user, minute-bucketed counter key. The minute tag lives in the key so the window
+ * self-rolls at the boundary (a fresh key => a fresh count), mirroring the AI rate limiter's
+ * `ai:rate:hourly:<user>:<tag>` scheme.
+ */
+function metricsRateKey(userId: string): string {
+  return `ws:metrics:${userId}:${currentMinuteTag()}`;
 }
 
 /**
@@ -229,8 +260,54 @@ export class RealtimeGateway
       return;
     }
 
+    // Guard the DB-write path: past the per-user window cap, silently drop the message. This
+    // matches how the handler already rejects unwritable submissions (return without emitting),
+    // and a debug-level log keeps the drop observable without letting a flood turn into a
+    // warn-log amplification of its own.
+    if (!(await this.withinMetricsRateLimit(userId))) {
+      this.logger.debug({ userId, orgId }, 'metrics:submit dropped - per-user rate limit exceeded');
+      return;
+    }
+
+    // The payload is not size/shape-validated here on purpose: WS payloads bypass the global
+    // ValidationPipe, and DataSourcesService.parseRawPayload (called by ingest) already bounds
+    // every field's number magnitude and string length. Re-validating here would duplicate it.
     const ingestPayload: Record<string, unknown> = { ...(payload ?? {}) };
     await this.dataSourcesService.ingest(orgId, userId, ingestPayload);
+  }
+
+  /**
+   * Fixed-window per-user cap for metrics:submit. INCRs the minute-bucketed counter and reports
+   * whether this submission is within WS_METRICS_MAX_PER_WINDOW. The EX ttl only cleans the
+   * stale key up once its window has rolled (the key already self-rolls via its minute tag),
+   * following the AI rate limiter's incr+expire pipeline pattern.
+   *
+   * Fail-open: a Redis blip returns "allowed" rather than dropping the metric, matching
+   * RedisThrottlerStorage's house rule - a limiter degrading to "unlimited" during a Redis
+   * outage is far better than silently losing every legitimate client's data.
+   */
+  private async withinMetricsRateLimit(userId: string): Promise<boolean> {
+    const key = metricsRateKey(userId);
+    try {
+      const pipeline = this.redis.pipeline();
+      pipeline.incr(key);
+      pipeline.expire(key, WS_METRICS_WINDOW_SECONDS);
+      const results = await pipeline.exec();
+
+      // exec() resolves to ioredis-shaped [err, value] tuples; results[0] is the INCR. A null
+      // result, a per-command error, or a non-numeric count all mean "count unknown" - fail open.
+      const incr = results?.[0];
+      if (!incr || incr[0]) return true;
+      const count = Number(incr[1]);
+      if (!Number.isFinite(count)) return true;
+      return count <= WS_METRICS_MAX_PER_WINDOW;
+    } catch (err) {
+      this.logger.warn(
+        { err, userId },
+        'Metrics rate-limit check failed - allowing submission (fail-open)',
+      );
+      return true;
+    }
   }
 
   pushToUser(userId: string, event: string, payload: unknown): void {

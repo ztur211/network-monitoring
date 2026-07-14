@@ -1,7 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WS_EVENTS } from '@nodescope/shared';
-import { RealtimeGateway } from '../realtime.gateway';
+import { RealtimeGateway, WS_METRICS_MAX_PER_WINDOW } from '../realtime.gateway';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { NetworksService } from '../../networks/networks.service';
@@ -17,6 +17,15 @@ const mockServer = {
   to: jest.fn().mockReturnValue(mockRoom),
 };
 
+// Faithful stand-in for the incr+expire fixed-window pipeline the gateway uses to rate-limit
+// metrics:submit. Keyed by the real Redis key (which embeds the per-user minute tag), so INCR
+// returns a monotonically rising count within a window - exactly what the gateway compares
+// against the cap. Reset between tests via resetMetricsCounters().
+const metricsCounters = new Map<string, number>();
+function resetMetricsCounters(): void {
+  metricsCounters.clear();
+}
+
 const mockRedis = {
   sadd: jest.fn().mockResolvedValue(1),
   srem: jest.fn().mockResolvedValue(1),
@@ -25,6 +34,27 @@ const mockRedis = {
   hset: jest.fn().mockResolvedValue(1),
   hdel: jest.fn().mockResolvedValue(1),
   hgetall: jest.fn().mockResolvedValue({}),
+  pipeline: jest.fn(() => {
+    const results: Array<[Error | null, unknown]> = [];
+    const p: {
+      incr: (key: string) => typeof p;
+      expire: (key: string, seconds: number) => typeof p;
+      exec: () => Promise<Array<[Error | null, unknown]>>;
+    } = {
+      incr: (key: string) => {
+        const next = (metricsCounters.get(key) ?? 0) + 1;
+        metricsCounters.set(key, next);
+        results.push([null, next]);
+        return p;
+      },
+      expire: () => {
+        results.push([null, 1]);
+        return p;
+      },
+      exec: async () => results,
+    };
+    return p;
+  }),
   duplicate: jest.fn().mockReturnValue({
     on: jest.fn(),
     subscribe: jest.fn().mockResolvedValue(undefined),
@@ -57,6 +87,7 @@ describe('RealtimeGateway — service interface', () => {
   let mockPermissionsRepo: MockPermissionsRepo;
 
   beforeEach(async () => {
+    resetMetricsCounters();
     mockDataSources = {
       ingest: jest.fn(),
       getLatestMetric: jest.fn(),
@@ -481,6 +512,64 @@ describe('RealtimeGateway — service interface', () => {
         'user-1',
         expect.objectContaining({ tag: 'speedtest' }),
       );
+    });
+
+    it('drops submissions past the per-user window cap and ingests the rest', async () => {
+      // Freeze the clock so every submission lands in the same minute window; the counter key
+      // embeds a minute tag, so a real-time minute rollover mid-loop would reset the count.
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-14T12:00:00.000Z'));
+      try {
+        const socket = buildSocket({ id: 'flooder' }, 'org-abc');
+
+        // The first WS_METRICS_MAX_PER_WINDOW submissions are within the window and ingest.
+        for (let i = 0; i < WS_METRICS_MAX_PER_WINDOW; i++) {
+          await gateway.handleMetricsSubmit(socket, { bandwidthDown: i });
+        }
+        expect(mockDataSources.ingest).toHaveBeenCalledTimes(WS_METRICS_MAX_PER_WINDOW);
+
+        // Everything past the cap in the same window is silently dropped (never reaches ingest).
+        await gateway.handleMetricsSubmit(socket, { bandwidthDown: 999 });
+        await gateway.handleMetricsSubmit(socket, { bandwidthDown: 1000 });
+        expect(mockDataSources.ingest).toHaveBeenCalledTimes(WS_METRICS_MAX_PER_WINDOW);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('meters the cap per-user: one user\'s flood does not block another user', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-14T12:00:00.000Z'));
+      try {
+        const flooder = buildSocket({ id: 'user-a' }, 'org-abc');
+        for (let i = 0; i <= WS_METRICS_MAX_PER_WINDOW; i++) {
+          await gateway.handleMetricsSubmit(flooder, { bandwidthDown: i });
+        }
+        // user-a is now over the cap; a fresh user still ingests on its own counter.
+        mockDataSources.ingest.mockClear();
+        const other = buildSocket({ id: 'user-b' }, 'org-abc');
+        await gateway.handleMetricsSubmit(other, { bandwidthDown: 1 });
+        expect(mockDataSources.ingest).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('fails open: a Redis blip during the rate-limit check still ingests the metric', async () => {
+      const socket = buildSocket({ id: 'user-1' }, 'org-abc');
+      mockRedis.pipeline.mockImplementationOnce(() => {
+        throw new Error('redis down');
+      });
+      const warnSpy = jest
+        .spyOn((gateway as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      await gateway.handleMetricsSubmit(socket, { bandwidthDown: 100 });
+
+      expect(mockDataSources.ingest).toHaveBeenCalledWith(
+        'org-abc',
+        'user-1',
+        expect.objectContaining({ bandwidthDown: 100 }),
+      );
+      warnSpy.mockRestore();
     });
   });
 

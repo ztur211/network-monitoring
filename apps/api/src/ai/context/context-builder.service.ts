@@ -11,6 +11,7 @@ import { NetworkContextProvider } from './network-context.provider';
 import { RealtimeContextProvider } from './realtime-context.provider';
 import { AccountContextProvider } from './account-context.provider';
 import { ProductContextProvider } from './product-context.provider';
+import { estimateTokenCount } from './token-budget';
 
 const SYSTEM_PREAMBLE = `You are the NodeScope AI Assistant. You help users with two things: network troubleshooting and NodeScope usage guidance.
 
@@ -65,6 +66,6 @@ export class ContextBuilderService {
   }
 
   estimateTokenCount(text: string): number {
-    return Math.ceil(text.length / 4);
+    return estimateTokenCount(text);
   }
 }
