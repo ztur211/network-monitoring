@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createServer, Server } from 'node:net';
 import type { execFile as NodeExecFile } from 'node:child_process';
 import {
