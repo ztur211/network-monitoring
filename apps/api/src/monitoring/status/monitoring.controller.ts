@@ -2,6 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { OrgMember } from '../../organizations/decorators/org-member.decorator';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
 import { MonitoringService } from './monitoring.service';
+import { DeviceMetricsQueryDto } from './monitoring.dto';
 
 @Controller('v1')
 export class MonitoringController {
@@ -15,16 +16,17 @@ export class MonitoringController {
   }
 
   // Spec 7: F3-scoped bucketed metric series for a single device (charts).
+  // The query is validated by DeviceMetricsQueryDto (allow-listed bucket, ISO dates, bounded
+  // metric name) BEFORE it reaches the service. Validation runs in the global ValidationPipe,
+  // ahead of any device lookup, so a malformed query is a 400 for a visible and an invisible
+  // device alike - it cannot be used as an existence oracle.
   @Get('devices/:id/metrics')
   async metrics(
     @OrgMember() member: OrgMemberContext,
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('metric') metric: string,
-    @Query('from') from: string,
-    @Query('to') to: string,
-    @Query('bucket') bucket = '5 minutes',
+    @Query() query: DeviceMetricsQueryDto,
   ) {
-    const data = await this.svc.getDeviceMetrics(member, id, metric, new Date(from), new Date(to), bucket);
+    const data = await this.svc.getDeviceMetrics(member, id, query);
     return { success: true, data, timestamp: new Date().toISOString() };
   }
 

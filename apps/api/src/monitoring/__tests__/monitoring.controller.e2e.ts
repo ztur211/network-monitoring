@@ -148,6 +148,89 @@ describe('MonitoringController (e2e)', () => {
       .expect(404);
   });
 
+  // ── metrics query validation ───────────────────────────────────────────────
+  // The endpoint used to take metric/from/to/bucket as raw strings and hand them straight to a
+  // LIMIT-less GROUP BY: one row per occupied bucket over whatever window was asked for, so a
+  // single authenticated GET could materialize an entire retention window of buckets into API
+  // memory. These pin the bound.
+
+  it('metrics: an unbounded window at a sub-bucket granularity is rejected (400, not an OOM)', async () => {
+    // The OOM request: 130 years of 1-second buckets. `1 second` is not an allow-listed bucket.
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms&from=1970-01-01&to=2100-01-01&bucket=1 second`)
+      .set('Cookie', ownerCookie)
+      .expect(400);
+  });
+
+  it('metrics: an allow-listed bucket over too wide a window is rejected (400)', async () => {
+    // Bucket passes the allow-list, but (to - from) / bucket is far past MAX_METRIC_BUCKETS.
+    const res = await request(app.getHttpServer())
+      .get(
+        `/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms&from=1970-01-01T00:00:00Z&to=2100-01-01T00:00:00Z&bucket=30 seconds`,
+      )
+      .set('Cookie', ownerCookie)
+      .expect(400);
+    expect(res.body.error.message).toBe('METRIC_RANGE_TOO_LARGE');
+  });
+
+  it('metrics: a malformed date is a 400, not a 500', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms&from=garbage&to=2026-01-01T00:00:00Z`)
+      .set('Cookie', ownerCookie)
+      .expect(400);
+  });
+
+  it('metrics: from >= to is a 400', async () => {
+    const now = new Date().toISOString();
+    const earlier = new Date(Date.now() - 3600_000).toISOString();
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms&from=${now}&to=${earlier}`)
+      .set('Cookie', ownerCookie)
+      .expect(400);
+    expect(res.body.error.message).toBe('INVALID_TIME_RANGE');
+  });
+
+  it('metrics: a missing metric name is a 400', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics`)
+      .set('Cookie', ownerCookie)
+      .expect(400);
+  });
+
+  it('metrics: omitting from/to/bucket defaults to the last hour in 5-minute buckets', async () => {
+    // Previously `new Date(undefined)` → Invalid Date → 500 out of the driver.
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms`)
+      .set('Cookie', ownerCookie)
+      .expect(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0); // the seeded sample is inside the default 1h window
+    expect(res.body.data[0].avg).toBeCloseTo(12, 3);
+  });
+
+  it('metrics: a bucket string outside the allow-list is a 400', async () => {
+    const from = new Date(Date.now() - 3600_000).toISOString();
+    const to = new Date().toISOString();
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?metric=latency_ms&from=${from}&to=${to}&bucket=7 minutes`)
+      .set('Cookie', ownerCookie)
+      .expect(400);
+  });
+
+  it('metrics: a malformed query is 400 for visible and invisible devices alike (no existence oracle)', async () => {
+    // Validation runs in the pipe, before any DB lookup, so the rejection cannot be used to probe
+    // which devices exist / are in scope: same 400 either way.
+    const bad = 'metric=latency_ms&from=garbage&to=garbage';
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${placedDeviceId}/metrics?${bad}`)
+      .set('Cookie', memberCookie)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`/api/v1/devices/${outOfScopeDeviceId}/metrics?${bad}`)
+      .set('Cookie', memberCookie)
+      .expect(400);
+  });
+
   // Spec A: status-events endpoint
   it('OWNER status-events: returns the seeded UP event with ISO time, state, source', async () => {
     const res = await request(app.getHttpServer())

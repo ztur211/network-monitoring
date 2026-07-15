@@ -1,5 +1,5 @@
 diff --git a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
-index b4c78af..cc0bf0d 100644
+index 754ea41..f46157d 100644
 --- a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
 +++ b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
 @@ -252,12 +252,14 @@ export function BottomTabBar({
@@ -42,7 +42,7 @@ index 7f3b7bd..f598367 100644
              value: tabBarPosition === 'bottom' ? tabBarHeight : 0,
              children: /*#__PURE__*/_jsx(Screen, {
 diff --git a/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabBar.tsx b/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabBar.tsx
-index ba17a4a..05bc7b8 100644
+index fff90c9..a54fbfc 100644
 --- a/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabBar.tsx
 +++ b/node_modules/@react-navigation/bottom-tabs/src/views/BottomTabBar.tsx
 @@ -381,11 +381,11 @@ export function BottomTabBar({

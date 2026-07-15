@@ -17,7 +17,7 @@ const dev = (id: string, over: Record<string, unknown> = {}) =>
     ...over,
   }) as any;
 
-describe('viewportStore — nodes + tagged selection (Spec 4)', () => {
+describe('viewportStore - nodes + tagged selection (Spec 4)', () => {
   beforeEach(reset);
 
   it('tagged selection: element vs device are mutually exclusive', () => {
@@ -55,6 +55,7 @@ describe('viewportStore — nodes + tagged selection (Spec 4)', () => {
   });
 
   it('setNodeStatus / setNodeFilter / setAccess', () => {
+    useViewportStore.getState().setDevices([dev('a')]);
     useViewportStore.getState().setNodeStatus('a', 'down');
     expect(useViewportStore.getState().nodeStatus.get('a')).toBe('down');
     useViewportStore.getState().setNodeFilter({ text: 'sw', placement: 'placed' });
@@ -62,6 +63,68 @@ describe('viewportStore — nodes + tagged selection (Spec 4)', () => {
     expect(useViewportStore.getState().nodeFilter.placement).toBe('placed');
     useViewportStore.getState().setAccess({ role: 'ADMIN', assignedRootPropertyIds: [], unscoped: false });
     expect(useViewportStore.getState().access?.role).toBe('ADMIN');
+  });
+
+  // nodeStatus is fed by status events that fan out for every device in the socket's scope, once per
+  // probe cycle. It has to stay pinned to the loaded devices or it grows for the life of the session.
+  describe('nodeStatus stays pinned to the loaded devices', () => {
+    const statusOf = (id: string) => useViewportStore.getState().nodeStatus.get(id);
+
+    it('ignores a status for a device that is not loaded', () => {
+      useViewportStore.getState().setDevices([dev('a')]);
+      useViewportStore.getState().setNodeStatus('elsewhere', 'down');
+      expect(useViewportStore.getState().nodeStatus.has('elsewhere')).toBe(false);
+    });
+
+    it('an unchanged status does not clone the map (no re-render per event)', () => {
+      useViewportStore.getState().setDevices([dev('a')]);
+      useViewportStore.getState().setNodeStatus('a', 'up');
+      const first = useViewportStore.getState().nodeStatus;
+
+      useViewportStore.getState().setNodeStatus('a', 'up'); // same value, as on every quiet cycle
+      expect(useViewportStore.getState().nodeStatus).toBe(first); // same reference
+
+      useViewportStore.getState().setNodeStatus('a', 'down'); // a real change still lands
+      expect(useViewportStore.getState().nodeStatus).not.toBe(first);
+      expect(statusOf('a')).toBe('down');
+    });
+
+    it('reloading devices drops statuses for devices that are gone, keeps the rest', () => {
+      useViewportStore.getState().setDevices([dev('a'), dev('b')]);
+      useViewportStore.getState().setNodeStatus('a', 'down');
+      useViewportStore.getState().setNodeStatus('b', 'up');
+
+      useViewportStore.getState().setDevices([dev('a')]); // b is no longer in the building
+      expect(statusOf('a')).toBe('down');
+      expect(useViewportStore.getState().nodeStatus.has('b')).toBe(false);
+    });
+
+    it('a reload that drops nothing keeps the same map reference', () => {
+      useViewportStore.getState().setDevices([dev('a')]);
+      useViewportStore.getState().setNodeStatus('a', 'down');
+      const before = useViewportStore.getState().nodeStatus;
+
+      useViewportStore.getState().setDevices([dev('a', { x: 1 })]); // same ids, refreshed rows
+      expect(useViewportStore.getState().nodeStatus).toBe(before);
+    });
+
+    it('removeDevice drops the status entry too (deleted devices left dead entries behind)', () => {
+      useViewportStore.getState().setDevices([dev('a'), dev('b')]);
+      useViewportStore.getState().setNodeStatus('a', 'down');
+      useViewportStore.getState().setNodeStatus('b', 'up');
+
+      useViewportStore.getState().removeDevice('a');
+      expect(useViewportStore.getState().nodeStatus.has('a')).toBe(false);
+      expect(statusOf('b')).toBe('up');
+    });
+
+    it('switching building clears the status overlay with the devices it overlays', () => {
+      useViewportStore.getState().setDevices([dev('a')]);
+      useViewportStore.getState().setNodeStatus('a', 'down');
+
+      useViewportStore.getState().setActiveBuilding('bld-2');
+      expect(useViewportStore.getState().nodeStatus.size).toBe(0);
+    });
   });
 
   it('switching building resets node state but keeps org-level access', () => {

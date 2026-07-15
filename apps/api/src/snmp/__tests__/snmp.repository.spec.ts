@@ -34,4 +34,33 @@ describe('SnmpRepository (integration)', () => {
     expect(resolved!.network?.snmpCredentialId).toBe(netCred.id); // network default
     expect(resolved!.network?.oidProfileId).toBe(prof.id);
   });
+
+  it('devicesWithSnmp loads the same rows as deviceWithSnmp in ONE query, org-scoped and de-duplicated', async () => {
+    const netCred = await repo.createCredential({ organizationId: orgId, name: 'batch-cred', snmpVersion: 'V2C', securityLevel: null, securityName: null, authProtocol: null, privProtocol: null, communityEnc: 'BATCH_BLOB', authKeyEnc: null, privKeyEnc: null });
+    const net = await prisma.network.create({ data: { organizationId: orgId, name: 'BatchNet', snmpCredentialId: netCred.id } });
+    const site = await prisma.property.create({ data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'BatchSite' } });
+    const devices = await Promise.all([0, 1, 2].map((i) => prisma.device.create({ data: { organizationId: orgId, networkId: net.id, propertyId: site.id, name: `Batch-${i}`, category: 'SWITCH', ipAddress: `10.5.0.${i}` } })));
+
+    // Another org's device must never come back, even when its id is asked for by name.
+    const otherOrg = await prisma.organization.create({ data: { name: `SOther${Date.now()}${Math.floor(performance.now())}` } });
+    try {
+      const otherSite = await prisma.property.create({ data: { organizationId: otherOrg.id, parentId: null, type: 'SITE', name: 'OtherSite' } });
+      const otherNet = await prisma.network.create({ data: { organizationId: otherOrg.id, name: 'OtherNet' } });
+      const otherDev = await prisma.device.create({ data: { organizationId: otherOrg.id, networkId: otherNet.id, propertyId: otherSite.id, name: 'Batch-other', category: 'SWITCH', ipAddress: '10.5.9.9' } });
+
+      // Duplicate ids + an unknown id + a foreign id: the batch must be a superset-safe lookup,
+      // never positional, so it returns exactly the 3 in-org rows.
+      const rows = await repo.devicesWithSnmp(orgId, [...devices.map((d) => d.id), devices[0].id, otherDev.id, 'no-such-device']);
+      expect(rows.map((r) => r.id).sort()).toEqual(devices.map((d) => d.id).sort());
+      // Row-for-row identical to the per-device load it replaces.
+      for (const d of devices) {
+        expect(rows.find((r) => r.id === d.id)).toEqual(await repo.deviceWithSnmp(orgId, d.id));
+      }
+      expect(rows[0].network?.snmpCredentialId).toBe(netCred.id);
+      expect(await repo.devicesWithSnmp(orgId, [])).toEqual([]);
+    } finally {
+      await prisma.device.deleteMany({ where: { organizationId: otherOrg.id } });
+      await prisma.organization.delete({ where: { id: otherOrg.id } });
+    }
+  });
 });

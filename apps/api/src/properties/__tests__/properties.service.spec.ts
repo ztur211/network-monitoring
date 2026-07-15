@@ -120,7 +120,9 @@ describe('PropertiesService', () => {
     repo.findByIdAndOrgId
       .mockResolvedValueOnce({ id: 'p1', type: 'SITE', parentId: null, version: 1, organizationId: 'o1' }) // the node
       .mockResolvedValueOnce({ id: 'p2', type: 'SITE', organizationId: 'o1' });                            // the new parent
-    repo.getSubtreeIds.mockResolvedValue(['p1', 'p2']); // p2 is under p1 → cycle
+    // The cycle check now asks "is the proposed parent at-or-under me?" (an upward, cycle-guarded
+    // walk) instead of materializing this node's whole subtree.
+    repo.isAtOrUnder.mockResolvedValue(true); // p2 is under p1 -> reparenting p1 under p2 is a cycle
     await expect(service.updateProperty(ownerMember, 'p1', { baseVersion: 1, changes: [{ field: 'parentId', oldValue: null, newValue: 'p2' }] } as any))
       .rejects.toMatchObject({ code: 'PROP_005' });
   });

@@ -130,13 +130,34 @@ export const useDeviceStore = create<DeviceStore>((set, get) => {
       set((state) => ({ devices: upsertById(state.devices, device) })),
 
     // Merge many devices in ONE state update (one render). The map's viewport load
-    // previously called upsertDevice per device — a React render per returned device.
+    // previously called upsertDevice per device - a React render per returned device.
+    //
+    // Merged through a Map rather than a fold over upsertById: that fold was O(n) per
+    // incoming device (a findIndex AND a full array copy each), so one pan over a large
+    // fleet cost O(n*m) time and m throwaway copies of the whole array.
+    //
+    // The array's identity is preserved when every incoming device is already held at
+    // the same version, which is the common case: the store is seeded with the whole
+    // fleet by loadDevices(), so a viewport load usually returns rows we already have.
+    // Returning a fresh array anyway would invalidate the map's visibleDevices memo and
+    // re-sync every marker on each pan for nothing.
     upsertManyDevices: (incoming) =>
-      set((state) =>
-        incoming.length === 0
-          ? {}
-          : { devices: incoming.reduce((acc, d) => upsertById(acc, d), state.devices) },
-      ),
+      set((state) => {
+        if (incoming.length === 0) return {};
+
+        const byId = new Map(state.devices.map((d) => [d.id, d]));
+        let changed = false;
+        for (const device of incoming) {
+          // `version` is the optimistic-concurrency token: any write bumps it, so an
+          // equal version means the row we hold is already this row.
+          const existing = byId.get(device.id);
+          if (existing && existing.version === device.version) continue;
+          byId.set(device.id, device);
+          changed = true;
+        }
+
+        return changed ? { devices: [...byId.values()] } : {};
+      }),
 
     removeDevice: (deviceId) =>
       set((state) => ({ devices: state.devices.filter((d) => d.id !== deviceId) })),

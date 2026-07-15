@@ -1,6 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { DeviceCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PropertyTreeRepository } from '../../property-tree/property-tree.repository';
+import {
+  breakCycles,
+  createCycle,
+  expectPropertyTreeCycle,
+} from '../../property-tree/__tests__/tree-cycle.helpers';
 import { SpatialRepository } from '../spatial.repository';
 
 describe('SpatialRepository (integration)', () => {
@@ -13,7 +19,7 @@ describe('SpatialRepository (integration)', () => {
 
   beforeAll(async () => {
     const ref = await Test.createTestingModule({
-      providers: [SpatialRepository, PrismaService],
+      providers: [SpatialRepository, PrismaService, PropertyTreeRepository],
     }).compile();
     repo = ref.get(SpatialRepository);
     prisma = ref.get(PrismaService);
@@ -54,6 +60,8 @@ describe('SpatialRepository (integration)', () => {
     await prisma.device.deleteMany({ where: { organizationId: orgId } });
     await prisma.networkProperty.deleteMany({ where: { organizationId: orgId } });
     await prisma.network.deleteMany({ where: { organizationId: orgId } });
+    // parentId is ON DELETE RESTRICT: a cycle would block the deleteMany below and leak into the test DB.
+    await breakCycles(prisma, orgId);
     await prisma.property.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.user.deleteMany({ where: { id: userId } });
@@ -73,6 +81,40 @@ describe('SpatialRepository (integration)', () => {
     expect(await repo.resolveGoverningBuildingId(orgId, flr.id)).toBe(bld.id);
     expect(await repo.resolveGoverningBuildingId(orgId, bld.id)).toBe(bld.id); // self
     expect(await repo.resolveGoverningBuildingId(orgId, site.id)).toBeNull(); // no building above a SITE
+  });
+
+  it('picks the NEAREST building when two are stacked up the chain', async () => {
+    const site = await prisma.property.create({
+      data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'S2' },
+    });
+    const outer = await prisma.property.create({
+      data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'Outer' },
+    });
+    const flr = await prisma.property.create({
+      data: { organizationId: orgId, parentId: outer.id, type: 'FLOOR', name: 'F' },
+    });
+    const area = await prisma.property.create({
+      data: { organizationId: orgId, parentId: flr.id, type: 'AREA', name: 'A' },
+    });
+
+    expect(await repo.resolveGoverningBuildingId(orgId, area.id)).toBe(outer.id);
+  });
+
+  // The upward walk used to be an unbounded UNION ALL that spun forever inside Postgres on a cyclic
+  // tree; the `depth` column it carried was only used for ordering, never as a bound.
+  it('terminates and refuses when the property tree contains a cycle', async () => {
+    const site = await prisma.property.create({
+      data: { organizationId: orgId, parentId: null, type: 'SITE', name: 'SC' },
+    });
+    const bld = await prisma.property.create({
+      data: { organizationId: orgId, parentId: site.id, type: 'BUILDING', name: 'BC' },
+    });
+    const flr = await prisma.property.create({
+      data: { organizationId: orgId, parentId: bld.id, type: 'FLOOR', name: '1C' },
+    });
+    await createCycle(prisma, site.id, flr.id); // the SITE's parent becomes the floor beneath it
+
+    await expectPropertyTreeCycle(() => repo.resolveGoverningBuildingId(orgId, flr.id));
   });
 
   describe('setPosition', () => {

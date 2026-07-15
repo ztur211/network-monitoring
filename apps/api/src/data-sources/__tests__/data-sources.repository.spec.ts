@@ -101,11 +101,14 @@ describe('DataSourcesRepository', () => {
     });
 
     it('returns one row per user with their latest metric, scoped by org', async () => {
-      // Explicit timestamps — `createMany` evaluates `@default(now())` once per
+      // Explicit timestamps - `createMany` evaluates `@default(now())` once per
       // statement, so the two records would otherwise share a timestamp and
       // ORDER BY time DESC would return either non-deterministically.
-      const earlier = new Date('2026-01-01T00:00:00.000Z');
-      const later = new Date('2026-01-01T00:00:01.000Z');
+      // They are relative to now because the query only looks back over the live window
+      // (LIVE_METRICS_MAX_AGE_HOURS): this feeds a LIVE push, so a reading from months ago is
+      // deliberately not returned. See the staleness test at the bottom of this block.
+      const earlier = new Date(Date.now() - 2000);
+      const later = new Date(Date.now() - 1000);
       await prisma.deviceMetric.createMany({
         data: [
           { organizationId: ORG_A, userId: USER_A, sourceType: 'browser', latency: 10, time: earlier },
@@ -126,7 +129,7 @@ describe('DataSourcesRepository', () => {
           userId: USER_B,
           sourceType: 'browser',
           latency: 777,
-          time: new Date('2026-03-01T00:00:00.000Z'),
+          time: new Date(Date.now() - 1000),
         },
       });
       // Query org A for USER_B — must return nothing
@@ -145,13 +148,48 @@ describe('DataSourcesRepository', () => {
           deviceId: 'device-xyz',
           tag: 'speedtest',
           latency: 5,
-          time: new Date('2026-02-01T00:00:00.000Z'),
+          time: new Date(Date.now() - 1000),
         },
       });
       const results = await repository.findLatestForUsers(ORG_A, [USER_A]);
       expect(results).toHaveLength(1);
       expect(results[0].deviceId).toBe('device-xyz');
       expect(results[0].tag).toBe('speedtest');
+    });
+
+    /**
+     * The query is bounded to a live window on purpose. Without a lower bound on `time` it had
+     * to consider every chunk of a 30-day hypertable to find one row per user - once per org,
+     * every REFRESH_INTERVAL_SECONDS. The bound is what lets TimescaleDB exclude the old chunks.
+     * It is also honest: this feeds a LIVE metrics push, so a reading from last month is not a
+     * live reading, and re-pushing it forever helps nobody.
+     */
+    it('ignores a reading older than the live window, so stale metrics are not re-pushed forever', async () => {
+      await prisma.deviceMetric.create({
+        data: {
+          organizationId: ORG_A,
+          userId: USER_A,
+          sourceType: 'browser',
+          latency: 99,
+          time: new Date(Date.now() - 40 * 60 * 60 * 1000), // 40h old, past the 24h default
+        },
+      });
+      expect(await repository.findLatestForUsers(ORG_A, [USER_A])).toHaveLength(0);
+    });
+
+    it('returns a reading inside the live window', async () => {
+      await prisma.deviceMetric.create({
+        data: {
+          organizationId: ORG_A,
+          userId: USER_A,
+          sourceType: 'browser',
+          latency: 42,
+          time: new Date(Date.now() - 60 * 60 * 1000), // 1h old
+        },
+      });
+      const results = await repository.findLatestForUsers(ORG_A, [USER_A]);
+      expect(results).toHaveLength(1);
+      expect(results[0].latency).toBe(42);
     });
   });
 });

@@ -196,6 +196,53 @@ describe('AiService', () => {
       expect(passedHistory[1].content).toBe('newest a');
     });
 
+    it('truncates an over-budget system prompt before sending it to the provider', async () => {
+      // Regression: previously the history loop drained to empty and the oversized
+      // system prompt was shipped ANYWAY (provider 400 / token-cost runaway). The
+      // system prompt + user message must never exceed AI_MAX_INPUT_TOKENS (8000).
+      const oversized = 'A'.repeat(40000); // ~10000 tokens, well over the 8000 budget
+      mockContextBuilder.buildSystemPrompt.mockResolvedValue(oversized);
+      mockConversation.getHistory.mockResolvedValue([]); // nothing to trim — the prompt itself is the problem
+      mockRateLimiter.getUsageCounts.mockResolvedValue(usageSnapshot);
+
+      let sentSystemPrompt = '';
+      mockAdapter.stream.mockImplementation(async (req, onToken) => {
+        sentSystemPrompt = req.systemPrompt;
+        onToken('ok');
+        return { content: 'ok', inputTokens: 1, outputTokens: 1 };
+      });
+
+      await service.sendMessageStream(
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' }, () => {},
+      );
+
+      // Bounded to the input budget (8000 tokens ≈ 32000 chars), not the raw 40000 …
+      expect(sentSystemPrompt.length).toBeLessThan(oversized.length);
+      expect(sentSystemPrompt.length).toBeLessThanOrEqual(8000 * 4);
+      // … and marked as partial so the model knows.
+      expect(sentSystemPrompt).toContain('system context truncated');
+    });
+
+    it('sends a within-budget system prompt through unchanged (no spurious truncation)', async () => {
+      mockContextBuilder.buildSystemPrompt.mockResolvedValue('A modest system prompt.');
+      mockConversation.getHistory.mockResolvedValue([]);
+      mockRateLimiter.getUsageCounts.mockResolvedValue(usageSnapshot);
+
+      let sentSystemPrompt = '';
+      mockAdapter.stream.mockImplementation(async (req, onToken) => {
+        sentSystemPrompt = req.systemPrompt;
+        onToken('ok');
+        return { content: 'ok', inputTokens: 1, outputTokens: 1 };
+      });
+
+      await service.sendMessageStream(
+        'org-test', 'user-1', 'PERSONAL_FREE', '127.0.0.1', { content: 'hi' }, () => {},
+      );
+
+      expect(sentSystemPrompt).toBe('A modest system prompt.');
+      expect(sentSystemPrompt).not.toContain('truncated');
+    });
+
     it('fallback says "No devices documented yet" when systemPrompt has no Network section', async () => {
       mockAdapter.stream.mockRejectedValue(new Error('boom'));
       mockContextBuilder.buildSystemPrompt.mockResolvedValue(

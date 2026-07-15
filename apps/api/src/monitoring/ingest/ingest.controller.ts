@@ -1,8 +1,9 @@
 import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
-import { IngestBatchDto } from '@nodescope/shared';
 import { IngestService } from './ingest.service';
 import { IngestTokenService } from './ingest-token.service';
 import { IngestTokenGuard } from './ingest-token.guard';
+import { IngestBatchSizeGuard } from './ingest-batch-size.guard';
+import { IngestBatchDto } from './ingest.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import { OrgId } from '../../organizations/decorators/org-id.decorator';
 import { OrgRoles } from '../../organizations/decorators/org-roles.decorator';
@@ -19,10 +20,15 @@ export class IngestController {
    * the per-org ingest token (x-ingest-token / Bearer) — NOT a session,
    * so it is @Public (skips the session AuthGuard); the org is derived from the token.
    * A foreign-org deviceId fails per-item via IngestService (ORG_008).
+   *
+   * The body is bounded on three axes, all of which the agent knows about: bytes
+   * (INGEST_BODY_LIMIT, applied by body-parser in main.ts), item count
+   * (IngestBatchSizeGuard -> 413, split and retry) and per-field bounds
+   * (IngestBatchDto via the global ValidationPipe -> 400, malformed). See ingest.dto.ts.
    */
   @Post('ingest')
   @Public()
-  @UseGuards(IngestTokenGuard)
+  @UseGuards(IngestTokenGuard, IngestBatchSizeGuard)
   @HttpCode(202)
   async ingestBatch(@Req() req: { ingestOrgId: string; ingestSource?: string }, @Body() body: IngestBatchDto) {
     const organizationId = req.ingestOrgId;

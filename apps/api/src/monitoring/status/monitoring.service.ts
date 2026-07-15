@@ -5,8 +5,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DevicesService } from '../../devices/devices.service';
 import { PermissionsService } from '../../permissions/permissions.service';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
-import { MonitoringRepository } from '../monitoring.repository';
+import { MonitoringRepository, bucketSeconds } from '../monitoring.repository';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
+import {
+  DeviceMetricsQueryDto,
+  DEFAULT_METRIC_BUCKET,
+  DEFAULT_METRIC_WINDOW_MS,
+  MAX_METRIC_BUCKETS,
+} from './monitoring.dto';
 
 const toDto = (deviceId: string, s: DeviceStatus | undefined): DeviceStatusDto => ({
   deviceId,
@@ -48,14 +54,42 @@ export class MonitoringService {
   async getDeviceMetrics(
     member: OrgMemberContext,
     deviceId: string,
-    metric: string,
-    from: Date,
-    to: Date,
-    bucket: string,
+    query: DeviceMetricsQueryDto,
   ): Promise<{ bucket: string; avg: number }[]> {
+    const { from, to, bucket } = this.resolveMetricWindow(query);
     await this.assertDeviceVisible(member, deviceId);
-    const rows = await this.repo.queryMetric(member.organizationId, deviceId, metric, from, to, bucket);
+    const rows = await this.repo.queryMetric(member.organizationId, deviceId, query.metric, from, to, bucket);
     return rows.map((r) => ({ bucket: new Date(r.bucket).toISOString(), avg: Number(r.avg) }));
+  }
+
+  /**
+   * Turn the validated query into a concrete, BOUNDED window. The DTO already guarantees the
+   * bucket is allow-listed and the dates are ISO; this applies the defaults and the two range
+   * rules the DTO cannot express on its own:
+   *   - from < to (an inverted or empty range is a client error, not an empty chart);
+   *   - (to - from) / bucket <= MAX_METRIC_BUCKETS, which is the real memory bound. The old
+   *     endpoint had neither, so `from=1970&to=2100&bucket=1 second` asked Postgres for ~10^9
+   *     rows and materialized them into API memory - a single-GET OOM.
+   * Both raise a 400 (NodeScopeException with BAD_REQUEST), never a 500.
+   */
+  private resolveMetricWindow(query: DeviceMetricsQueryDto): { from: Date; to: Date; bucket: string } {
+    const bucket = query.bucket ?? DEFAULT_METRIC_BUCKET;
+    const to = query.to ? new Date(query.to) : new Date();
+    const from = query.from ? new Date(query.from) : new Date(to.getTime() - DEFAULT_METRIC_WINDOW_MS);
+
+    if (from.getTime() >= to.getTime()) {
+      throw new NodeScopeException('MON_001', 'INVALID_TIME_RANGE', HttpStatus.BAD_REQUEST);
+    }
+
+    // bucketSeconds is > 0 for every allow-listed value; guard anyway so a future allow-list typo
+    // fails loudly here rather than dividing by zero.
+    const bs = bucketSeconds(bucket);
+    const buckets = bs > 0 ? (to.getTime() - from.getTime()) / 1000 / bs : Infinity;
+    if (buckets > MAX_METRIC_BUCKETS) {
+      throw new NodeScopeException('MON_002', 'METRIC_RANGE_TOO_LARGE', HttpStatus.BAD_REQUEST);
+    }
+
+    return { from, to, bucket };
   }
 
   /** F3-scoped distinct metric names for a device (last 24h). Out-of-scope → 404. */

@@ -1,3 +1,4 @@
+import { mapLimitResults } from '@nodescope/shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -15,20 +16,6 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
-}
-
-/** Run an async fn over items with at most `limit` in flight; results preserve input order. */
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const run = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
-  return results;
 }
 
 /**
@@ -78,7 +65,7 @@ export class BcfExportService {
       ),
     ];
     const snapshots = new Map<string, Buffer>(
-      await mapWithConcurrency(
+      await mapLimitResults(
         snapshotKeys,
         8,
         async (key) => [key, await streamToBuffer(await this.storage.getObjectStream(key))] as const,

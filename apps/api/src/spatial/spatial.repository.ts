@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PropertyTreeRepository } from '../property-tree/property-tree.repository';
 import { updateOrNull } from '../common/prisma/update-or-null';
 
 /**
@@ -9,7 +10,10 @@ import { updateOrNull } from '../common/prisma/update-or-null';
  */
 @Injectable()
 export class SpatialRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tree: PropertyTreeRepository,
+  ) {}
 
   findDevice(organizationId: string, deviceId: string): Promise<Device | null> {
     return this.prisma.device.findFirst({ where: { id: deviceId, organizationId } });
@@ -17,21 +21,15 @@ export class SpatialRepository {
 
   /**
    * Nearest BUILDING ancestor-or-self of `propertyId`, or null if none up the chain.
-   * Uses a recursive CTE to walk the property tree without loading every ancestor
-   * into application memory.
+   *
+   * Walks via the shared PropertyTreeRepository rather than a local recursive CTE: that is the one
+   * cycle-guarded implementation of the upward walk, so a corrupt tree raises PROPERTY_TREE_CYCLE
+   * instead of spinning forever inside Postgres. The chain is bounded by the tree's depth, so
+   * picking the nearest BUILDING in application code costs nothing over the old SQL `LIMIT 1`.
    */
   async resolveGoverningBuildingId(organizationId: string, propertyId: string): Promise<string | null> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      WITH RECURSIVE chain AS (
-        SELECT "id", "parentId", "type", 0 AS depth FROM "Property"
-          WHERE "id" = ${propertyId} AND "organizationId" = ${organizationId}
-        UNION ALL
-        SELECT p."id", p."parentId", p."type", c.depth + 1 FROM "Property" p
-          JOIN chain c ON p."id" = c."parentId" AND p."organizationId" = ${organizationId}
-      )
-      SELECT "id" FROM chain WHERE "type" = 'BUILDING' ORDER BY depth ASC LIMIT 1;
-    `;
-    return rows[0]?.id ?? null;
+    const chain = await this.tree.ancestorChain(organizationId, propertyId); // self -> root
+    return chain.find((n) => n.type === 'BUILDING')?.id ?? null;
   }
 
   async setPosition(

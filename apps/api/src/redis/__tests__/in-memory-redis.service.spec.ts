@@ -1,5 +1,8 @@
 import { InMemoryRedisService } from '../in-memory-redis.service';
 
+/** Must match SWEEP_INTERVAL_MS in the service: how long until the active sweep runs. */
+const SWEEP_MS = 30_000;
+
 /**
  * The in-memory backing used when Redis is explicitly disabled (single-node mode).
  * It must be behaviourally faithful for the subset of commands NodeScope uses so
@@ -106,5 +109,62 @@ describe('InMemoryRedisService', () => {
 
   it('answers ping with PONG', async () => {
     expect(await redis.ping()).toBe('PONG');
+  });
+
+  /**
+   * The leak this backing shipped with. Lazy expiry only fires on access, but every key we
+   * put a TTL on is time-tagged (`ai:rate:hourly:<user>:<hourTag>`) - once its window rolls,
+   * nothing reads that key ever again, so a lazy-only expiry can never collect it. The keys
+   * piled up for the life of the process: one per user (and per client IP) per hour, forever.
+   */
+  describe('active expiry (memory reclaim)', () => {
+    it('evicts an expired key that is never read again', async () => {
+      await redis.set('ai:rate:hourly:u1:2026-07-02T00', '3', 'EX', 3600);
+      expect(redis.size()).toBe(1);
+
+      // The hour rolls over. Nobody ever reads that key again - no get(), no incr().
+      jest.advanceTimersByTime(3600_000 + SWEEP_MS);
+
+      expect(redis.size()).toBe(0);
+    });
+
+    it('does not grow without bound across many rate-limit windows', async () => {
+      // 24 hourly windows for one user, each written once and then abandoned.
+      for (let hour = 0; hour < 24; hour++) {
+        await redis.pipeline().incr(`ai:rate:hourly:u1:h${hour}`).expire(`ai:rate:hourly:u1:h${hour}`, 3600).exec();
+        jest.advanceTimersByTime(3600_000);
+      }
+      jest.advanceTimersByTime(SWEEP_MS);
+
+      // Only the final, still-live window may remain - not all 24.
+      expect(redis.size()).toBeLessThanOrEqual(1);
+    });
+
+    it('keeps keys that have no TTL', async () => {
+      await redis.set('persistent', 'v');
+      jest.advanceTimersByTime(SWEEP_MS * 10);
+      expect(await redis.get('persistent')).toBe('v');
+      expect(redis.size()).toBe(1);
+    });
+
+    it('sweeps expired sets and hashes too, not just strings', async () => {
+      await redis.sadd('s', 'x');
+      await redis.hset('h', 'f', 'v');
+      await redis.pipeline().expire('s', 10).expire('h', 10).exec();
+      expect(redis.size()).toBe(2);
+
+      jest.advanceTimersByTime(11_000 + SWEEP_MS);
+
+      expect(redis.size()).toBe(0);
+      expect(await redis.scard('s')).toBe(0);
+      expect(await redis.hgetall('h')).toEqual({});
+    });
+
+    it('stops sweeping once destroyed', () => {
+      redis.onModuleDestroy();
+      expect(redis.size()).toBe(0);
+      // No timer left behind to fire against a torn-down service.
+      expect(jest.getTimerCount()).toBe(0);
+    });
   });
 });

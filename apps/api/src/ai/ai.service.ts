@@ -10,6 +10,7 @@ import { AI_PROVIDER_TOKEN, AiProviderAdapter } from './adapters/ai-provider.int
 import { ContextBuilderService } from './context/context-builder.service';
 import { AiRateLimiterService } from './rate-limiting/ai-rate-limiter.service';
 import { ConversationService } from './conversation/conversation.service';
+import { estimateTokenCount, truncateToTokenBudget } from './context/token-budget';
 import { SendAiMessageDto } from './ai.dto';
 
 const ONBOARDING_MESSAGE_MAX_CHARS = 300;
@@ -31,6 +32,11 @@ const ONBOARDING_FALLBACKS: Record<OnboardingStepId, string> = {
 };
 
 const MAX_INPUT_TOKENS = parseInt(process.env.AI_MAX_INPUT_TOKENS ?? '8000', 10);
+
+// Appended when the system prompt itself has to be cut to fit the input budget.
+// Kept distinct from the per-section context marker so it's clear in the prompt
+// (and in tests) that the whole prompt was bounded, not just one section.
+const SYSTEM_PROMPT_TRUNCATION_MARKER = '\n\n... (system context truncated to fit the input budget)';
 
 // Onboarding gets its own rate-limit bucket so a quota-exhausted chat session
 // can't hard-block a user partway through the first-run wizard (and vice versa).
@@ -64,11 +70,16 @@ export class AiService {
       this.contextBuilder.buildSystemPrompt(organizationId, userId, userTier, dto.content),
     ]);
 
-    const trimmedHistory = this.trimHistoryToFitBudget(systemPrompt, history, dto.content);
+    // The system prompt and the user message are non-negotiable — they are
+    // always sent. Bound the system prompt FIRST so that, even after history is
+    // drained to empty, the prompt can never exceed the budget. Then trim
+    // history to fit whatever budget remains.
+    const boundedSystemPrompt = this.boundSystemPromptToBudget(systemPrompt, dto.content);
+    const trimmedHistory = this.trimHistoryToFitBudget(boundedSystemPrompt, history, dto.content);
 
     try {
       const adapterResponse = await this.adapter.stream(
-        { systemPrompt, history: trimmedHistory, userMessage: dto.content },
+        { systemPrompt: boundedSystemPrompt, history: trimmedHistory, userMessage: dto.content },
         (token) => onToken(token, conversationId),
       );
 
@@ -252,6 +263,27 @@ export class AiService {
       `Write ONE short prompt (<=${ONBOARDING_MESSAGE_MAX_CHARS} characters) to ask for the next field for this step.`,
       `Be warm, brief, and direct. Do not mention NodeScope by name unless on the welcome step. No markdown.`,
     ].join(' ');
+  }
+
+  /**
+   * Guarantees the system prompt (plus the user message, which is always sent)
+   * fits within AI_MAX_INPUT_TOKENS. The context providers already cap their own
+   * output, but this is the deliberate final backstop: without it, an oversized
+   * system prompt was shipped to the provider anyway once history drained to
+   * empty (a provider 400 or a token-cost runaway on every turn).
+   *
+   * We truncate rather than raise: the honesty preamble and network summary live
+   * at the front of the prompt and survive, so the assistant degrades gracefully
+   * instead of failing outright — matching this module's graceful-degradation
+   * posture. The visible marker tells the model the prompt is partial.
+   */
+  private boundSystemPromptToBudget(systemPrompt: string, userMessage: string): string {
+    const budgetForSystem = MAX_INPUT_TOKENS - estimateTokenCount(userMessage);
+    return truncateToTokenBudget(
+      systemPrompt,
+      Math.max(0, budgetForSystem),
+      SYSTEM_PROMPT_TRUNCATION_MARKER,
+    );
   }
 
   private trimHistoryToFitBudget(

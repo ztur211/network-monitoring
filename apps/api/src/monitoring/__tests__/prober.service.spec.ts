@@ -1,4 +1,5 @@
-import { runProbeCycle, mapLimit } from '../prober/prober.service';
+import { runProbeCycle } from '../prober/prober.service';
+import { mapLimit } from '@nodescope/shared';
 
 describe('runProbeCycle', () => {
   it('probes every device and reports the result to ingest with source=prober', async () => {

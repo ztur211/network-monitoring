@@ -9,3 +9,5 @@ export * from './types/agent.types';
 export * from './types/snmp.types';
 export * from './types/bcf.types';
 export * from './ifc-guid';
+export * from './non-overlapping';
+export * from './map-limit';

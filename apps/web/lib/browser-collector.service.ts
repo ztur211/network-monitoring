@@ -1,4 +1,4 @@
-import { WS_EVENTS } from '@nodescope/shared';
+import { WS_EVENTS, nonOverlapping } from '@nodescope/shared';
 import { websocketService } from './websocket.service';
 import { useRealtimeStore } from '../store/realtime.store';
 import { getBrowserDeviceId } from './browser-device-id';
@@ -6,6 +6,12 @@ import { resolveApiBaseUrl } from './api-base';
 
 const COLLECT_INTERVAL_MS = 30_000;
 const BANDWIDTH_PAYLOAD_BYTES = 100_000; // 100 KB test payload
+// A bandwidth probe is bounded by this timeout, not by the server's goodwill: an
+// origin that accepts the connection and never answers (hung API, captive portal,
+// black-holed route - the degraded network this collector exists to measure) would
+// otherwise leave the fetch pending forever. Download and upload run back to back,
+// so the worst case is 20s, comfortably inside COLLECT_INTERVAL_MS.
+const BANDWIDTH_TIMEOUT_MS = 10_000;
 const API_URL = resolveApiBaseUrl();
 
 interface NetworkInformation {
@@ -23,6 +29,21 @@ declare global {
 class BrowserCollectorService {
   private collectTimer: ReturnType<typeof setInterval> | null = null;
   private isVisible = true;
+
+  // One cycle at a time, for the lifetime of the service: a slow cycle must not have
+  // the next tick stacked on top of it. Every in-flight cycle holds its 100 KB upload
+  // buffer and its downloaded payload, and the browser's 6-connections-per-origin cap
+  // means stacked probes queue ahead of the app's own REST calls - which makes each
+  // cycle slower, which causes more overlap. Skipping the tick keeps the cost flat at
+  // one cycle and degrades by collecting less often, the honest outcome.
+  // Built once as a field (not per scheduleCollection) so the guard survives the
+  // clear/reschedule that a visibility change does while a cycle is still running.
+  private readonly runCollection = nonOverlapping(
+    () => this.collectAndSubmit(),
+    () => {
+      console.warn('[browser-collector] previous cycle still in flight, skipping this tick');
+    },
+  );
 
   start(): void {
     this.setupVisibilityListener();
@@ -52,7 +73,10 @@ class BrowserCollectorService {
     this.clearTimer();
     if (!this.isVisible) return;
     this.collectTimer = setInterval(() => {
-      void this.collectAndSubmit();
+      void this.runCollection().catch((error) => {
+        // A rejection must not escape the interval callback as an unhandled rejection.
+        console.warn('[browser-collector] collection cycle failed', error);
+      });
     }, COLLECT_INTERVAL_MS);
   }
 
@@ -103,27 +127,56 @@ class BrowserCollectorService {
   }
 
   private async measureBandwidth(): Promise<{ down: number | null; up: number | null }> {
-    try {
-      const startDown = Date.now();
-      const res = await fetch(`${API_URL}/api/bandwidth/echo`, { cache: 'no-store' });
+    // Sequential: measuring both directions at once would have them contend for the
+    // same link and report half the truth for each.
+    const down = await this.measureDownload();
+    const up = await this.measureUpload();
+    return { down, up };
+  }
+
+  private measureDownload(): Promise<number | null> {
+    return this.withTimeout(async (signal) => {
+      const startedAt = Date.now();
+      const res = await fetch(`${API_URL}/api/bandwidth/echo`, { cache: 'no-store', signal });
+      if (!res.ok) return null;
       const body = await res.arrayBuffer();
-      const elapsedDownMs = Date.now() - startDown;
-      const bytesDown = body.byteLength;
-      const mbpsDown = (bytesDown * 8) / (elapsedDownMs / 1000) / 1_000_000;
+      return toMbps(body.byteLength, Date.now() - startedAt);
+    });
+  }
 
-      const uploadPayload = new Uint8Array(BANDWIDTH_PAYLOAD_BYTES);
-      const startUp = Date.now();
-      await fetch(`${API_URL}/api/bandwidth/echo`, {
+  private measureUpload(): Promise<number | null> {
+    return this.withTimeout(async (signal) => {
+      const payload = new Uint8Array(BANDWIDTH_PAYLOAD_BYTES);
+      const startedAt = Date.now();
+      const res = await fetch(`${API_URL}/api/bandwidth/echo`, {
         method: 'POST',
-        body: uploadPayload,
+        body: payload,
         cache: 'no-store',
-      }).catch(() => null);
-      const elapsedUpMs = Date.now() - startUp;
-      const mbpsUp = (BANDWIDTH_PAYLOAD_BYTES * 8) / (elapsedUpMs / 1000) / 1_000_000;
+        signal,
+      });
+      if (!res.ok) return null;
+      return toMbps(BANDWIDTH_PAYLOAD_BYTES, Date.now() - startedAt);
+    });
+  }
 
-      return { down: parseFloat(mbpsDown.toFixed(2)), up: parseFloat(mbpsUp.toFixed(2)) };
+  /**
+   * Run one bandwidth probe under an abort signal that fires after
+   * BANDWIDTH_TIMEOUT_MS, resolving to null if it times out or fails.
+   *
+   * The timer is only cleared once `probe` has fully settled, so it covers reading the
+   * body as well as getting the response: a server that returns headers and then stalls
+   * the stream would hang `arrayBuffer()` just as surely as one that never replies.
+   */
+  private async withTimeout(probe: (signal: AbortSignal) => Promise<number | null>): Promise<number | null> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), BANDWIDTH_TIMEOUT_MS);
+    try {
+      return await probe(controller.signal);
     } catch {
-      return { down: null, up: null };
+      // Timed out, or the network refused us. Either way there is no measurement to report.
+      return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -133,6 +186,14 @@ class BrowserCollectorService {
     const validTypes = ['4g', '3g', '2g', 'slow-2g'];
     return validTypes.includes(connection.effectiveType) ? connection.effectiveType : 'unknown';
   }
+}
+
+function toMbps(bytes: number, elapsedMs: number): number | null {
+  // A sub-millisecond transfer is below the clock's resolution, so the rate is
+  // unmeasurable rather than infinite.
+  if (elapsedMs <= 0) return null;
+  const mbps = (bytes * 8) / (elapsedMs / 1000) / 1_000_000;
+  return parseFloat(mbps.toFixed(2));
 }
 
 export const browserCollectorService = new BrowserCollectorService();

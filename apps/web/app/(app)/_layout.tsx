@@ -59,7 +59,14 @@ export default function AppLayout() {
     websocketService.on('connect', handleConnected);
     websocketService.on('reconnect', handleConnected);
 
+    // The layout can unmount while getSession() is still in flight (sign-out during
+    // the initial auth check). Cleanup is synchronous, so it would run BEFORE this
+    // callback: start()/connect() would then create a 30s interval and a socket that
+    // nothing is left to tear down, and they would leak for the life of the tab.
+    let cancelled = false;
+
     authClient.getSession().then((result) => {
+      if (cancelled) return;
       if (result.data?.user) {
         setUser(result.data.user as SessionUser);
         websocketService.connect();
@@ -73,6 +80,7 @@ export default function AppLayout() {
           .getState()
           .load()
           .then(() => {
+            if (cancelled) return;
             const { network, loaded } = useNetworkStore.getState();
             if (!loaded) return; // load failed — error banner handles it
             if (network === null && !useOnboardingStore.getState().dismissedForSession) {
@@ -85,12 +93,14 @@ export default function AppLayout() {
       }
       setLoading(false);
     }).catch(() => {
+      if (cancelled) return;
       setUser(null);
       setLoading(false);
       router.replace('/(auth)/login');
     });
 
     return () => {
+      cancelled = true;
       browserCollectorService.stop();
       unsubscribeMetrics();
       unsubscribeEntities();

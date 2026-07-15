@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { DeviceStatusState } from '@prisma/client';
+import { mapLimit } from '@nodescope/shared';
 import { StatusCheckDto, MetricSampleDto } from '@nodescope/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MonitoringRepository } from '../monitoring.repository';
@@ -7,6 +8,23 @@ import { deriveState } from '../status/derive-state';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 
 export const MONITORING_EMITTER = Symbol('MONITORING_EMITTER');
+
+/**
+ * Max deviceStatus upserts in flight for one ingest batch.
+ *
+ * The metric and event rows go out as single multi-row INSERTs, but the status upserts are
+ * inherently one statement per device. `Promise.all` over them fired one query per CHECK with no
+ * bound: a batch at the endpoint's cap (1000 checks) meant 1000 concurrent queries against a
+ * Prisma pool whose default size is num_cpus*2+1 (typically 9-17) and which is SHARED with every
+ * other request and background job. The fan-out is the outage: it doesn't just make this one
+ * request slow, it starves the pool so unrelated requests start failing on pool timeouts.
+ *
+ * 8 stays comfortably inside even a small default pool while keeping the DB pipelined, so a full
+ * batch costs ~125 sequential round-trips instead of one 1000-wide thundering herd.
+ */
+const STATUS_UPSERT_CONCURRENCY = 8;
+
+type StatusUpsert = Parameters<MonitoringRepository['upsertStatus']>[0];
 
 export interface DeviceStatusEmit {
   organizationId: string;
@@ -131,8 +149,12 @@ export class IngestService {
    * reportStatusCheck/reportMetric, but the per-device serial round-trips (device lookup,
    * getStatus, upsert, 2 metric inserts) collapse to: one device-ownership findMany, one
    * bulk prior-status fetch, one multi-row metric INSERT, one multi-row event INSERT, and
-   * the status upserts run concurrently. A foreign-org device fails the whole batch with
-   * ORG_008 before any write (atomic) — same reject contract, no partial writes.
+   * the status upserts run with a bounded concurrency (STATUS_UPSERT_CONCURRENCY). A foreign-org
+   * device fails the whole batch with ORG_008 before any write (atomic) - same reject contract,
+   * no partial writes.
+   *
+   * The caller (IngestBatchSizeGuard) has already bounded `checks`/`metrics` to the endpoint's
+   * per-batch caps, so the work here is bounded per request as well as per query.
    */
   async ingestBatch(
     organizationId: string,
@@ -162,7 +184,10 @@ export class IngestService {
     const metricRows: { organizationId: string; deviceId: string; metric: string; value: number; source: string; ts?: Date }[] = [];
     const eventRows: { organizationId: string; deviceId: string; state: DeviceStatusState; source: string }[] = [];
     const emits: DeviceStatusEmit[] = [];
-    const upserts: Promise<void>[] = [];
+    // Collect upsert INPUTS, not promises: pushing `this.repo.upsertStatus(...)` into an array
+    // starts the query immediately, so the fan-out would already have happened by the time we
+    // reached the bounded runner below.
+    const statusUpserts: StatusUpsert[] = [];
 
     for (const c of checks) {
       const source = sourceOverride ?? c.source ?? 'agent';
@@ -173,12 +198,10 @@ export class IngestService {
         thresholds,
       );
       const changed = before?.state !== state;
-      upserts.push(
-        this.repo.upsertStatus({
-          organizationId, deviceId: c.deviceId, state, latencyMs: c.latencyMs ?? null,
-          consecutiveFails, source, ok: c.ok, changed,
-        }),
-      );
+      statusUpserts.push({
+        organizationId, deviceId: c.deviceId, state, latencyMs: c.latencyMs ?? null,
+        consecutiveFails, source, ok: c.ok, changed,
+      });
       if (c.latencyMs != null) {
         metricRows.push({ organizationId, deviceId: c.deviceId, metric: 'latency_ms', value: c.latencyMs, source });
       }
@@ -201,7 +224,7 @@ export class IngestService {
     }
 
     await Promise.all([
-      ...upserts,
+      mapLimit(statusUpserts, STATUS_UPSERT_CONCURRENCY, (u) => this.repo.upsertStatus(u)),
       this.repo.insertMetrics(metricRows),
       this.repo.insertStatusEvents(eventRows),
     ]);

@@ -14,6 +14,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { fromNodeHeaders } from 'better-auth/node';
 import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
+import { mapLimit, nonOverlapping } from '@nodescope/shared';
+import { envInt } from '../config/env';
 import { RedisService } from '../redis/redis.service';
 import { DataSourcesService } from '../data-sources/data-sources.service';
 import { NetworksService } from '../networks/networks.service';
@@ -36,6 +38,52 @@ interface MetricsSubmitPayload {
   latency?: number;
   connectionQuality?: string;
   tag?: string;
+}
+
+/**
+ * Orgs whose latest-metrics query may be in flight at once during a push. Deliberately small:
+ * the Prisma pool is shared with every HTTP handler, so a wide push would starve the API.
+ */
+const PUSH_ORG_CONCURRENCY = 4;
+
+/**
+ * Per-user fixed-window rate limit for metrics:submit (see handleMetricsSubmit). The global
+ * @nestjs/throttler ThrottlerGuard only inspects context.switchToHttp(), so it provides NO
+ * limit for @SubscribeMessage handlers - an authenticated socket could otherwise emit
+ * metrics:submit as fast as it can write, driving unbounded INSERTs into the DeviceMetric
+ * TimescaleDB hypertable (a client-driven disk/DB-growth runaway).
+ *
+ * The legitimate browser collector emits one submission per COLLECT_INTERVAL_MS (30s) per open
+ * tab - 2/min for a single tab (apps/web/lib/browser-collector.service.ts). A 60/min cap gives
+ * ~30x headroom over one tab and comfortably covers a user with several tabs/devices open at
+ * once, while capping a flooding client to a flat 60 INSERTs/min instead of an unbounded stream.
+ * Overridable so an operator can tighten or loosen it without a code change (mirrors the AI
+ * rate limiter's env-configurable caps).
+ */
+const WS_METRICS_WINDOW_SECONDS = 60;
+export const WS_METRICS_MAX_PER_WINDOW = envInt('WS_METRICS_RATE_LIMIT', 60, { min: 1 });
+
+/** Minute-resolution window tag, e.g. '2026-07-14T12:34'. */
+function currentMinuteTag(): string {
+  return new Date().toISOString().slice(0, 16);
+}
+
+/**
+ * Per-user, minute-bucketed counter key. The minute tag lives in the key so the window
+ * self-rolls at the boundary (a fresh key => a fresh count), mirroring the AI rate limiter's
+ * `ai:rate:hourly:<user>:<tag>` scheme.
+ */
+function metricsRateKey(userId: string): string {
+  return `ws:metrics:${userId}:${currentMinuteTag()}`;
+}
+
+/**
+ * Drives BOTH the push-scheduler tick and the lock TTL, so they can never disagree. Read
+ * through envInt: an empty or malformed REFRESH_INTERVAL_SECONDS previously became NaN, and
+ * setInterval(fn, NaN) silently means 1ms - a 30-second job firing ~1000 times a second.
+ */
+function refreshIntervalSeconds(): number {
+  return envInt('REFRESH_INTERVAL_SECONDS', 30, { min: 1 });
 }
 
 /**
@@ -89,10 +137,26 @@ export class RealtimeGateway
       server.adapter(createAdapter(pubClient, subClient));
     }
 
-    const intervalMs =
-      parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10) * 1000;
+    const intervalMs = refreshIntervalSeconds() * 1000;
+
+    // Two DIFFERENT jobs, and the Redis lock in runPushScheduler only does one of them.
+    // That lock is set with `EX <interval> NX` and never released, so it dedupes the push
+    // ACROSS REPLICAS within a window - but its TTL equals the tick interval, which means it
+    // expires exactly as the next tick fires. A push cycle that overruns the interval (many
+    // orgs, a slow getLatestMetrics) therefore does NOT block the next tick: the lock is
+    // already gone, the tick re-acquires it, and a second cycle runs on top of the first.
+    // nonOverlapping is the missing IN-PROCESS guard; the lock stays for the cross-replica job.
+    const tick = nonOverlapping(
+      () => this.runPushScheduler(),
+      () =>
+        this.logger.warn(
+          { intervalMs },
+          'metrics push still running when the next tick fired - skipping it. Pushes are taking ' +
+            'longer than REFRESH_INTERVAL_SECONDS; raise it or speed up getLatestMetrics.',
+        ),
+    );
     this.pushSchedulerTimer = setInterval(() => {
-      void this.runPushScheduler();
+      void tick();
     }, intervalMs);
 
     this.logger.log('RealtimeGateway initialized');
@@ -196,8 +260,54 @@ export class RealtimeGateway
       return;
     }
 
+    // Guard the DB-write path: past the per-user window cap, silently drop the message. This
+    // matches how the handler already rejects unwritable submissions (return without emitting),
+    // and a debug-level log keeps the drop observable without letting a flood turn into a
+    // warn-log amplification of its own.
+    if (!(await this.withinMetricsRateLimit(userId))) {
+      this.logger.debug({ userId, orgId }, 'metrics:submit dropped - per-user rate limit exceeded');
+      return;
+    }
+
+    // The payload is not size/shape-validated here on purpose: WS payloads bypass the global
+    // ValidationPipe, and DataSourcesService.parseRawPayload (called by ingest) already bounds
+    // every field's number magnitude and string length. Re-validating here would duplicate it.
     const ingestPayload: Record<string, unknown> = { ...(payload ?? {}) };
     await this.dataSourcesService.ingest(orgId, userId, ingestPayload);
+  }
+
+  /**
+   * Fixed-window per-user cap for metrics:submit. INCRs the minute-bucketed counter and reports
+   * whether this submission is within WS_METRICS_MAX_PER_WINDOW. The EX ttl only cleans the
+   * stale key up once its window has rolled (the key already self-rolls via its minute tag),
+   * following the AI rate limiter's incr+expire pipeline pattern.
+   *
+   * Fail-open: a Redis blip returns "allowed" rather than dropping the metric, matching
+   * RedisThrottlerStorage's house rule - a limiter degrading to "unlimited" during a Redis
+   * outage is far better than silently losing every legitimate client's data.
+   */
+  private async withinMetricsRateLimit(userId: string): Promise<boolean> {
+    const key = metricsRateKey(userId);
+    try {
+      const pipeline = this.redis.pipeline();
+      pipeline.incr(key);
+      pipeline.expire(key, WS_METRICS_WINDOW_SECONDS);
+      const results = await pipeline.exec();
+
+      // exec() resolves to ioredis-shaped [err, value] tuples; results[0] is the INCR. A null
+      // result, a per-command error, or a non-numeric count all mean "count unknown" - fail open.
+      const incr = results?.[0];
+      if (!incr || incr[0]) return true;
+      const count = Number(incr[1]);
+      if (!Number.isFinite(count)) return true;
+      return count <= WS_METRICS_MAX_PER_WINDOW;
+    } catch (err) {
+      this.logger.warn(
+        { err, userId },
+        'Metrics rate-limit check failed - allowing submission (fail-open)',
+      );
+      return true;
+    }
   }
 
   pushToUser(userId: string, event: string, payload: unknown): void {
@@ -318,14 +428,15 @@ export class RealtimeGateway
   }
 
   private async runPushScheduler(): Promise<void> {
-    // Fired as `void this.runPushScheduler()` from setInterval with no global
-    // unhandledRejection handler, so this must never reject. The lock-acquisition
-    // redis.set was previously outside the try: a Redis blip there became an
-    // unhandled rejection and a silently-dropped tick. Wrap the whole cycle so a
-    // transient Redis error is logged and the tick is simply skipped (next one
-    // retries).
+    // Fired from setInterval, so this must never reject: the lock-acquisition redis.set was
+    // once outside the try, and a Redis blip there became an unhandled rejection and a
+    // silently-dropped tick. Wrap the whole cycle so a transient Redis error is logged and the
+    // tick is simply skipped (the next one retries).
+    //
+    // The lock below elects ONE replica per window. It is not an overlap guard - see the
+    // nonOverlapping wrapper in afterInit for that, and why this lock cannot do that job.
     try {
-      const ttl = parseInt(process.env.REFRESH_INTERVAL_SECONDS ?? '30', 10);
+      const ttl = refreshIntervalSeconds();
       const acquired = await this.redis.set(
         REDIS_KEY_PUSH_SCHEDULER_LOCK,
         '1',
@@ -341,9 +452,16 @@ export class RealtimeGateway
     }
   }
 
+  /**
+   * One query per org, but the orgs used to run STRICTLY SERIALLY: cycle wall-time was the number
+   * of orgs with a connected user times the query latency, so a few hundred online orgs pushed the
+   * cycle past its interval - which is what made the missing overlap guard fatal rather than
+   * merely untidy. Run them with a bounded fan-out instead: fast enough that the cycle fits, and
+   * capped so a busy push cannot drain the Prisma pool that every HTTP handler shares.
+   */
   private async pushLatestMetricsToConnectedUsers(): Promise<void> {
     const orgToUsers = await this.connectedUsersByOrg();
-    for (const [orgId, userIds] of orgToUsers) {
+    await mapLimit([...orgToUsers], PUSH_ORG_CONCURRENCY, async ([orgId, userIds]) => {
       const metricsMap = await this.dataSourcesService.getLatestMetrics(orgId, [...userIds]);
       for (const [userId, metrics] of metricsMap) {
         this.pushToUser(userId, WS_EVENTS.METRICS_UPDATE, {
@@ -351,7 +469,7 @@ export class RealtimeGateway
           sourceTypes: ['browser'],
         } satisfies { metrics: MetricsDto; sourceTypes: string[] });
       }
-    }
+    });
   }
 
   /**
