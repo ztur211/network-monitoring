@@ -84,7 +84,13 @@ export function createModelRender(merged: MergedCategory[]): ModelRender {
       const cur = geom.getIndex();
       // pick() raycasts the BVH over cat.fullIndex, never this swapped render index — so replacing the
       // render index with a visible subset here cannot corrupt picking.
-      if (!cur || cur.array !== want) geom.setIndex(new THREE.BufferAttribute(want, 1));
+      if (!cur || cur.array !== want) {
+        // BufferAttribute has no public dispose hook. BufferGeometry.dispose() is Three's public
+        // signal for the renderer to remove the CURRENT index and attributes from its WebGL cache;
+        // without it, replacing the index strands the old GPU buffer until renderer teardown.
+        geom.dispose();
+        geom.setIndex(new THREE.BufferAttribute(want, 1));
+      }
     }
   }
 

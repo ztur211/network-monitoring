@@ -2,6 +2,16 @@ import { Logger } from '@nestjs/common';
 import IORedis, { Redis } from 'ioredis';
 import { RedisPipeline, RedisService, RedisStatus } from './redis.service';
 
+const HDEL_IF_VALUES_SCRIPT = `
+local removed = 0
+for i = 1, #ARGV, 2 do
+  if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then
+    removed = removed + redis.call('HDEL', KEYS[1], ARGV[i])
+  end
+end
+return removed
+`;
+
 /**
  * Real Redis backing: a thin, typed delegator over an ioredis client. Composition
  * (not `extends Redis`) keeps the exposed surface exactly the RedisService seam and
@@ -70,8 +80,24 @@ export class RealRedisService extends RedisService {
     return this.client.hdel(key, ...fields);
   }
 
+  async hdelIfValues(key: string, entries: Array<[string, string]>): Promise<number> {
+    if (entries.length === 0) return 0;
+    const result = await this.client.eval(HDEL_IF_VALUES_SCRIPT, 1, key, ...entries.flat());
+    return Number(result);
+  }
+
   hgetall(key: string): Promise<Record<string, string>> {
     return this.client.hgetall(key);
+  }
+
+  scan(
+    cursor: string,
+    matchToken: 'MATCH',
+    pattern: string,
+    countToken: 'COUNT',
+    count: number,
+  ): Promise<[string, string[]]> {
+    return this.client.scan(cursor, matchToken, pattern, countToken, count);
   }
 
   eval(script: string, numKeys: number, ...args: Array<string | number>): Promise<unknown> {

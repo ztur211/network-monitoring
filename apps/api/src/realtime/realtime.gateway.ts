@@ -11,6 +11,7 @@ import {
   WsResponse,
 } from '@nestjs/websockets';
 import { createAdapter } from '@socket.io/redis-adapter';
+import type { Redis } from 'ioredis';
 import { fromNodeHeaders } from 'better-auth/node';
 import { Server, Socket } from 'socket.io';
 import { auth } from '../auth/better-auth.config';
@@ -27,10 +28,15 @@ import { NodeScopeException } from '../common/filters/global-exception.filter';
 import { AccountTier, ConnectionStatus, MetricsDto, WS_EVENTS } from '@nodescope/shared';
 import {
   IRealtimeService,
-  REDIS_KEY_CONNECTIONS,
   REDIS_KEY_CONN_ORG,
   REDIS_KEY_PUSH_SCHEDULER_LOCK,
 } from './realtime.types';
+import {
+  REDIS_KEY_SOCKET_PRESENCE,
+  encodeSocketPresence,
+  partitionSocketPresence,
+  type LiveSocketPresence,
+} from './socket-presence';
 
 interface MetricsSubmitPayload {
   bandwidthDown?: number;
@@ -45,6 +51,7 @@ interface MetricsSubmitPayload {
  * the Prisma pool is shared with every HTTP handler, so a wide push would starve the API.
  */
 const PUSH_ORG_CONCURRENCY = 4;
+const PRESENCE_DELETE_BATCH_SIZE = 500;
 
 /**
  * Per-user fixed-window rate limit for metrics:submit (see handleMetricsSubmit). The global
@@ -86,6 +93,10 @@ function refreshIntervalSeconds(): number {
   return envInt('REFRESH_INTERVAL_SECONDS', 30, { min: 1 });
 }
 
+function presenceLeaseMs(): number {
+  return refreshIntervalSeconds() * 3_000;
+}
+
 /**
  * Socket.io types `handshake.address` loosely; coerce it to a plain string,
  * falling back to '' when it is absent or non-string (matches checkOnHome's
@@ -115,6 +126,8 @@ export class RealtimeGateway
 
   private readonly logger = new Logger(RealtimeGateway.name);
   private pushSchedulerTimer: NodeJS.Timeout | undefined;
+  private redisAdapterClients: Redis[] = [];
+  private readonly activeAiUsers = new Set<string>();
 
   constructor(
     private readonly redis: RedisService,
@@ -127,13 +140,20 @@ export class RealtimeGateway
     private readonly networksService: NetworksService,
   ) {}
 
-  async afterInit(server: Server): Promise<void> {
+  afterInit(server: Server): void {
+    // Nest does not await this hook. Keep resource installation synchronous so shutdown can never
+    // run first and then have a suspended initializer resurrect clients or a timer afterward.
+    void this.cleanupLegacyPresence().catch((err) => {
+      this.logger.warn({ err }, 'Legacy socket presence cleanup failed; a later restart will retry');
+    });
+
     // The socket.io Redis adapter fans events across API replicas. Single-node mode
     // (Redis disabled) uses socket.io's default in-memory adapter — correct because
     // there is only one process and no cross-node fan-out is needed.
     if (this.redis.enabled) {
       const pubClient = this.redis.duplicate();
       const subClient = this.redis.duplicate();
+      this.redisAdapterClients.push(pubClient, subClient);
       server.adapter(createAdapter(pubClient, subClient));
     }
 
@@ -146,7 +166,7 @@ export class RealtimeGateway
     // orgs, a slow getLatestMetrics) therefore does NOT block the next tick: the lock is
     // already gone, the tick re-acquires it, and a second cycle runs on top of the first.
     // nonOverlapping is the missing IN-PROCESS guard; the lock stays for the cross-replica job.
-    const tick = nonOverlapping(
+    const pushTick = nonOverlapping(
       () => this.runPushScheduler(),
       () =>
         this.logger.warn(
@@ -155,8 +175,19 @@ export class RealtimeGateway
             'longer than REFRESH_INTERVAL_SECONDS; raise it or speed up getLatestMetrics.',
         ),
     );
+    const presenceTick = nonOverlapping(
+      () => this.refreshLocalSocketPresence(),
+      () =>
+        this.logger.warn(
+          { intervalMs },
+          'socket presence refresh still running when the next tick fired - skipping it',
+        ),
+    );
     this.pushSchedulerTimer = setInterval(() => {
-      void tick();
+      // Presence renewal is deliberately outside the potentially long push cycle's overlap
+      // guard. A slow metrics query must never make healthy sockets look expired.
+      void presenceTick();
+      void pushTick();
     }, intervalMs);
 
     this.logger.log('RealtimeGateway initialized');
@@ -209,12 +240,7 @@ export class RealtimeGateway
     // Join the rooms mirroring this socket's scope so scoped events reach it by room.
     await this.syncScopeRooms(client);
 
-    await this.redis.sadd(REDIS_KEY_CONNECTIONS(userId), client.id);
-    // Index userId -> orgId so the metrics push can enumerate connected (user, org) pairs from
-    // one Redis read instead of a cluster-wide fetchSockets(). Only users in an org get pushes.
-    if (client.data.orgId) {
-      await this.redis.hset(REDIS_KEY_CONN_ORG, userId, client.data.orgId as string);
-    }
+    await this.writeSocketPresence(client);
 
     const requestIp = extractRequestIp(client.handshake.address);
     const onHomeResult = await this.networksService.checkOnHome(userId, requestIp);
@@ -227,12 +253,7 @@ export class RealtimeGateway
   async handleDisconnect(client: Socket): Promise<void> {
     const userId = (client.data.user as { id: string } | undefined)?.id;
     if (userId) {
-      await this.redis.srem(REDIS_KEY_CONNECTIONS(userId), client.id);
-      // Drop the userId -> orgId index entry only when this was the user's LAST socket, so a
-      // user with other tabs/devices open keeps receiving the metrics push.
-      if ((await this.redis.scard(REDIS_KEY_CONNECTIONS(userId))) === 0) {
-        await this.redis.hdel(REDIS_KEY_CONN_ORG, userId);
-      }
+      await this.redis.hdel(REDIS_KEY_SOCKET_PRESENCE, client.id);
       this.logger.log({ userId, socketId: client.id }, 'Client disconnected');
     }
   }
@@ -327,8 +348,8 @@ export class RealtimeGateway
   }
 
   async getConnectionStatus(userId: string): Promise<ConnectionStatus> {
-    const count = await this.redis.scard(REDIS_KEY_CONNECTIONS(userId));
-    return count > 0 ? 'connected' : 'offline';
+    const presence = await this.readLiveSocketPresence();
+    return presence.some((socket) => socket.userId === userId) ? 'connected' : 'offline';
   }
 
   async recomputeOnHomeForUser(userId: string): Promise<void> {
@@ -473,24 +494,24 @@ export class RealtimeGateway
   }
 
   /**
-   * Connected (org -> unique userIds) for the metrics push. Reads the userId->orgId index
-   * (maintained on connect/disconnect) in one Redis call. Falls back to a cluster-wide
+   * Connected (org -> unique userIds) for the metrics push. Reads leased socket presence
+   * in one Redis call, removes stale records, and deduplicates users. Falls back to a cluster-wide
    * fetchSockets() scan if the index read fails, so a Redis blip can't silently stop the
    * live-metrics feature.
    */
   private async connectedUsersByOrg(): Promise<Map<string, Set<string>>> {
     const orgToUsers = new Map<string, Set<string>>();
     try {
-      const index = await this.redis.hgetall(REDIS_KEY_CONN_ORG);
-      for (const [userId, orgId] of Object.entries(index)) {
-        if (!orgId) continue;
-        const bucket = orgToUsers.get(orgId) ?? new Set<string>();
-        bucket.add(userId);
-        orgToUsers.set(orgId, bucket);
+      const presence = await this.readLiveSocketPresence();
+      for (const socket of presence) {
+        if (!socket.organizationId) continue;
+        const bucket = orgToUsers.get(socket.organizationId) ?? new Set<string>();
+        bucket.add(socket.userId);
+        orgToUsers.set(socket.organizationId, bucket);
       }
       return orgToUsers;
     } catch (err) {
-      this.logger.warn({ err }, 'Conn-org index unavailable — falling back to fetchSockets for metrics push');
+      this.logger.warn({ err }, 'Socket presence unavailable — falling back to fetchSockets for metrics push');
       const sockets = await this.server.fetchSockets();
       for (const s of sockets) {
         const userId = (s.data.user as { id: string } | undefined)?.id;
@@ -504,6 +525,58 @@ export class RealtimeGateway
     }
   }
 
+  private async writeSocketPresence(client: Socket, now = Date.now()): Promise<void> {
+    const userId = (client.data.user as { id: string } | undefined)?.id;
+    if (!userId) return;
+    const organizationId = client.data.orgId as string | null | undefined;
+    await this.redis.hset(
+      REDIS_KEY_SOCKET_PRESENCE,
+      client.id,
+      encodeSocketPresence({
+        userId,
+        organizationId: organizationId ?? null,
+        expiresAt: now + presenceLeaseMs(),
+      }),
+    );
+  }
+
+  private async refreshLocalSocketPresence(): Promise<void> {
+    const localSockets = this.server.sockets?.sockets;
+    if (!localSockets) return;
+    const now = Date.now();
+    await Promise.all([...localSockets.values()].map((socket) => this.writeSocketPresence(socket, now)));
+  }
+
+  private async readLiveSocketPresence(now = Date.now()): Promise<LiveSocketPresence[]> {
+    const fields = await this.redis.hgetall(REDIS_KEY_SOCKET_PRESENCE);
+    const { live, staleEntries } = partitionSocketPresence(fields, now);
+    for (let i = 0; i < staleEntries.length; i += PRESENCE_DELETE_BATCH_SIZE) {
+      // Renewal can race this reader on another replica. Compare-and-delete the exact serialized
+      // value we observed so a fresh lease written after HGETALL is never removed as stale.
+      await this.redis.hdelIfValues(
+        REDIS_KEY_SOCKET_PRESENCE,
+        staleEntries.slice(i, i + PRESENCE_DELETE_BATCH_SIZE),
+      );
+    }
+    return live;
+  }
+
+  private async cleanupLegacyPresence(): Promise<void> {
+    await this.redis.del(REDIS_KEY_CONN_ORG);
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        'nodescope:connections:*',
+        'COUNT',
+        500,
+      );
+      if (keys.length > 0) await this.redis.del(...keys);
+      cursor = nextCursor;
+    } while (cursor !== '0');
+  }
+
   @SubscribeMessage(WS_EVENTS.AI_MESSAGE)
   async handleAiMessage(
     @ConnectedSocket() client: Socket,
@@ -514,6 +587,11 @@ export class RealtimeGateway
 
     const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
     if (!content || content.length > 2000) return;
+    // Usage accounting happens after completion, so concurrent stalled streams used to bypass
+    // the quota and retain one fetch reader/prompt/handler apiece. The adapter has a deadline too;
+    // this guard caps each user at one in-flight stream even before that deadline expires.
+    if (this.activeAiUsers.has(user.id)) return;
+    this.activeAiUsers.add(user.id);
 
     const ip = client.handshake.address ?? '0.0.0.0';
 
@@ -557,12 +635,18 @@ export class RealtimeGateway
           context: 'ai',
         });
       }
+    } finally {
+      this.activeAiUsers.delete(user.id);
     }
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     if (this.pushSchedulerTimer !== undefined) {
       clearInterval(this.pushSchedulerTimer);
+      this.pushSchedulerTimer = undefined;
     }
+    const clients = this.redisAdapterClients.splice(0);
+    await Promise.allSettled(clients.map((client) => client.quit()));
+    this.activeAiUsers.clear();
   }
 }

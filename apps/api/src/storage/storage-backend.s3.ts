@@ -63,4 +63,8 @@ export class S3StorageBackend implements StorageBackend {
     } while (token);
     return keys;
   }
+
+  close(): void {
+    this.s3.destroy();
+  }
 }

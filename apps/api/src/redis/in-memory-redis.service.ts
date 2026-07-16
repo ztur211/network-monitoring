@@ -180,11 +180,40 @@ export class InMemoryRedisService extends RedisService {
     return removed;
   }
 
+  async hdelIfValues(key: string, entries: Array<[string, string]>): Promise<number> {
+    this.reap(key);
+    const hash = this.hashes.get(key);
+    if (!hash) return 0;
+    let removed = 0;
+    for (const [field, observedValue] of entries) {
+      if (hash.get(field) === observedValue && hash.delete(field)) removed++;
+    }
+    if (hash.size === 0) this.drop(key);
+    return removed;
+  }
+
   async hgetall(key: string): Promise<Record<string, string>> {
     this.reap(key);
     const hash = this.hashes.get(key);
     if (!hash) return {};
     return Object.fromEntries(hash);
+  }
+
+  async scan(
+    _cursor: string,
+    _matchToken: 'MATCH',
+    pattern: string,
+    _countToken: 'COUNT',
+    _count: number,
+  ): Promise<[string, string[]]> {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const matcher = new RegExp(`^${escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+    const keys = new Set([
+      ...this.strings.keys(),
+      ...this.sets.keys(),
+      ...this.hashes.keys(),
+    ]);
+    return ['0', [...keys].filter((key) => matcher.test(key)).sort()];
   }
 
   async eval(): Promise<unknown> {

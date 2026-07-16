@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable, Inject } from '@nestjs/common';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { randomUUID } from 'node:crypto';
 import { WS_EVENTS, BuildingModelVersionDto } from '@nodescope/shared';
 import { NodeScopeException } from '../common/filters/global-exception.filter';
@@ -82,8 +83,8 @@ export class BuildingModelsService {
     if (model.activeVersionId === versionId) {
       throw new NodeScopeException('MODEL_005', 'CANNOT_DELETE_ACTIVE_VERSION', HttpStatus.CONFLICT);
     }
-    await this.repo.deleteVersion(member.organizationId, versionId);
     await this.storage.deleteObject(version.storageKey);
+    await this.repo.deleteVersion(member.organizationId, versionId);
     await this.audit.recordDelete(member.organizationId, 'BuildingModelVersion', version);
     this.realtime.pushToOrg(member.organizationId, WS_EVENTS.BUILDING_MODEL_DELETED, { versionId });
   }
@@ -146,9 +147,13 @@ export class BuildingModelsService {
     transform.on('error', (e: Error) => {
       streamError = e;
     });
-    body.pipe(transform);
     try {
-      await this.storage.putObjectStream(key, transform, 'application/octet-stream');
+      // pipeline propagates request abort/error into the transform. Run the storage consumer at
+      // the same time so backpressure works and both promises settle on either-side failure.
+      await Promise.all([
+        pipeline(body, transform),
+        this.storage.putObjectStream(key, transform, 'application/octet-stream'),
+      ]);
     } catch (e) {
       await this.storage.deleteObject(key).catch(() => undefined); // clean any partial object
       const err = streamError ?? e;
@@ -164,21 +169,30 @@ export class BuildingModelsService {
 
     // Get-or-create the model only AFTER the object has landed — a failed upload
     // leaves no empty model. Name defaults to the building's name on first upload.
-    const model =
-      (await this.repo.findByProperty(member.organizationId, propertyId)) ??
-      (await this.repo.createModel({ organizationId: member.organizationId, propertyId, name: property.name }));
-    const versionNumber = await this.repo.nextVersionNumber(member.organizationId, model.id);
-    const version = await this.repo.createVersion({
-      organizationId: member.organizationId,
-      buildingModelId: model.id,
-      versionNumber,
-      storageKey: key,
-      fileName: fileName || 'model.ifc',
-      contentHash,
-      sizeBytes,
-      units,
-      uploadedByMemberId: member.id,
-    });
+    let model;
+    let versionNumber: number;
+    let version;
+    try {
+      model =
+        (await this.repo.findByProperty(member.organizationId, propertyId)) ??
+        (await this.repo.createModel({ organizationId: member.organizationId, propertyId, name: property.name }));
+      versionNumber = await this.repo.nextVersionNumber(member.organizationId, model.id);
+      version = await this.repo.createVersion({
+        organizationId: member.organizationId,
+        buildingModelId: model.id,
+        versionNumber,
+        storageKey: key,
+        fileName: fileName || 'model.ifc',
+        contentHash,
+        sizeBytes,
+        units,
+        uploadedByMemberId: member.id,
+      });
+    } catch (error) {
+      // Until createVersion succeeds no DB row owns the landed blob.
+      await this.storage.deleteObject(key).catch(() => undefined);
+      throw error;
+    }
     await this.repo.setActiveVersion(member.organizationId, model.id, version.id, model.version);
     await this.audit.recordCreate(member.organizationId, 'BuildingModelVersion', version);
     this.realtime.pushToOrg(member.organizationId, WS_EVENTS.BUILDING_MODEL_VERSION_UPLOADED, {

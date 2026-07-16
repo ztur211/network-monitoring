@@ -140,6 +140,21 @@ describe('createRealtimeClient — subscriber registry across lifecycle', () => 
     expect(h).toHaveBeenCalledTimes(1);
   });
 
+  it('removes empty subscription buckets after dynamic-event churn', () => {
+    const rt = newClient();
+    for (let i = 0; i < 100; i++) {
+      const unsubscribe = rt.subscribe(`dynamic:${i}`, vi.fn());
+      unsubscribe();
+    }
+
+    const registries = rt as unknown as {
+      socketSubscribers: Map<string, Set<unknown>>;
+      managerSubscribers: Map<string, Set<unknown>>;
+    };
+    expect(registries.socketSubscribers.size).toBe(0);
+    expect(registries.managerSubscribers.size).toBe(0);
+  });
+
   it('subscriptions survive disconnect → connect (re-attach to the new socket)', async () => {
     const rt = newClient();
     const h = vi.fn();

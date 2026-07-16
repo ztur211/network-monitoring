@@ -11,14 +11,16 @@ import {
   Put,
   Query,
   Req,
+  Res,
   StreamableFile,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { OrgMember } from '../organizations/decorators/org-member.decorator';
 import { OrgRoles } from '../organizations/decorators/org-roles.decorator';
 import type { OrgMemberContext } from '../organizations/org-context.types';
 import { BuildingModelsService } from './building-models.service';
 import { ActivateVersionDto } from './building-models.dto';
+import { bindStreamToResponse } from './stream-lifecycle';
 
 const envelope = (data: unknown) => ({ success: true, data, timestamp: new Date().toISOString() });
 
@@ -76,8 +78,10 @@ export class BuildingModelsController {
   async downloadActive(
     @OrgMember() member: OrgMemberContext,
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const { stream, fileName, sizeBytes } = await this.service.getActiveFile(member, propertyId);
+    bindStreamToResponse(stream, response);
     return new StreamableFile(stream, {
       type: 'application/octet-stream',
       disposition: `attachment; filename="${fileName}"`,
@@ -90,8 +94,10 @@ export class BuildingModelsController {
     @OrgMember() member: OrgMemberContext,
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
     @Param('versionId', ParseUUIDPipe) versionId: string,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const { stream, fileName, sizeBytes } = await this.service.getVersionFile(member, propertyId, versionId);
+    bindStreamToResponse(stream, response);
     return new StreamableFile(stream, {
       type: 'application/octet-stream',
       disposition: `attachment; filename="${fileName}"`,

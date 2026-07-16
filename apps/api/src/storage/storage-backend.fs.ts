@@ -62,4 +62,8 @@ export class FsStorageBackend implements StorageBackend {
     }
     return out;
   }
+
+  close(): void {
+    // No persistent filesystem handles are owned by this backend.
+  }
 }

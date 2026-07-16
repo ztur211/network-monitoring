@@ -72,6 +72,24 @@ describe('NominatimAdapter', () => {
 
       expect(await adapter.geocode('nowhere')).toBeNull();
     });
+
+    it('aborts and returns null when response body consumption stalls', async () => {
+      jest.useFakeTimers();
+      fetchMock.mockImplementation(async (_url: string, init: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: () => new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+      }));
+
+      const pending = adapter.geocode('stalled');
+      const expectation = expect(pending).resolves.toBeNull();
+      await jest.advanceTimersByTimeAsync(10_000);
+      await expectation;
+      expect((fetchMock.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+      jest.useRealTimers();
+    });
   });
 
   describe('rate limiting', () => {
@@ -83,7 +101,8 @@ describe('NominatimAdapter', () => {
 
       await adapter.geocode('first');
 
-      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
     });
 
     it('spaces a back-to-back request by at least the minimum interval', async () => {
@@ -106,8 +125,12 @@ describe('NominatimAdapter', () => {
       await adapter.geocode('first');
       await adapter.geocode('second');
 
-      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
-      const delay = setTimeoutSpy.mock.calls[0][1] as number;
+      const rateLimitCalls = setTimeoutSpy.mock.calls.filter((call) => {
+        const delay = call[1] as number;
+        return delay > 1000 && delay <= 1100;
+      });
+      expect(rateLimitCalls).toHaveLength(1);
+      const delay = rateLimitCalls[0][1] as number;
       expect(delay).toBeGreaterThan(1000);
       expect(delay).toBeLessThanOrEqual(1100);
 

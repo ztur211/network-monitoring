@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 import { RedisService } from './redis/redis.service';
 import { resolveTrustProxy } from './common/config/trust-proxy.config';
 import { INGEST_BODY_LIMIT } from './monitoring/ingest/ingest.dto';
+import { closeAppOnBootstrapFailure, enableShutdownHooks } from './common/lifecycle/shutdown-hooks';
 
 // Safety net: a rejected promise with no local catch (e.g. a transient backend blip
 // inside a fire-and-forget path) must be logged, never crash the process. Individual
@@ -21,6 +22,8 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
+  try {
+    enableShutdownHooks(app);
 
   app.useLogger(app.get(Logger));
 
@@ -91,8 +94,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
+    const port = process.env.PORT ?? 3000;
+    await app.listen(port);
+  } catch (error) {
+    return closeAppOnBootstrapFailure(app, error);
+  }
 }
 
-bootstrap();
+void bootstrap().catch((error) => {
+  new NestLogger('Bootstrap').error(error instanceof Error ? error.stack : String(error));
+  process.exitCode = 1;
+});

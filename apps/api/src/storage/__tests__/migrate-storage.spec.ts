@@ -38,6 +38,7 @@ describe('migrateStorage (fs → fs)', () => {
       delete: real.delete.bind(real),
       exists: real.exists.bind(real),
       list: real.list.bind(real),
+      close: real.close.bind(real),
       put: (key: string, _body: Readable, ct: string) =>
         real.put(key, Readable.from(Buffer.from('full')), ct),
     };

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,6 +103,110 @@ function fakeParseErrorWorker(message = 'bad model') {
 }
 
 describe('createWorkerIfcModelLoader', () => {
+  it('falls back and terminates the worker when the parse postMessage throws synchronously', async () => {
+    const terminate = vi.fn();
+    const worker = {
+      onmessage: null as ((e: { data: WorkerResponse }) => void) | null,
+      onerror: null as ((e: unknown) => void) | null,
+      postMessage: vi.fn(() => { throw new Error('worker transport closed'); }),
+      terminate,
+    };
+    const fallbackModel = { dispose: vi.fn() };
+    const fallback = {
+      loadModel: vi.fn().mockResolvedValue(fallbackModel),
+      dispose: vi.fn(),
+    };
+    const loader = createWorkerIfcModelLoader({ createWorker: () => worker, fallback: fallback as never });
+
+    await expect(loader.loadModel(new ArrayBuffer(8))).resolves.toBe(fallbackModel);
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(fallback.loadModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects property requests made by an already-returned model after the worker crashes', async () => {
+    let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
+    let terminated = false;
+    const core = createIfcWorkerCore((message) => queueMicrotask(() => onmessage?.({ data: message })));
+    const worker = {
+      get onmessage() { return onmessage; },
+      set onmessage(fn: ((e: { data: WorkerResponse }) => void) | null) { onmessage = fn; },
+      onerror: null as ((e: unknown) => void) | null,
+      postMessage(message: WorkerRequest) {
+        if (!terminated) void core.handle(message);
+      },
+      terminate() { terminated = true; },
+    };
+    const loader = createWorkerIfcModelLoader({
+      createWorker: () => worker,
+      wasmPath: { path: wasmDir, absolute: true },
+    });
+    const model = await loader.loadModel(buf());
+    worker.onerror?.(new Error('worker crashed'));
+
+    const outcome = await Promise.race([
+      model.getProperties(30).then(() => 'resolved', (error) => error),
+      new Promise((resolve) => setTimeout(() => resolve('still pending'), 10)),
+    ]);
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toContain('worker');
+    model.dispose();
+    loader.dispose();
+  });
+
+  it('terminates its worker, rejects pending loads, disposes fallback, and stays closed', async () => {
+    let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
+    const terminate = vi.fn();
+    const worker = {
+      get onmessage() { return onmessage; },
+      set onmessage(fn: ((e: { data: WorkerResponse }) => void) | null) { onmessage = fn; },
+      onerror: null as ((e: unknown) => void) | null,
+      postMessage: vi.fn(),
+      terminate,
+    };
+    const fallback = { loadModel: vi.fn(), dispose: vi.fn() };
+    const loader = createWorkerIfcModelLoader({ createWorker: () => worker, fallback });
+    const pending = loader.loadModel(new ArrayBuffer(8));
+
+    loader.dispose();
+    loader.dispose();
+
+    await expect(pending).rejects.toThrow('IFC loader disposed');
+    await expect(loader.loadModel(new ArrayBuffer(8))).rejects.toThrow('IFC loader disposed');
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(fallback.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a parsed job when disposed during the pre-assembly yield', async () => {
+    vi.useFakeTimers();
+    try {
+      let onmessage: ((e: { data: WorkerResponse }) => void) | null = null;
+      const worker = {
+        get onmessage() { return onmessage; },
+        set onmessage(fn: ((e: { data: WorkerResponse }) => void) | null) { onmessage = fn; },
+        onerror: null as ((e: unknown) => void) | null,
+        postMessage(message: WorkerRequest) {
+          if (message.type === 'parse') {
+            const jobId = message.jobId;
+            queueMicrotask(() => onmessage?.({ data: { type: 'parsed', jobId } }));
+          }
+        },
+        terminate: vi.fn(),
+      };
+      const fallback = { loadModel: vi.fn(), dispose: vi.fn() };
+      const loader = createWorkerIfcModelLoader({ createWorker: () => worker, fallback });
+      const pending = loader.loadModel(new ArrayBuffer(8));
+      const rejection = expect(pending).rejects.toThrow('IFC loader disposed');
+      await Promise.resolve();
+
+      loader.dispose();
+      await vi.runAllTimersAsync();
+
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('produces a ParsedModel equivalent to the main-thread loader', async () => {
     const loader = createWorkerIfcModelLoader({ createWorker: fakeWorker, wasmPath: { path: wasmDir, absolute: true } });
     const model = await loader.loadModel(buf());

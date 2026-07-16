@@ -10,7 +10,8 @@ import { S3StorageBackend } from '../storage-backend.s3';
 
 describe('S3StorageBackend', () => {
   const send = jest.fn();
-  const s3 = { send } as any;
+  const destroy = jest.fn();
+  const s3 = { send, destroy } as any;
   let backend: S3StorageBackend;
 
   beforeEach(() => {
@@ -52,5 +53,10 @@ describe('S3StorageBackend', () => {
     expect(await backend.list()).toEqual(['a', 'b', 'c']);
     expect(send.mock.calls[0][0]).toBeInstanceOf(ListObjectsV2Command);
     expect(send.mock.calls[1][0].input.ContinuationToken).toBe('t');
+  });
+
+  it('destroys the S3 HTTP client on shutdown', async () => {
+    await backend.close();
+    expect(destroy).toHaveBeenCalledTimes(1);
   });
 });

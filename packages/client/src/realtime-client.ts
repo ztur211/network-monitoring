@@ -156,8 +156,11 @@ class RealtimeClientImpl implements RealtimeClient {
 
   off(event: string, listener?: Listener): void {
     const registry = MANAGER_EVENTS.has(event) ? this.managerSubscribers : this.socketSubscribers;
-    if (listener) registry.get(event)?.delete(listener);
-    else registry.delete(event);
+    if (listener) {
+      const bucket = registry.get(event);
+      bucket?.delete(listener);
+      if (bucket?.size === 0) registry.delete(event);
+    } else registry.delete(event);
 
     if (!this.socket) return;
     if (MANAGER_EVENTS.has(event)) {

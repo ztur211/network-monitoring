@@ -65,19 +65,29 @@ export function createIfcWorkerCore(
     // Keep model open for subsequent getProperties calls
     openModels.set(req.jobId, modelID);
 
-    const payloads = extractElements(api, modelID);
+    try {
+      const payloads = extractElements(api, modelID);
 
-    // Flush in batches, transferring all four ArrayBuffers per payload
-    for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
-      const batch = payloads.slice(i, i + BATCH_SIZE);
-      const transfer: Transferable[] = [];
-      for (const p of batch) {
-        transfer.push(p.position.buffer, p.normal.buffer, p.color.buffer, p.index.buffer);
+      // Flush in batches, transferring all four ArrayBuffers per payload
+      for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
+        const batch = payloads.slice(i, i + BATCH_SIZE);
+        const transfer: Transferable[] = [];
+        for (const p of batch) {
+          transfer.push(p.position.buffer, p.normal.buffer, p.color.buffer, p.index.buffer);
+        }
+        post({ type: 'elements', jobId: req.jobId, batch }, transfer);
       }
-      post({ type: 'elements', jobId: req.jobId, batch }, transfer);
-    }
 
-    post({ type: 'parsed', jobId: req.jobId });
+      post({ type: 'parsed', jobId: req.jobId });
+    } catch (err: any) {
+      try {
+        api.CloseModel(modelID);
+      } catch {
+        /* already closed */
+      }
+      openModels.delete(req.jobId);
+      post({ type: 'parseError', jobId: req.jobId, message: String(err?.message ?? err) });
+    }
   }
 
   async function handleGetProperties(

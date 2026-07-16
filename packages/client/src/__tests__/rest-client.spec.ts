@@ -43,6 +43,29 @@ describe('createRestClient', () => {
     vi.useRealTimers();
   });
 
+  it('keeps the timeout active while the response body is being consumed', async () => {
+    vi.useFakeTimers();
+    const json = vi.fn(
+      () => new Promise((_resolve, reject) => {
+        // A real fetch body reader rejects when its request signal is aborted.
+        fetchSignal?.addEventListener('abort', () => reject(new Error('aborted body')));
+      }),
+    );
+    let fetchSignal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      fetchSignal = init.signal ?? undefined;
+      return { ok: true, status: 200, json } as unknown as Response;
+    }));
+    const client = createRestClient({ baseUrl: 'http://api', getToken: () => null, timeoutMs: 5_000 });
+
+    const pending = client.getOrganization();
+    const expectation = expect(pending).rejects.toMatchObject({ code: 'TIMEOUT', status: 0 });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expectation;
+    expect(fetchSignal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
+
   describe('model import methods', () => {
     it('uploadModelVersion POSTs raw bytes as octet-stream with the fileName query', async () => {
       const version = { id: 'ver-1', versionNumber: 2, fileName: 'house.ifc' };

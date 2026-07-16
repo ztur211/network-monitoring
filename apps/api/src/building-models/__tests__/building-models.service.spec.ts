@@ -7,6 +7,7 @@ import { PermissionsService } from '../../permissions/permissions.service';
 import { AuditService } from '../../audit/audit.service';
 import { REALTIME_SERVICE } from '../../realtime/realtime.types';
 import type { OrgMemberContext } from '../../organizations/org-context.types';
+import { PassThrough, Readable } from 'node:stream';
 
 const owner = { id: 'mem-o', organizationId: 'org', role: 'OWNER' } as OrgMemberContext;
 const admin = { id: 'mem-a', organizationId: 'org', role: 'ADMIN' } as OrgMemberContext;
@@ -16,9 +17,13 @@ describe('BuildingModelsService (unit)', () => {
   let service: BuildingModelsService;
   const repo = {
     findByProperty: jest.fn(), findVersion: jest.fn(), setActiveVersion: jest.fn(),
-    deleteVersion: jest.fn(), listVersions: jest.fn(),
+    deleteVersion: jest.fn(), listVersions: jest.fn(), createModel: jest.fn(),
+    nextVersionNumber: jest.fn(), createVersion: jest.fn(),
   } as any;
-  const storage = { deleteObject: jest.fn() } as any;
+  const storage = {
+    deleteObject: jest.fn().mockResolvedValue(undefined),
+    putObjectStream: jest.fn(), buildVersionKey: jest.fn(() => 'model-key'),
+  } as any;
   const properties = { findInOrg: jest.fn() } as any;
   const audit = { recordCreate: jest.fn(), recordDelete: jest.fn(), recordUpdate: jest.fn() } as any;
   const realtime = { pushToOrg: jest.fn() } as any;
@@ -129,5 +134,37 @@ describe('BuildingModelsService (unit)', () => {
     expect(storage.deleteObject).toHaveBeenCalledWith('k2');
     expect(audit.recordDelete).toHaveBeenCalledWith('org', 'BuildingModelVersion', version);
     expect(realtime.pushToOrg).toHaveBeenCalledWith('org', 'v1:buildingModel:deleted', { versionId: 'v2' });
+    expect(storage.deleteObject.mock.invocationCallOrder[0]).toBeLessThan(
+      repo.deleteVersion.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('destroys the upload pipeline and deletes partial storage when the request aborts', async () => {
+    properties.findInOrg.mockResolvedValue({ id: 'b', type: 'BUILDING', name: 'B' });
+    storage.putObjectStream.mockImplementation(async (_key: string, stream: Readable) => {
+      for await (const _chunk of stream) { /* drain */ }
+    });
+    const body = new PassThrough();
+    body.on('error', () => undefined);
+
+    const pending = service.uploadVersion(owner, 'b', 'x.ifc', null, body);
+    const expectation = expect(pending).rejects.toThrow('client aborted');
+    while (storage.putObjectStream.mock.calls.length === 0) await new Promise(setImmediate);
+    body.destroy(new Error('client aborted'));
+
+    await expectation;
+    expect(storage.deleteObject).toHaveBeenCalledWith('model-key');
+  });
+
+  it('deletes a landed object when persistence fails before a version row exists', async () => {
+    properties.findInOrg.mockResolvedValue({ id: 'b', type: 'BUILDING', name: 'B' });
+    storage.putObjectStream.mockImplementation(async (_key: string, stream: Readable) => {
+      for await (const _chunk of stream) { /* drain */ }
+    });
+    repo.findByProperty.mockRejectedValue(new Error('database down'));
+    const body = Readable.from(Buffer.from('ISO-10303-21;\nEND-ISO-10303-21;'));
+
+    await expect(service.uploadVersion(owner, 'b', 'x.ifc', null, body)).rejects.toThrow('database down');
+    expect(storage.deleteObject).toHaveBeenCalledWith('model-key');
   });
 });

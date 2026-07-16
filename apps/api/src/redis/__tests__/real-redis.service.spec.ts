@@ -16,6 +16,8 @@ function fakeClient() {
     set: jest.fn().mockResolvedValue('OK'),
     ping: jest.fn().mockResolvedValue('PONG'),
     pipeline: jest.fn().mockReturnValue({ exec: jest.fn() }),
+    scan: jest.fn().mockResolvedValue(['0', ['nodescope:connections:u1']]),
+    eval: jest.fn().mockResolvedValue(1),
     duplicate: jest.fn().mockReturnValue(Object.assign(new EventEmitter(), { id: 'dup' })),
     quit: jest.fn().mockResolvedValue('OK'),
   });
@@ -46,6 +48,11 @@ describe('RealRedisService', () => {
     expect(await svc.set('k', 'v', 'EX', 10, 'NX')).toBe('OK');
     expect(client.set).toHaveBeenCalledWith('k', 'v', 'EX', 10, 'NX');
     expect(await svc.ping()).toBe('PONG');
+    expect(await svc.scan('0', 'MATCH', 'nodescope:connections:*', 'COUNT', 100)).toEqual([
+      '0',
+      ['nodescope:connections:u1'],
+    ]);
+    expect(client.scan).toHaveBeenCalledWith('0', 'MATCH', 'nodescope:connections:*', 'COUNT', 100);
   });
 
   it('duplicate() returns a fresh client for the pub/sub adapter', () => {
@@ -54,6 +61,20 @@ describe('RealRedisService', () => {
     const dup = svc.duplicate() as unknown as { id: string };
     expect(dup.id).toBe('dup');
     expect(client.duplicate).toHaveBeenCalled();
+  });
+
+  it('compare-deletes hash fields atomically with their observed values', async () => {
+    const client = fakeClient();
+    const svc = new RealRedisService(client, false);
+
+    await expect(svc.hdelIfValues('presence', [['socket-1', 'expired']])).resolves.toBe(1);
+    expect(client.eval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('HGET'"),
+      1,
+      'presence',
+      'socket-1',
+      'expired',
+    );
   });
 
   it('onModuleDestroy quits the client', async () => {

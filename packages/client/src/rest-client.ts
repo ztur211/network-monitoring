@@ -27,41 +27,58 @@ export function createRestClient(opts: RestClientOptions) {
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const transferTimeoutMs = opts.transferTimeoutMs ?? 120_000;
 
-  // Abort a request that makes no progress within `ms` and surface it as a recoverable
-  // TIMEOUT ApiError. Without this a dead-peer / black-hole connection leaves the awaiting
-  // promise pending forever — there is no other app-level timeout in this client.
-  async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  // Keep the deadline active through response-body consumption. fetch() resolves as soon as
+  // headers arrive, so clearing the timer there would let a peer retain the response stream,
+  // socket, and caller forever by stalling the body.
+  async function fetchWithTimeout<T>(
+    url: string,
+    init: RequestInit,
+    ms: number,
+    consume: (response: Response) => Promise<T>,
+  ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, ms);
     try {
-      return await fetch(url, { ...init, signal: controller.signal });
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      const result = await consume(response);
+      // JSON consumers intentionally tolerate malformed bodies, so an abort rejection can be
+      // converted to `{}` inside consume(). Preserve the deadline even through that recovery.
+      if (timedOut) throw new Error('response body timed out');
+      return result;
     } catch (err) {
-      if (controller.signal.aborted) throw new ApiError('TIMEOUT', `Request timed out after ${ms}ms`, 0);
+      if (timedOut) throw new ApiError('TIMEOUT', `Request timed out after ${ms}ms`, 0);
       throw err;
     } finally {
       clearTimeout(timer);
+      // Releases any body the consumer deliberately did not read (for example an error download).
+      controller.abort();
     }
   }
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = await opts.getToken();
-    const res = await fetchWithTimeout(`${opts.baseUrl}${path}`, {
+    return fetchWithTimeout(`${opts.baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-    }, timeoutMs);
-    const json: any = await res.json().catch(() => ({}));
-    if (!res.ok || json?.success === false) {
-      throw new ApiError(
-        json?.error?.code ?? 'UNKNOWN',
-        json?.error?.message ?? res.statusText,
-        res.status,
-      );
-    }
-    return json.data as T;
+    }, timeoutMs, async (res) => {
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        throw new ApiError(
+          json?.error?.code ?? 'UNKNOWN',
+          json?.error?.message ?? res.statusText,
+          res.status,
+        );
+      }
+      return json.data as T;
+    });
   }
 
   return {
@@ -72,11 +89,12 @@ export function createRestClient(opts: RestClientOptions) {
       request<BuildingModelDto>('GET', `/v1/buildings/${propertyId}/model`),
     async getActiveModelFile(propertyId: string): Promise<ArrayBuffer> {
       const token = await opts.getToken();
-      const res = await fetchWithTimeout(`${opts.baseUrl}/v1/buildings/${propertyId}/model/active/file`, {
+      return fetchWithTimeout(`${opts.baseUrl}/v1/buildings/${propertyId}/model/active/file`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }, transferTimeoutMs);
-      if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
-      return res.arrayBuffer();
+      }, transferTimeoutMs, async (res) => {
+        if (!res.ok) throw new ApiError('UNKNOWN', res.statusText, res.status);
+        return res.arrayBuffer();
+      });
     },
     // In-app IFC import: upload the raw bytes as a new model version (octet-stream body, NOT
     // multipart — matches the BuildingModelsController upload seam and scripts/load-sample-model.mjs).
@@ -90,7 +108,7 @@ export function createRestClient(opts: RestClientOptions) {
       const qs =
         `fileName=${encodeURIComponent(fileName)}` +
         (units ? `&units=${encodeURIComponent(units)}` : '');
-      const res = await fetchWithTimeout(
+      return fetchWithTimeout(
         `${opts.baseUrl}/v1/buildings/${propertyId}/model/versions?${qs}`,
         {
           method: 'POST',
@@ -101,16 +119,18 @@ export function createRestClient(opts: RestClientOptions) {
           body: bytes,
         },
         transferTimeoutMs,
+        async (res) => {
+          const json: any = await res.json().catch(() => ({}));
+          if (!res.ok || json?.success === false) {
+            throw new ApiError(
+              json?.error?.code ?? 'UNKNOWN',
+              json?.error?.message ?? res.statusText,
+              res.status,
+            );
+          }
+          return json.data as BuildingModelVersionDto;
+        },
       );
-      const json: any = await res.json().catch(() => ({}));
-      if (!res.ok || json?.success === false) {
-        throw new ApiError(
-          json?.error?.code ?? 'UNKNOWN',
-          json?.error?.message ?? res.statusText,
-          res.status,
-        );
-      }
-      return json.data as BuildingModelVersionDto;
     },
     // In-app IFC import: make an uploaded version the live model (drives the realtime reload seam).
     activateModelVersion: (propertyId: string, versionId: string) =>

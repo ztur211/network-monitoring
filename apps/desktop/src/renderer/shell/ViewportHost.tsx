@@ -19,7 +19,7 @@ export function ViewportHost() {
   // retrigger the loader effect and cause a React #185-style update loop.
   const loaderRef = useRef<IfcModelLoader | null>(null);
   loaderRef.current ??= createWorkerIfcModelLoader();
-  useViewportLoader(loaderRef.current);
+  useViewportLoader(loaderRef.current, { disposeLoaderOnUnmount: true });
   useModelRealtime();
   useDeviceLoad();
   const { status, error, model, updateAvailable, reload } = useViewportStore();

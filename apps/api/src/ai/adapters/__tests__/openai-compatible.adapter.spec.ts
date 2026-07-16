@@ -140,6 +140,35 @@ describe('OpenAICompatibleAdapter', () => {
         adapter.stream({ systemPrompt: 's', history: [], userMessage: 'hi' }, () => undefined),
       ).rejects.toThrow();
     });
+
+    it('aborts and cancels a stream whose body stalls past the deadline', async () => {
+      jest.useFakeTimers();
+      process.env.AI_TIMEOUT_MS = '1000';
+      adapter = new OpenAICompatibleAdapter();
+      const cancel = jest.fn().mockResolvedValue(undefined);
+      (global.fetch as jest.Mock).mockImplementation(async (_url: string, init: RequestInit) => ({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: () => new Promise((_resolve, reject) => {
+              init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            }),
+            cancel,
+          }),
+        },
+      }));
+
+      const pending = adapter.stream(
+        { systemPrompt: 's', history: [], userMessage: 'hi' },
+        () => undefined,
+      );
+      const expectation = expect(pending).rejects.toThrow();
+      await jest.advanceTimersByTimeAsync(1_000);
+      await expectation;
+      expect(cancel).toHaveBeenCalledTimes(1);
+      delete process.env.AI_TIMEOUT_MS;
+      jest.useRealTimers();
+    });
   });
 
   describe('isAvailable', () => {

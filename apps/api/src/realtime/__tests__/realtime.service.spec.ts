@@ -11,11 +11,16 @@ import { PermissionsService } from '../../permissions/permissions.service';
 import { PermissionsRepository } from '../../permissions/permissions.repository';
 import { NodeScopeException } from '../../common/filters/global-exception.filter';
 import { auth } from '../../auth/better-auth.config';
+import { REDIS_KEY_SOCKET_PRESENCE, encodeSocketPresence } from '../socket-presence';
 
 const mockRoom = { emit: jest.fn() };
 const mockServer = {
   to: jest.fn().mockReturnValue(mockRoom),
+  sockets: { sockets: new Map<string, unknown>() },
 };
+
+const presence = (userId: string, organizationId: string | null, expiresAt = Date.now() + 60_000) =>
+  encodeSocketPresence({ userId, organizationId, expiresAt });
 
 // Faithful stand-in for the incr+expire fixed-window pipeline the gateway uses to rate-limit
 // metrics:submit. Keyed by the real Redis key (which embeds the per-user minute tag), so INCR
@@ -33,7 +38,10 @@ const mockRedis = {
   set: jest.fn().mockResolvedValue(null),
   hset: jest.fn().mockResolvedValue(1),
   hdel: jest.fn().mockResolvedValue(1),
+  hdelIfValues: jest.fn().mockResolvedValue(1),
   hgetall: jest.fn().mockResolvedValue({}),
+  del: jest.fn().mockResolvedValue(0),
+  scan: jest.fn().mockResolvedValue(['0', []]),
   pipeline: jest.fn(() => {
     const results: Array<[Error | null, unknown]> = [];
     const p: {
@@ -168,21 +176,27 @@ describe('RealtimeGateway — service interface', () => {
   });
 
   describe('getConnectionStatus', () => {
-    it('returns connected when active socket count > 0', async () => {
-      mockRedis.scard.mockResolvedValueOnce(2);
+    it('returns connected when the user has a live socket lease', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({ socket1: presence('user-abc', null) });
 
       const status = await gateway.getConnectionStatus('user-abc');
 
       expect(status).toBe('connected');
-      expect(mockRedis.scard).toHaveBeenCalledWith('nodescope:connections:user-abc');
+      expect(mockRedis.hgetall).toHaveBeenCalledWith(REDIS_KEY_SOCKET_PRESENCE);
     });
 
-    it('returns offline when active socket count is 0', async () => {
-      mockRedis.scard.mockResolvedValueOnce(0);
+    it('returns offline and removes expired socket leases', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({
+        expired: presence('user-abc', 'org-1', Date.now() - 1),
+      });
 
       const status = await gateway.getConnectionStatus('user-abc');
 
       expect(status).toBe('offline');
+      expect(mockRedis.hdelIfValues).toHaveBeenCalledWith(
+        REDIS_KEY_SOCKET_PRESENCE,
+        [['expired', expect.any(String)]],
+      );
     });
   });
 
@@ -253,18 +267,22 @@ describe('RealtimeGateway — service interface', () => {
       expect(mockDataSources.getLatestMetrics).not.toHaveBeenCalled();
     });
 
-    it('runs the push cycle when the lock is acquired (reads the conn-org index)', async () => {
+    it('runs the push cycle when the lock is acquired (reads socket presence)', async () => {
       mockRedis.set.mockResolvedValueOnce('OK');
       mockRedis.hgetall.mockResolvedValueOnce({});
 
       await run();
 
-      expect(mockRedis.hgetall).toHaveBeenCalledWith('nodescope:conn:userorg');
+      expect(mockRedis.hgetall).toHaveBeenCalledWith(REDIS_KEY_SOCKET_PRESENCE);
     });
 
-    it('pushes latest metrics to users grouped by org from the conn-org index', async () => {
+    it('pushes latest metrics to users grouped by org from live socket presence', async () => {
       mockRedis.set.mockResolvedValueOnce('OK');
-      mockRedis.hgetall.mockResolvedValueOnce({ u1: 'org1', u2: 'org1', u3: 'org2' });
+      mockRedis.hgetall.mockResolvedValueOnce({
+        s1: presence('u1', 'org1'),
+        s2: presence('u2', 'org1'),
+        s3: presence('u3', 'org2'),
+      });
       mockDataSources.getLatestMetrics
         .mockResolvedValueOnce(new Map([['u1', { x: 1 }], ['u2', { x: 2 }]]))
         .mockResolvedValueOnce(new Map([['u3', { x: 3 }]]));
@@ -275,6 +293,45 @@ describe('RealtimeGateway — service interface', () => {
       expect(mockDataSources.getLatestMetrics).toHaveBeenCalledWith('org2', ['u3']);
       expect(mockServer.to).toHaveBeenCalledWith('user:u1');
       expect(mockServer.to).toHaveBeenCalledWith('user:u3');
+    });
+
+    it('deletes stale fields and deduplicates multiple live sockets for one user', async () => {
+      mockRedis.set.mockResolvedValueOnce('OK');
+      mockRedis.hgetall.mockResolvedValueOnce({
+        live1: presence('u1', 'org1'),
+        live2: presence('u1', 'org1'),
+        expiredSameUser: presence('u1', 'org1', Date.now() - 1),
+        malformed: 'not-json',
+      });
+      mockDataSources.getLatestMetrics.mockResolvedValueOnce(new Map([['u1', { x: 1 }]]));
+
+      await run();
+
+      expect(mockRedis.hdelIfValues).toHaveBeenCalledWith(
+        REDIS_KEY_SOCKET_PRESENCE,
+        [
+          ['expiredSameUser', expect.any(String)],
+          ['malformed', 'not-json'],
+        ],
+      );
+      expect(mockDataSources.getLatestMetrics).toHaveBeenCalledWith('org1', ['u1']);
+    });
+
+    it('refreshes only this replica\'s authenticated local sockets', async () => {
+      const localSocket = {
+        id: 'local-1',
+        data: { user: { id: 'u-local' }, orgId: 'org-local' },
+      };
+      mockServer.sockets.sockets = new Map([['local-1', localSocket]]);
+      await (gateway as unknown as { refreshLocalSocketPresence: () => Promise<void> })
+        .refreshLocalSocketPresence();
+
+      expect(mockRedis.hset).toHaveBeenCalledWith(
+        REDIS_KEY_SOCKET_PRESENCE,
+        'local-1',
+        expect.stringContaining('"userId":"u-local"'),
+      );
+      mockServer.sockets.sockets = new Map();
     });
 
     it('falls back to fetchSockets when the conn-org index read fails', async () => {
@@ -293,10 +350,92 @@ describe('RealtimeGateway — service interface', () => {
     });
   });
 
+  describe('lifecycle cleanup', () => {
+    it('continues renewing local leases while a previous metrics push is still running', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-15T12:00:00.000Z'));
+      const priorInterval = process.env.REFRESH_INTERVAL_SECONDS;
+      process.env.REFRESH_INTERVAL_SECONDS = '1';
+      const never = new Promise<Map<string, unknown>>(() => undefined);
+      const localSocket = {
+        id: 'local-slow-push',
+        data: { user: { id: 'u-local' }, orgId: 'org-local' },
+      };
+      mockServer.sockets.sockets = new Map([['local-slow-push', localSocket]]);
+      mockRedis.set.mockResolvedValue('OK');
+      mockRedis.hgetall.mockResolvedValue({
+        'local-slow-push': presence('u-local', 'org-local', Date.now() + 60_000),
+      });
+      mockDataSources.getLatestMetrics.mockReturnValue(never);
+
+      try {
+        await gateway.afterInit(mockServer as never);
+        await jest.advanceTimersByTimeAsync(1_000);
+        await jest.advanceTimersByTimeAsync(1_000);
+
+        expect(mockRedis.hset).toHaveBeenCalledTimes(2);
+      } finally {
+        await gateway.onModuleDestroy();
+        mockServer.sockets.sockets = new Map();
+        if (priorInterval === undefined) delete process.env.REFRESH_INTERVAL_SECONDS;
+        else process.env.REFRESH_INTERVAL_SECONDS = priorInterval;
+        jest.useRealTimers();
+      }
+    });
+
+    it('removes legacy persistent presence indexes during gateway initialization', async () => {
+      mockRedis.scan.mockResolvedValueOnce([
+        '0',
+        ['nodescope:connections:u1', 'nodescope:connections:u2'],
+      ]);
+
+      await gateway.afterInit(mockServer as never);
+      await gateway.onModuleDestroy();
+
+      expect(mockRedis.del).toHaveBeenCalledWith('nodescope:conn:userorg');
+      expect(mockRedis.del).toHaveBeenCalledWith(
+        'nodescope:connections:u1',
+        'nodescope:connections:u2',
+      );
+    });
+
+    it('quits both duplicated Redis adapter clients on module destruction', async () => {
+      const firstClient = { quit: jest.fn().mockResolvedValue('OK') };
+      const secondClient = { quit: jest.fn().mockResolvedValue('OK') };
+      const clients = [firstClient, secondClient];
+      (gateway as unknown as { redisAdapterClients: typeof clients }).redisAdapterClients = clients;
+
+      await gateway.onModuleDestroy();
+
+      expect(firstClient.quit).toHaveBeenCalledTimes(1);
+      expect(secondClient.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('cannot install a timer after shutdown while legacy cleanup is unresolved', async () => {
+      jest.useFakeTimers();
+      let releaseScan!: () => void;
+      mockRedis.scan.mockImplementationOnce(
+        () => new Promise<[string, string[]]>((resolve) => {
+          releaseScan = () => resolve(['0', []]);
+        }),
+      );
+
+      const initializing = gateway.afterInit(mockServer as never);
+      await Promise.resolve();
+      await gateway.onModuleDestroy();
+      releaseScan();
+      await initializing;
+      await Promise.resolve();
+
+      expect(jest.getTimerCount()).toBe(0);
+      jest.useRealTimers();
+    });
+  });
+
   describe('handleConnection', () => {
     const makeClientSocket = () => {
       const joinedRooms: string[] = [];
       return {
+        id: 'sock-1',
         data: {} as Record<string, unknown>,
         handshake: { headers: {}, address: '127.0.0.1' },
         join: jest.fn().mockImplementation((room: string) => {
@@ -327,8 +466,11 @@ describe('RealtimeGateway — service interface', () => {
       expect(joined).toContain('org:org-abc');
       expect(joined).toContain('user:u-1');
       expect(joined).toContain('tier:PERSONAL_FREE');
-      // Indexes userId -> orgId for the metrics push
-      expect(mockRedis.hset).toHaveBeenCalledWith('nodescope:conn:userorg', 'u-1', 'org-abc');
+      expect(mockRedis.hset).toHaveBeenCalledWith(
+        REDIS_KEY_SOCKET_PRESENCE,
+        'sock-1',
+        expect.stringContaining('"organizationId":"org-abc"'),
+      );
     });
 
     it('does NOT join any org room when user has no org membership', async () => {
@@ -345,8 +487,12 @@ describe('RealtimeGateway — service interface', () => {
       const joined = client._joinedRooms;
       expect(joined.some((r) => r.startsWith('org:'))).toBe(false);
       expect(joined).toContain('user:u-2');
-      // No org → not indexed for the metrics push
-      expect(mockRedis.hset).not.toHaveBeenCalled();
+      // No org sockets still count as connected, but are excluded from metrics grouping.
+      expect(mockRedis.hset).toHaveBeenCalledWith(
+        REDIS_KEY_SOCKET_PRESENCE,
+        'sock-1',
+        expect.stringContaining('"organizationId":null'),
+      );
     });
   });
 
@@ -354,22 +500,15 @@ describe('RealtimeGateway — service interface', () => {
     const socket = (userId?: string) =>
       ({ data: userId ? { user: { id: userId } } : {}, id: 'sock-1' }) as unknown as Parameters<RealtimeGateway['handleDisconnect']>[0];
 
-    it('removes the conn-org index entry when the last socket disconnects', async () => {
-      mockRedis.scard.mockResolvedValueOnce(0);
+    it('removes only the disconnecting socket presence field', async () => {
       await gateway.handleDisconnect(socket('u-1'));
-      expect(mockRedis.srem).toHaveBeenCalledWith('nodescope:connections:u-1', 'sock-1');
-      expect(mockRedis.hdel).toHaveBeenCalledWith('nodescope:conn:userorg', 'u-1');
-    });
-
-    it('keeps the conn-org index entry while the user has other sockets', async () => {
-      mockRedis.scard.mockResolvedValueOnce(2);
-      await gateway.handleDisconnect(socket('u-1'));
-      expect(mockRedis.hdel).not.toHaveBeenCalled();
+      expect(mockRedis.hdel).toHaveBeenCalledWith(REDIS_KEY_SOCKET_PRESENCE, 'sock-1');
+      expect(mockRedis.srem).not.toHaveBeenCalled();
     });
 
     it('is a no-op for a socket with no authenticated user', async () => {
       await gateway.handleDisconnect(socket(undefined));
-      expect(mockRedis.srem).not.toHaveBeenCalled();
+      expect(mockRedis.hdel).not.toHaveBeenCalled();
     });
   });
 
@@ -689,6 +828,28 @@ describe('RealtimeGateway — service interface', () => {
         expect.any(Object),
         expect.any(Function),
       );
+    });
+
+    it('allows at most one in-flight AI stream per user', async () => {
+      let resolveFirst!: (value: {
+        content: string; conversationId: string; tokensUsed: number;
+        monthlyBudgetRemaining: number; usageWarning: null; providerStatus: string;
+      }) => void;
+      mockAiService.sendMessageStream.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveFirst = resolve; }),
+      );
+      const socket = buildSocket({ id: 'u-1', tier: 'PERSONAL_FREE' });
+
+      const first = gateway.handleAiMessage(socket, { content: 'first' });
+      await Promise.resolve();
+      await gateway.handleAiMessage(socket, { content: 'second' });
+
+      expect(mockAiService.sendMessageStream).toHaveBeenCalledTimes(1);
+      resolveFirst({
+        content: 'ok', conversationId: 'c', tokensUsed: 1,
+        monthlyBudgetRemaining: 1, usageWarning: null, providerStatus: 'ok',
+      });
+      await first;
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, OnModuleDestroy } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import { StorageBackend } from './storage-backend';
 
@@ -9,7 +9,7 @@ export const STORAGE_BACKEND = Symbol('STORAGE_BACKEND');
  * delegates blob operations to the configured backend (S3 or filesystem).
  */
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleDestroy {
   constructor(@Inject(STORAGE_BACKEND) private readonly backend: StorageBackend) {}
 
   buildVersionKey(organizationId: string, propertyId: string, versionId: string): string {
@@ -34,5 +34,9 @@ export class StorageService {
 
   objectExists(key: string): Promise<boolean> {
     return this.backend.exists(key);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.backend.close();
   }
 }

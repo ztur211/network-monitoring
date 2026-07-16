@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,5 +43,46 @@ describe('extractElements', () => {
   it('captures the wall GlobalId (Spec 6 BCF)', () => {
     const wall = payloads.find((p) => p.expressID === 30);
     expect(wall?.guid).toBe('2bjLUVfTLCM9P4iN8sefM6');
+  });
+
+  it('deterministically deletes WebIFC geometry vectors', () => {
+    const deleteGeometry = vi.fn();
+    const deletePlacedVector = vi.fn();
+    const deleteFlatVector = vi.fn();
+    const geometry = {
+      GetVertexData: () => 0,
+      GetVertexDataSize: () => 6,
+      GetIndexData: () => 0,
+      GetIndexDataSize: () => 3,
+      delete: deleteGeometry,
+    };
+    const placedVector = {
+      size: () => 1,
+      get: () => ({
+        geometryExpressID: 2,
+        flatTransformation: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        color: { x: 1, y: 1, z: 1 },
+      }),
+      delete: deletePlacedVector,
+    };
+    const flatVector = {
+      size: () => 1,
+      get: () => ({ expressID: 1, geometries: placedVector }),
+      delete: deleteFlatVector,
+    };
+    const api = {
+      LoadAllGeometry: () => flatVector,
+      GetLineType: () => 1,
+      GetNameFromTypeCode: () => 'IfcWall',
+      GetGeometry: () => geometry,
+      GetVertexArray: () => new Float32Array([0, 0, 0, 0, 0, 1]),
+      GetIndexArray: () => new Uint32Array([0, 0, 0]),
+      GetLine: () => ({ GlobalId: { value: 'guid' } }),
+    } as unknown as IfcAPI;
+
+    expect(extractElements(api, 0)).toHaveLength(1);
+    expect(deleteGeometry).toHaveBeenCalledOnce();
+    expect(deletePlacedVector).toHaveBeenCalledOnce();
+    expect(deleteFlatVector).toHaveBeenCalledOnce();
   });
 });

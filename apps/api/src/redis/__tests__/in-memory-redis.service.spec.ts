@@ -85,6 +85,25 @@ describe('InMemoryRedisService', () => {
     expect(await redis.hgetall('nope')).toEqual({});
   });
 
+  it('compare-deletes only an unchanged hash value', async () => {
+    await redis.hset('presence', 'socket-1', 'expired-value');
+    await redis.hset('presence', 'socket-1', 'renewed-value');
+
+    expect(await redis.hdelIfValues('presence', [['socket-1', 'expired-value']])).toBe(0);
+    expect(await redis.hgetall('presence')).toEqual({ 'socket-1': 'renewed-value' });
+    expect(await redis.hdelIfValues('presence', [['socket-1', 'renewed-value']])).toBe(1);
+  });
+
+  it('scans matching keys for bounded legacy cleanup', async () => {
+    await redis.sadd('nodescope:connections:u1', 's1');
+    await redis.set('unrelated', 'v');
+
+    const [cursor, keys] = await redis.scan('0', 'MATCH', 'nodescope:connections:*', 'COUNT', 100);
+
+    expect(cursor).toBe('0');
+    expect(keys).toEqual(['nodescope:connections:u1']);
+  });
+
   it('runs a pipeline of incr/incrby/expire and applies them', async () => {
     const results = await redis
       .pipeline()

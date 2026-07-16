@@ -46,4 +46,29 @@ describe('agent api-client', () => {
     const c = createAgentClient({ apiUrl: 'http://h/api', token: 'x', fetchImpl: f });
     await expect(c.heartbeat()).rejects.toThrow(/401/);
   });
+
+  it('aborts when response body consumption exceeds the request deadline', async () => {
+    vi.useFakeTimers();
+    const f = vi.fn((_url: string, init: RequestInit) =>
+      Promise.resolve({
+        ok: true,
+        json: () => new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+      }),
+    );
+    const c = createAgentClient({
+      apiUrl: 'http://h/api',
+      token: 'tok',
+      fetchImpl: f as unknown as typeof fetch,
+      timeoutMs: 1_000,
+    });
+
+    const pending = c.syncDevices();
+    const expectation = expect(pending).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expectation;
+    expect((f.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
 });

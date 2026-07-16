@@ -8,6 +8,7 @@ import { RedisService } from '../../redis/redis.service';
 import { OrganizationsRepository } from '../../organizations/organizations.repository';
 import { WS_EVENTS } from '@nodescope/shared';
 import { auth } from '../../auth/better-auth.config';
+import { REDIS_KEY_SOCKET_PRESENCE } from '../socket-presence';
 
 const VALID_SESSION = {
   user: { id: 'test-user-1', email: 'test@example.com', tier: 'PERSONAL_FREE' },
@@ -30,10 +31,13 @@ function makePubSubClient(): Record<string, jest.Mock> {
 }
 
 const mockRedis = {
-  sadd: jest.fn().mockResolvedValue(1),
-  srem: jest.fn().mockResolvedValue(1),
-  scard: jest.fn().mockResolvedValue(1),
+  enabled: false,
   set: jest.fn().mockResolvedValue('OK'),
+  del: jest.fn().mockResolvedValue(0),
+  scan: jest.fn().mockResolvedValue(['0', []]),
+  hset: jest.fn().mockResolvedValue(1),
+  hdel: jest.fn().mockResolvedValue(1),
+  hgetall: jest.fn().mockResolvedValue({}),
   duplicate: jest.fn().mockImplementation(makePubSubClient),
 };
 
@@ -81,9 +85,10 @@ describe('RealtimeGateway (e2e)', () => {
 
       client.on('connect', () => {
         expect(client.connected).toBe(true);
-        expect(mockRedis.sadd).toHaveBeenCalledWith(
-          'nodescope:connections:test-user-1',
+        expect(mockRedis.hset).toHaveBeenCalledWith(
+          REDIS_KEY_SOCKET_PRESENCE,
           expect.any(String),
+          expect.stringContaining('"userId":"test-user-1"'),
         );
         client.disconnect();
         done();
@@ -161,8 +166,8 @@ describe('RealtimeGateway (e2e)', () => {
         client.disconnect();
 
         setTimeout(() => {
-          expect(mockRedis.srem).toHaveBeenCalledWith(
-            'nodescope:connections:test-user-1',
+          expect(mockRedis.hdel).toHaveBeenCalledWith(
+            REDIS_KEY_SOCKET_PRESENCE,
             socketId,
           );
           done();

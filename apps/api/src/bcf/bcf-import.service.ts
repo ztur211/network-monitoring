@@ -11,6 +11,7 @@ import { readBcfZip, BcfArchiveTooLargeError } from './bcf-zip';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
+import { cleanupStorageKeys, uniqueSnapshotKey } from './bcf-storage-lifecycle';
 
 /** BCF import result. */
 export interface BcfImportResult {
@@ -109,25 +110,37 @@ export class BcfImportService {
       buildingDevices.map((d) => [toIfcGuid(d.id), d.id]),
     );
 
+    const oldSnapshotRows = await this.prisma.bcfViewpoint.findMany({
+      where: {
+        organizationId,
+        topic: { guid: { in: parsed.topics.map((topic) => topic.guid) } },
+      },
+      select: { snapshotKey: true },
+    });
+    const oldSnapshotKeys = oldSnapshotRows.flatMap((row) => row.snapshotKey ? [row.snapshotKey] : []);
+
     // Validate snapshots and upload them before the DB transaction
     const snapshotKeys = new Map<string, string>(); // viewpointGuid → storageKey
-    for (const topic of parsed.topics) {
-      for (const vp of topic.viewpoints) {
-        if (vp.isPrimary) {
-          if (!vp.snapshotPng || !isPng(vp.snapshotPng)) {
-            throw new NodeScopeException('BCF_002', 'MISSING_SNAPSHOT_PNG', HttpStatus.UNPROCESSABLE_ENTITY);
+    const attemptedSnapshotKeys: string[] = [];
+    let topicsUpserted = 0;
+    try {
+      for (const topic of parsed.topics) {
+        for (const vp of topic.viewpoints) {
+          if (vp.isPrimary) {
+            if (!vp.snapshotPng || !isPng(vp.snapshotPng)) {
+              throw new NodeScopeException('BCF_002', 'MISSING_SNAPSHOT_PNG', HttpStatus.UNPROCESSABLE_ENTITY);
+            }
+            const key = uniqueSnapshotKey(organizationId, topic.guid, vp.guid);
+            attemptedSnapshotKeys.push(key);
+            const stream = Readable.from(vp.snapshotPng);
+            await this.storage.putObjectStream(key, stream, 'image/png');
+            snapshotKeys.set(vp.guid, key);
           }
-          const key = `org/${organizationId}/bcf/${topic.guid}/${vp.guid}.png`;
-          const stream = Readable.from(vp.snapshotPng);
-          await this.storage.putObjectStream(key, stream, 'image/png');
-          snapshotKeys.set(vp.guid, key);
         }
       }
-    }
 
-    // Transactional upsert
-    let topicsUpserted = 0;
-    await this.prisma.$transaction(async (tx) => {
+      // Transactional upsert
+      await this.prisma.$transaction(async (tx) => {
       for (const topic of parsed.topics) {
         // Upsert topic by [organizationId, guid]
         const upserted = await tx.bcfTopic.upsert({
@@ -205,7 +218,15 @@ export class BcfImportService {
           });
         }
       }
-    });
+      });
+    } catch (error) {
+      await cleanupStorageKeys(this.storage, attemptedSnapshotKeys);
+      throw error;
+    }
+
+    // The transaction now references only the newly uploaded unique keys. Old viewpoint rows
+    // have been removed, so their prior blobs can no longer be reached and must be reclaimed.
+    await cleanupStorageKeys(this.storage, oldSnapshotKeys);
 
     return { topicsUpserted };
   }

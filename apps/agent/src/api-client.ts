@@ -1,5 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import type { AgentDeviceDto, IngestBatchDto } from '@nodescope/shared';
+import { fetchWithTimeout } from './fetch-with-timeout.js';
 
 // Gzip ingest bodies at/above this size; smaller payloads aren't worth the ~20-byte overhead.
 const INGEST_GZIP_MIN_BYTES = 1024;
@@ -17,13 +18,20 @@ export interface AgentClient {
   heartbeat(): Promise<void>;
 }
 
-export function createAgentClient(o: { apiUrl: string; token: string; fetchImpl?: typeof fetch }): AgentClient {
+export function createAgentClient(o: { apiUrl: string; token: string; fetchImpl?: typeof fetch; timeoutMs?: number }): AgentClient {
   const f = o.fetchImpl ?? fetch;
   const headers = { 'content-type': 'application/json', 'x-agent-token': o.token };
   const call = async (path: string, init?: RequestInit) => {
-    const res = await f(`${o.apiUrl}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
-    if (!res.ok) throw new AgentHttpError(res.status, `${init?.method ?? 'GET'} ${path} → ${res.status}`);
-    return (await res.json()) as { data: unknown };
+    return fetchWithTimeout({
+      fetchImpl: f,
+      input: `${o.apiUrl}${path}`,
+      init: { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } },
+      timeoutMs: o.timeoutMs,
+      consume: async (res) => {
+        if (!res.ok) throw new AgentHttpError(res.status, `${init?.method ?? 'GET'} ${path} → ${res.status}`);
+        return (await res.json()) as { data: unknown };
+      },
+    });
   };
   return {
     async syncDevices() { return (await call('/v1/monitoring/agent/devices')).data as AgentDeviceDto[]; },

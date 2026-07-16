@@ -102,13 +102,17 @@ export async function loadBuilding(opts: {
 }
 
 /** Wires loadBuilding to the active building + reloadNonce, stashing the prior model in a keep-last-1 cache. */
-export function useViewportLoader(loaderArg?: IfcModelLoader) {
+export function useViewportLoader(
+  loaderArg?: IfcModelLoader,
+  options: { disposeLoaderOnUnmount?: boolean } = {},
+) {
   // Create the default loader ONCE (not as a default param, which runs every render):
   // a fresh loader identity in the effect deps below would retrigger the effect on every
   // render → setState → re-render → infinite update loop (React #185).
   const fallbackRef = useRef<IfcModelLoader | null>(null);
-  fallbackRef.current ??= createIfcModelLoader();
-  const loader = loaderArg ?? fallbackRef.current;
+  if (!loaderArg) fallbackRef.current ??= createIfcModelLoader();
+  const loader = loaderArg ?? fallbackRef.current!;
+  const ownsLoader = loaderArg === undefined || options.disposeLoaderOnUnmount === true;
 
   const cacheRef = useRef<ModelCache | null>(null);
   cacheRef.current ??= createModelCache();
@@ -116,6 +120,23 @@ export function useViewportLoader(loaderArg?: IfcModelLoader) {
   const prevNonceRef = useRef<number>(useViewportStore.getState().reloadNonce);
   const propertyId = useViewportStore((s) => s.activeBuildingPropertyId);
   const nonce = useViewportStore((s) => s.reloadNonce);
+
+  useEffect(() => {
+    if (!ownsLoader) return;
+    return () => loader.dispose();
+  }, [loader, ownsLoader]);
+
+  useEffect(() => {
+    return () => {
+      const shown = shownRef.current;
+      shownRef.current = null;
+      shown?.model.dispose();
+      cacheRef.current?.clear();
+
+      const store = useViewportStore.getState();
+      if (shown && store.model === shown.model) store._setModel(null);
+    };
+  }, []);
 
   useEffect(() => {
     const store = useViewportStore.getState();

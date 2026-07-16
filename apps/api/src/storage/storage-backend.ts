@@ -12,6 +12,8 @@ export interface StorageBackend {
   exists(key: string): Promise<boolean>;
   /** Every stored key, forward-slash form (migration only). */
   list(): Promise<string[]>;
+  /** Release backend-owned clients/HTTP agents. Idempotent. */
+  close(): void | Promise<void>;
 }
 
 /**

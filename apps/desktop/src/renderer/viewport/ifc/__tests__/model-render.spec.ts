@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
 import { createModelRender } from '../model-render';
 import type { MergedCategory } from '../merge';
@@ -50,6 +50,17 @@ describe('createModelRender', () => {
     r.applyVisibility({ hiddenCategories: new Set(), hiddenElements: new Set(), isolated: null });
     expect(mesh.visible).toBe(true);
     expect(mesh.geometry.getIndex()!.count).toBe(6);
+  });
+
+  it('releases renderer-owned GPU attributes before replacing a visibility index', () => {
+    const r = createModelRender([cat('IfcWall', [1, 2])]);
+    const geometry = r.categories.get('IfcWall')!.mesh.geometry;
+    const dispose = vi.spyOn(geometry, 'dispose');
+
+    r.applyVisibility({ hiddenCategories: new Set(), hiddenElements: new Set([2]), isolated: null });
+    r.applyVisibility({ hiddenCategories: new Set(), hiddenElements: new Set(), isolated: null });
+
+    expect(dispose).toHaveBeenCalledTimes(2);
   });
 
   it('applyHighlight drives the overlay; null clears it', () => {

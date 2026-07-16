@@ -12,7 +12,8 @@ vi.mock('../../data/clients', () => ({
 
 import { useViewportLoader } from '../use-viewport-loader';
 
-const fakeLoader = () => ({ loadModel: vi.fn().mockResolvedValue({ dispose: vi.fn() }) });
+const fakeModel = () => ({ dispose: vi.fn() });
+const fakeLoader = () => ({ loadModel: vi.fn().mockResolvedValue(fakeModel()), dispose: vi.fn() });
 
 beforeEach(() => {
   useViewportStore.setState(initialViewportState());
@@ -38,5 +39,34 @@ describe('useViewportLoader — reload semantics', () => {
     });
     await waitFor(() => expect(getBuildingModel).toHaveBeenCalledTimes(2));
     expect(loader.loadModel).toHaveBeenCalledTimes(2);
+  });
+
+  it('disposes shown and cached models plus an owned injected loader on unmount', async () => {
+    const first = fakeModel();
+    const second = fakeModel();
+    const loader = {
+      loadModel: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
+      dispose: vi.fn(),
+    };
+    const { unmount } = renderHook(() =>
+      useViewportLoader(loader as any, { disposeLoaderOnUnmount: true }),
+    );
+
+    await act(async () => {
+      useViewportStore.setState({ activeBuildingPropertyId: 'b1' });
+    });
+    await waitFor(() => expect(useViewportStore.getState().model).toBe(first));
+
+    await act(async () => {
+      useViewportStore.setState({ activeBuildingPropertyId: 'b2' });
+    });
+    await waitFor(() => expect(useViewportStore.getState().model).toBe(second));
+
+    unmount();
+
+    expect(first.dispose).toHaveBeenCalledTimes(1);
+    expect(second.dispose).toHaveBeenCalledTimes(1);
+    expect(loader.dispose).toHaveBeenCalledTimes(1);
+    expect(useViewportStore.getState().model).toBeNull();
   });
 });

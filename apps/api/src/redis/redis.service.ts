@@ -44,7 +44,17 @@ export abstract class RedisService {
 
   abstract hset(key: string, field: string, value: string): Promise<number>;
   abstract hdel(key: string, ...fields: string[]): Promise<number>;
+  /** Atomically delete hash fields only if each still equals the caller's observed value. */
+  abstract hdelIfValues(key: string, entries: Array<[field: string, value: string]>): Promise<number>;
   abstract hgetall(key: string): Promise<Record<string, string>>;
+
+  abstract scan(
+    cursor: string,
+    matchToken: 'MATCH',
+    pattern: string,
+    countToken: 'COUNT',
+    count: number,
+  ): Promise<[string, string[]]>;
 
   /** Runs a server-side Lua script (throttler storage). In-memory backing does not support it. */
   abstract eval(script: string, numKeys: number, ...args: Array<string | number>): Promise<unknown>;

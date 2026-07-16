@@ -18,26 +18,47 @@ export function createIfcModelLoader(opts: LoaderOpts = {}): IfcModelLoader {
   const wasm = opts.wasmPath ?? defaultWasmPath();
   const api = new IfcAPI();
   let ready: Promise<void> | null = null;
-  const init = () => (ready ??= (api.SetWasmPath(wasm.path, wasm.absolute), api.Init()));
+  let initialized = false;
+  let closed = false;
+  const init = () =>
+    (ready ??= (api.SetWasmPath(wasm.path, wasm.absolute), api.Init().then(() => {
+      initialized = true;
+      if (closed) api.Dispose();
+    })));
 
   async function loadModel(bytes: ArrayBuffer): Promise<ParsedModel> {
+    if (closed) throw new Error('IFC loader disposed');
     await init();
+    if (closed) throw new Error('IFC loader disposed');
     const modelID = api.OpenModel(new Uint8Array(bytes), { COORDINATE_TO_ORIGIN: false });
+    let modelClosed = false;
+    const closeModel = () => {
+      if (modelClosed) return;
+      modelClosed = true;
+      try {
+        api.CloseModel(modelID);
+      } catch {
+        /* already closed */
+      }
+    };
 
-    const payloads = extractElements(api, modelID);
-
-    return assembleModel(payloads, {
-      getProperties: (id: ExpressId) => readProperties(api, modelID, id),
-      dispose: () => {
-        try {
-          api.CloseModel(modelID);
-        } catch {
-          /* already closed */
-        }
-      },
-    });
+    try {
+      const payloads = extractElements(api, modelID);
+      return assembleModel(payloads, {
+        getProperties: (id: ExpressId) => readProperties(api, modelID, id),
+        dispose: closeModel,
+      });
+    } catch (err) {
+      closeModel();
+      throw err;
+    }
   }
 
-  return { loadModel };
-}
+  function dispose(): void {
+    if (closed) return;
+    closed = true;
+    if (initialized) api.Dispose();
+  }
 
+  return { loadModel, dispose };
+}

@@ -49,6 +49,7 @@ export interface ParsedModel {
 
 export interface IfcModelLoader {
   loadModel(bytes: ArrayBuffer): Promise<ParsedModel>;
+  dispose(): void;
 }
 
 export interface ElementRef {

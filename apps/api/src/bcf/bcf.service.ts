@@ -30,6 +30,7 @@ import { ConflictResolutionService } from '../conflict/conflict.service';
 import { deriveDeviceLinks } from './device-links';
 import { toIfcGuid } from '@nodescope/shared';
 import { isPng } from './bcf-utils';
+import { cleanupStorageKeys, uniqueSnapshotKey } from './bcf-storage-lifecycle';
 
 type TopicWithRelations = BcfTopicRow & {
   comments: BcfCommentRow[];
@@ -136,19 +137,23 @@ export class BcfService {
     // If snapshotPngBase64 is present (non-undefined) the decoded buffer must be a valid
     // non-empty PNG; an empty string decodes to a 0-byte buffer which is also invalid.
     const snapshotKeys = new Map<string, string>(); // viewpointGuid → storageKey
+    const attemptedSnapshotKeys: string[] = [];
     const topicGuid = randomUUID();
-    for (const vp of viewpoints) {
-      if (vp.snapshotPng !== undefined) {
-        if (!isPng(vp.snapshotPng)) {
-          throw new NodeScopeException('BCF_002', 'Invalid snapshot', HttpStatus.UNPROCESSABLE_ENTITY);
+    let created: TopicWithRelations;
+    try {
+      for (const vp of viewpoints) {
+        if (vp.snapshotPng !== undefined) {
+          if (!isPng(vp.snapshotPng)) {
+            throw new NodeScopeException('BCF_002', 'Invalid snapshot', HttpStatus.UNPROCESSABLE_ENTITY);
+          }
+          const key = uniqueSnapshotKey(organizationId, topicGuid, vp.guid);
+          attemptedSnapshotKeys.push(key);
+          await this.storage.putObjectStream(key, Readable.from(vp.snapshotPng), 'image/png');
+          snapshotKeys.set(vp.guid, key);
         }
-        const key = `org/${organizationId}/bcf/${topicGuid}/${vp.guid}.png`;
-        await this.storage.putObjectStream(key, Readable.from(vp.snapshotPng), 'image/png');
-        snapshotKeys.set(vp.guid, key);
       }
-    }
 
-    const created = await this.prisma.$transaction(async (tx) => {
+      created = await this.prisma.$transaction(async (tx) => {
       const topic = await tx.bcfTopic.create({
         data: {
           organizationId,
@@ -189,7 +194,11 @@ export class BcfService {
       }
 
       return tx.bcfTopic.findUniqueOrThrow({ where: { id: topic.id }, include: TOPIC_INCLUDE });
-    });
+      });
+    } catch (error) {
+      await cleanupStorageKeys(this.storage, attemptedSnapshotKeys);
+      throw error;
+    }
 
     const topicDto = this.toTopicDto(created);
     // Best-effort F3-scoped realtime event (does not block the response).

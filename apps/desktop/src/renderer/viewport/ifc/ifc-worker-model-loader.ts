@@ -45,6 +45,7 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
   // Worker is lazily constructed on first loadModel call.
   let worker: WorkerLike | null = null;
   let degraded = false; // once true, all loads go to fallback
+  let closed = false;
 
   // Sequence counters — monotonically increasing, never reused within a session.
   let nextJobId = 1;
@@ -167,6 +168,7 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
   }
 
   async function loadModel(bytes: ArrayBuffer): Promise<ParsedModel> {
+    if (closed) throw new Error('IFC loader disposed');
     // If already degraded, always use fallback.
     if (degraded) return fallback.loadModel(bytes);
 
@@ -191,27 +193,65 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
         if (msg.type !== 'parsed') return;
 
         // getProperties round-trips a message to the worker correlated by reqId.
+        let disposed = false;
         function getProperties(expressID: ExpressId): Promise<ElementProperties> {
           return new Promise((res, rej) => {
+            if (disposed) {
+              rej(new Error('IFC model disposed'));
+              return;
+            }
+            if (closed) {
+              rej(new Error('IFC loader disposed'));
+              return;
+            }
+            if (degraded || worker !== w) {
+              rej(new Error('IFC worker unavailable'));
+              return;
+            }
             const reqId = nextReqId++;
             pendingProps.set(reqId, { jobId, resolve: res, reject: rej });
-            w.postMessage({ type: 'getProperties', jobId, reqId, expressID });
+            try {
+              w.postMessage({ type: 'getProperties', jobId, reqId, expressID });
+            } catch (error) {
+              pendingProps.delete(reqId);
+              const workerError = error instanceof Error ? error : new Error(String(error));
+              degraded = true;
+              drainAllPendingProps(workerError);
+              killWorker();
+              rej(workerError);
+            }
           });
         }
 
         // dispose posts 'dispose' to the worker, tears down THREE objects (via assembleModel's
         // dispose), and settles any in-flight getProperties for this job.
         function disposeHook(): void {
-          w.postMessage({ type: 'dispose', jobId });
+          if (disposed) return;
+          disposed = true;
           drainPendingPropsForJob(jobId, new Error('IFC model disposed'));
+          if (!closed && !degraded && worker === w) {
+            try {
+              w.postMessage({ type: 'dispose', jobId });
+            } catch {
+              degraded = true;
+              killWorker();
+            }
+          }
         }
 
         try {
           // Yield to the event loop between batch accumulation and assembly so the renderer can paint.
           await new Promise<void>((r) => setTimeout(r, 0));
+          if (closed) throw new Error('IFC loader disposed');
+          if (degraded || worker !== w) throw new Error('IFC worker unavailable');
           const model = assembleModel(payloads, { getProperties, dispose: disposeHook });
           resolve(model);
         } catch (err) {
+          try {
+            disposeHook();
+          } catch {
+            /* worker may already be gone; preserve the assembly error */
+          }
           reject(err);
         }
       };
@@ -227,7 +267,16 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
       // redirect can re-parse it.  The expensive zero-copy transfers are the per-element
       // geometry buffers sent worker→main (unaffected); this one-time clone of the file
       // buffer is negligible (a few MB, off the multi-second parse critical path).
-      w.postMessage({ type: 'parse', jobId, bytes, wasm });
+      try {
+        w.postMessage({ type: 'parse', jobId, bytes, wasm });
+      } catch (error) {
+        jobs.delete(jobId);
+        degraded = true;
+        const workerError = error instanceof Error ? error : new Error(String(error));
+        drainAllPendingProps(workerError);
+        killWorker();
+        onError(workerError);
+      }
     });
 
     // If the worker is now degraded (initError path), transparently fall back.
@@ -238,5 +287,16 @@ export function createWorkerIfcModelLoader(opts: WorkerLoaderOpts = {}): IfcMode
     });
   }
 
-  return { loadModel };
+  function dispose(): void {
+    if (closed) return;
+    closed = true;
+    const err = new Error('IFC loader disposed');
+    for (const job of jobs.values()) job.onError(err);
+    jobs.clear();
+    drainAllPendingProps(err);
+    killWorker();
+    fallback.dispose();
+  }
+
+  return { loadModel, dispose };
 }

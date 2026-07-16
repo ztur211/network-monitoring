@@ -86,4 +86,13 @@ describe('IfcModelLoader', () => {
     }
     m.dispose();
   });
+
+  it('is idempotently disposable and rejects loads after disposal', async () => {
+    const loader = createIfcModelLoader({ wasmPath: { path: wasmDir, absolute: true } });
+
+    loader.dispose();
+    loader.dispose();
+
+    await expect(loader.loadModel(fixtureBuffer())).rejects.toThrow('IFC loader disposed');
+  });
 });
