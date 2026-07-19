@@ -398,13 +398,20 @@ describe('RealtimeGateway — service interface', () => {
       );
     });
 
-    it('quits both duplicated Redis adapter clients on module destruction', async () => {
+    it('quits both duplicated Redis adapter clients on application shutdown', async () => {
       const firstClient = { quit: jest.fn().mockResolvedValue('OK') };
       const secondClient = { quit: jest.fn().mockResolvedValue('OK') };
       const clients = [firstClient, secondClient];
       (gateway as unknown as { redisAdapterClients: typeof clients }).redisAdapterClients = clients;
 
-      await gateway.onModuleDestroy();
+      // Nest runs onModuleDestroy BEFORE it disposes socket.io, and disposal makes the
+      // adapter punsubscribe on these very clients. Closing them here produced an uncaught
+      // "Connection is closed." on every graceful shutdown, so this phase must leave them alone.
+      gateway.onModuleDestroy();
+      expect(firstClient.quit).not.toHaveBeenCalled();
+      expect(secondClient.quit).not.toHaveBeenCalled();
+
+      await gateway.onApplicationShutdown();
 
       expect(firstClient.quit).toHaveBeenCalledTimes(1);
       expect(secondClient.quit).toHaveBeenCalledTimes(1);

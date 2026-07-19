@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 # Cancel an in-progress run when a newer commit lands on the same ref, so a burst of pushes
-# (e.g. merging a stack of PRs) doesn't queue a full CI run per commit — only the latest runs.
+# (e.g. merging a stack of PRs) doesn't queue a full CI run per commit - only the latest runs.
 # Keyed by ref, so different branches/PRs never cancel each other.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -52,6 +52,10 @@ jobs:
           # CI-appropriate slice of the box.
           TS_TUNE_MEMORY: 2GB
           TS_TUNE_NUM_CPUS: "2"
+          # timescaledb-tune derives max_connections from the CPU count, so the pin above
+          # also cuts it 100 → 25 - enough for two jest workers' Prisma pools to exhaust it
+          # ("sorry, too many clients already") on suites that open many concurrent writes.
+          TS_TUNE_MAX_CONNS: "100"
         ports:
           - 5433:5432
         # -h localhost forces the health check over TCP: the temporary init-phase
@@ -116,6 +120,10 @@ jobs:
           # CI-appropriate slice of the box.
           TS_TUNE_MEMORY: 2GB
           TS_TUNE_NUM_CPUS: "2"
+          # timescaledb-tune derives max_connections from the CPU count, so the pin above
+          # also cuts it 100 → 25 - enough for two jest workers' Prisma pools to exhaust it
+          # ("sorry, too many clients already") on suites that open many concurrent writes.
+          TS_TUNE_MAX_CONNS: "100"
         ports:
           - 5433:5432
         # -h localhost forces the health check over TCP: the temporary init-phase

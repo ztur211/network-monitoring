@@ -5,10 +5,27 @@ services:
       POSTGRES_USER: nodescope
       POSTGRES_PASSWORD: localdevpassword
       POSTGRES_DB: nodescope_test
+      # Without these, timescaledb-tune sizes itself to the WHOLE host: on a 6GB WSL2
+      # VM it took shared_buffers=1.9GB, maintenance_work_mem=0.95GB and an
+      # effective_cache_size of 5.7GB - i.e. it assumed it owned the entire machine.
+      # Sharing that machine with the jest workers and the other stacks pushed the VM
+      # past its .wslconfig ceiling and Windows tore the whole VM down (containers exit
+      # 255, "database system was not properly shut down"). ci.yml already sets these
+      # for the same reason; local compose never got the fix.
+      TS_TUNE_MEMORY: 1GB
+      TS_TUNE_NUM_CPUS: "2"
+      # timescaledb-tune derives max_connections from the CPU count, so pinning CPUs to 2
+      # silently drops it 100 → 25 and the suite dies with "sorry, too many clients already"
+      # (two jest workers, each with a Prisma pool, plus tests that open 40 concurrent
+      # writes). Connections are cheap compared to the buffers above; pin it explicitly.
+      TS_TUNE_MAX_CONNS: "100"
     ports:
       - "5433:5432"
     tmpfs:
       - /var/lib/postgresql/data
+    # A hard cap turns a runaway into a recoverable container OOM-kill instead of a VM
+    # teardown that takes the editor and every agent pane down with it.
+    mem_limit: 1500m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nodescope -d nodescope_test"]
       interval: 5s
@@ -17,10 +34,13 @@ services:
 
   redis-test:
     image: redis:7-alpine
+    # maxmemory bounds the dataset itself; mem_limit is the backstop for the process.
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "6380:6379"
     tmpfs:
       - /data
+    mem_limit: 256m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -36,4 +56,6 @@ services:
     ports:
       - "9100:9000"
     tmpfs:
-      - /data
+      # Sized explicitly: an unbounded tmpfs is RAM, and test uploads land here.
+      - /data:size=512m
+    mem_limit: 512m

@@ -39,6 +39,9 @@ describe('BcfImportService (integration)', () => {
   let buildingId: string;
   let deviceId: string;
   const putObjectStream = jest.fn().mockResolvedValue(undefined);
+  // Import reclaims superseded snapshot blobs via cleanupStorageKeys, which calls
+  // deleteObject; the stub must carry it or every re-import path throws.
+  const deleteObject = jest.fn().mockResolvedValue(undefined);
 
   // Track subtreeIds so the PropertiesService mock can return the right value
   let subtreeIds: string[] = [];
@@ -51,7 +54,7 @@ describe('BcfImportService (integration)', () => {
         DevicesRepository,
         {
           provide: StorageService,
-          useValue: { putObjectStream },
+          useValue: { putObjectStream, deleteObject },
         },
         {
           // OWNER always passes assertCanConfigure

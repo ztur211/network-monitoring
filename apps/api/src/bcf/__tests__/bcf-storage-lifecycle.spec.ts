@@ -17,4 +17,17 @@ describe('BCF storage lifecycle helpers', () => {
     await cleanupStorageKeys(storage, ['one', 'two']);
     expect(storage.deleteObject).toHaveBeenCalledTimes(2);
   });
+
+  it('absorbs a synchronous throw so the import error path is not masked', async () => {
+    // The import failure path runs cleanup and then rethrows the ORIGINAL error. A backend
+    // that throws synchronously (rather than rejecting) used to escape Promise.allSettled
+    // and replace that error with a storage error, hiding the real cause of the failure.
+    const storage = {
+      deleteObject: jest.fn(() => {
+        throw new Error('synchronous backend failure');
+      }),
+    };
+    await expect(cleanupStorageKeys(storage, ['one', 'two'])).resolves.toBeUndefined();
+    expect(storage.deleteObject).toHaveBeenCalledTimes(2);
+  });
 });

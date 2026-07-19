@@ -1,4 +1,11 @@
-import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import {
   ConnectedSocket,
   OnGatewayConnection,
@@ -120,7 +127,8 @@ export class RealtimeGateway
     OnGatewayConnection,
     OnGatewayDisconnect,
     IRealtimeService,
-    OnModuleDestroy
+    OnModuleDestroy,
+    OnApplicationShutdown
 {
   @WebSocketServer() private readonly server: Server;
 
@@ -148,7 +156,7 @@ export class RealtimeGateway
     });
 
     // The socket.io Redis adapter fans events across API replicas. Single-node mode
-    // (Redis disabled) uses socket.io's default in-memory adapter — correct because
+    // (Redis disabled) uses socket.io's default in-memory adapter - correct because
     // there is only one process and no cross-node fan-out is needed.
     if (this.redis.enabled) {
       const pubClient = this.redis.duplicate();
@@ -277,7 +285,7 @@ export class RealtimeGateway
     // a personal org at registration time.
     const orgId = client.data.orgId as string | null | undefined;
     if (!orgId) {
-      this.logger.warn({ userId }, 'Metrics ingest skipped — socket has no orgId (user not yet in an org)');
+      this.logger.warn({ userId }, 'Metrics ingest skipped - socket has no orgId (user not yet in an org)');
       return;
     }
 
@@ -365,7 +373,7 @@ export class RealtimeGateway
   /**
    * Join the socket to the rooms that mirror its F3 scope, so scoped events can be
    * addressed by room instead of fetching + filtering every org socket per event:
-   *   effectiveRoots === null → `owner:<org>` (OWNER — sees every org event)
+   *   effectiveRoots === null → `owner:<org>` (OWNER - sees every org event)
    *   effectiveRoots [...]     → `scope:<rootId>` for each root
    *   effectiveRoots []        → no scope rooms (no access)
    * Idempotent: leaves any previously-joined scope/owner rooms first, so it also applies
@@ -511,7 +519,7 @@ export class RealtimeGateway
       }
       return orgToUsers;
     } catch (err) {
-      this.logger.warn({ err }, 'Socket presence unavailable — falling back to fetchSockets for metrics push');
+      this.logger.warn({ err }, 'Socket presence unavailable - falling back to fetchSockets for metrics push');
       const sockets = await this.server.fetchSockets();
       for (const s of sockets) {
         const userId = (s.data.user as { id: string } | undefined)?.id;
@@ -640,13 +648,33 @@ export class RealtimeGateway
     }
   }
 
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
+    // Stop new work immediately: the scheduler must not fire another cycle while the
+    // app is tearing down. The adapter's Redis clients are deliberately NOT closed
+    // here - see onApplicationShutdown.
     if (this.pushSchedulerTimer !== undefined) {
       clearInterval(this.pushSchedulerTimer);
       this.pushSchedulerTimer = undefined;
     }
+    this.activeAiUsers.clear();
+  }
+
+  /**
+   * The socket.io Redis adapter's pub/sub clients outlive onModuleDestroy on purpose.
+   * Nest's shutdown order is:
+   *
+   *   callDestroyHook()  → onModuleDestroy
+   *   callBeforeShutdownHook()
+   *   dispose()          → socketModule.close() → RedisAdapter.close() → punsubscribe()
+   *   callShutdownHook() → onApplicationShutdown
+   *
+   * Quitting the clients in onModuleDestroy meant the adapter unsubscribed against an
+   * already-closed connection during dispose(), and ioredis threw an uncaught
+   * "Connection is closed." that took the process down on every graceful shutdown.
+   * onApplicationShutdown is the first phase that runs after the adapter is done with them.
+   */
+  async onApplicationShutdown(): Promise<void> {
     const clients = this.redisAdapterClients.splice(0);
     await Promise.allSettled(clients.map((client) => client.quit()));
-    this.activeAiUsers.clear();
   }
 }

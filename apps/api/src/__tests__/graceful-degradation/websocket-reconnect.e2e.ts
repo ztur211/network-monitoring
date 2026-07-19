@@ -8,6 +8,10 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import {
+  encodeSocketPresence,
+  REDIS_KEY_SOCKET_PRESENCE,
+} from '../../realtime/socket-presence';
 import { RedisService } from '../../redis/redis.service';
 import { DataSourcesService } from '../../data-sources/data-sources.service';
 import { DevicesService } from '../../devices/devices.service';
@@ -19,16 +23,21 @@ import { PermissionsRepository } from '../../permissions/permissions.repository'
 import { Socket } from 'socket.io';
 import { auth } from '../../auth/better-auth.config';
 
+// Socket presence lives in ONE Redis hash (REDIS_KEY_SOCKET_PRESENCE): field = socketId,
+// value = encoded SocketPresence. It used to be a per-user set (sadd/srem/scard); the
+// set members remain here only because unrelated paths still touch them.
 const mockRedis = {
   sadd: jest.fn().mockResolvedValue(1),
   srem: jest.fn().mockResolvedValue(1),
   scard: jest.fn().mockResolvedValue(0),
   smembers: jest.fn().mockResolvedValue([]),
   set: jest.fn().mockResolvedValue('OK'),
-  // userId -> orgId index for the metrics push: written on connect (when the
-  // socket has an orgId), deleted on the user's last disconnect.
   hset: jest.fn().mockResolvedValue(1),
   hdel: jest.fn().mockResolvedValue(1),
+  hgetall: jest.fn().mockResolvedValue({}),
+  hdelIfValues: jest.fn().mockResolvedValue(0),
+  scan: jest.fn().mockResolvedValue(['0', []]),
+  del: jest.fn().mockResolvedValue(0),
   duplicate: jest.fn().mockReturnThis(),
 };
 
@@ -77,7 +86,7 @@ function makeSocket(overrides: Partial<Socket> = {}): Socket {
   } as unknown as Socket;
 }
 
-describe('Graceful degradation — WebSocket reconnection', () => {
+describe('Graceful degradation - WebSocket reconnection', () => {
   let gateway: RealtimeGateway;
 
   beforeEach(async () => {
@@ -101,6 +110,8 @@ describe('Graceful degradation — WebSocket reconnection', () => {
     mockRedis.scard.mockResolvedValue(0);
     mockRedis.smembers.mockResolvedValue([]);
     mockRedis.set.mockResolvedValue('OK');
+    mockRedis.hgetall.mockResolvedValue({});
+    mockRedis.scan.mockResolvedValue(['0', []]);
     mockDataSources.getLatestMetrics.mockResolvedValue(new Map());
   });
 
@@ -116,7 +127,11 @@ describe('Graceful degradation — WebSocket reconnection', () => {
 
     expect(socket.disconnect).toHaveBeenCalledWith(true);
     expect(socket.join).not.toHaveBeenCalled();
-    expect(mockRedis.sadd).not.toHaveBeenCalled();
+    expect(mockRedis.hset).not.toHaveBeenCalledWith(
+      REDIS_KEY_SOCKET_PRESENCE,
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('joins user room and records presence on valid session', async () => {
@@ -127,7 +142,7 @@ describe('Graceful degradation — WebSocket reconnection', () => {
     } as never);
     const socket = makeSocket();
     // handleConnection now emits v1:network:onHome:changed after auth, which
-    // needs a server stub. Provide a noop one — the assertions below only care
+    // needs a server stub. Provide a noop one - the assertions below only care
     // about join + sadd.
     (gateway as unknown as { server: { to: jest.Mock } }).server = {
       to: jest.fn().mockReturnValue({ emit: jest.fn() }),
@@ -137,9 +152,11 @@ describe('Graceful degradation — WebSocket reconnection', () => {
 
     expect(socket.join).toHaveBeenCalledWith(`user:${userId}`);
     expect(socket.join).toHaveBeenCalledWith(`tier:PERSONAL_FREE`);
-    expect(mockRedis.sadd).toHaveBeenCalledWith(
-      expect.stringContaining(userId),
+    // Presence is keyed by socket id, with the user encoded in the value.
+    expect(mockRedis.hset).toHaveBeenCalledWith(
+      REDIS_KEY_SOCKET_PRESENCE,
       socket.id,
+      expect.stringContaining(userId),
     );
   });
 
@@ -175,10 +192,7 @@ describe('Graceful degradation — WebSocket reconnection', () => {
 
     await gateway.handleDisconnect(socket);
 
-    expect(mockRedis.srem).toHaveBeenCalledWith(
-      expect.stringContaining(userId),
-      socket.id,
-    );
+    expect(mockRedis.hdel).toHaveBeenCalledWith(REDIS_KEY_SOCKET_PRESENCE, socket.id);
   });
 
   it('handleDisconnect does not throw when socket has no user data (pre-auth disconnect)', async () => {
@@ -186,18 +200,38 @@ describe('Graceful degradation — WebSocket reconnection', () => {
     socket.data = {};
 
     await expect(gateway.handleDisconnect(socket)).resolves.not.toThrow();
-    expect(mockRedis.srem).not.toHaveBeenCalled();
+    expect(mockRedis.hdel).not.toHaveBeenCalled();
   });
 
-  it('getConnectionStatus returns offline when no sockets in Redis set', async () => {
-    mockRedis.scard.mockResolvedValue(0);
+  it('getConnectionStatus returns offline when the presence hash holds no live socket', async () => {
+    mockRedis.hgetall.mockResolvedValue({});
     const status = await gateway.getConnectionStatus('user-xyz');
     expect(status).toBe('offline');
   });
 
-  it('getConnectionStatus returns connected when sockets present in Redis set', async () => {
-    mockRedis.scard.mockResolvedValue(2);
+  it('getConnectionStatus returns connected when a live socket for the user is present', async () => {
+    mockRedis.hgetall.mockResolvedValue({
+      'socket-1': encodeSocketPresence({
+        userId: 'user-xyz',
+        organizationId: null,
+        expiresAt: Date.now() + 60_000,
+      }),
+    });
     const status = await gateway.getConnectionStatus('user-xyz');
     expect(status).toBe('connected');
+  });
+
+  it('getConnectionStatus ignores an EXPIRED presence entry for the user', async () => {
+    // A socket whose entry outlived its TTL must not read as connected - otherwise a
+    // crashed node's leftovers keep users "online" forever.
+    mockRedis.hgetall.mockResolvedValue({
+      'socket-stale': encodeSocketPresence({
+        userId: 'user-xyz',
+        organizationId: null,
+        expiresAt: Date.now() - 1_000,
+      }),
+    });
+    const status = await gateway.getConnectionStatus('user-xyz');
+    expect(status).toBe('offline');
   });
 });
