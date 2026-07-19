@@ -10,9 +10,9 @@ name: Deploy Stack Validation
 # the image actually changes (keeps normal CI fast / saves Actions minutes).
 
 on:
-  # Only the deploy config itself triggers this heavy (~15 min) build — app-code
-  # buildability is already covered by the normal CI `build` job. Trigger it
-  # manually (workflow_dispatch) after significant app/dependency changes that
+  # Only deploy config + Docker-build inputs trigger this heavy (~15 min) build —
+  # app-code buildability is already covered by the normal CI `build` job. Trigger
+  # it manually (workflow_dispatch) after significant app/dependency changes that
   # could affect the production image or boot.
   pull_request:
     paths:
@@ -21,6 +21,16 @@ on:
       - '.dockerignore'
       - 'scripts/smoke.mjs'
       - '.github/workflows/deploy-validate.yml'
+      # Image-build inputs the Dockerfiles COPY before `npm ci` — changes here
+      # broke the image invisibly for a month (June–July 2026: postinstall grew
+      # workspaces + tsconfigs moved to a shared base, and nothing ran this job).
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'patches/**'
+  # Weekly safety net for everything the path filter can't see (dep bumps,
+  # workspace growth, base-image drift). Runs on the self-hosted runner — free.
+  schedule:
+    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
