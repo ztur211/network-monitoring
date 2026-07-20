@@ -1,0 +1,17 @@
+{
+  "name": "agent-box",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume",
+    "source=${localEnv:HOME}/dotfiles/claude,target=/home/vscode/.agents-global,type=bind"
+  ],
+  "postCreateCommand": "sudo chown vscode:vscode /home/vscode/.claude && touch ~/.claude/CLAUDE.md && grep -q agents-global ~/.claude/CLAUDE.md || printf '@%s\\n' /home/vscode/.agents-global/AGENTS.md >> ~/.claude/CLAUDE.md",
+  "containerEnv": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}
