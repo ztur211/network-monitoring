@@ -119,11 +119,12 @@ services:
       # Same-origin demo: both the API base and the auth base are the public origin.
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
-      # Optional: an AI-optional / local-Ollama appliance boots without it (the
-      # Anthropic SDK tolerates a missing key at construction; only live AI calls
-      # fail until a key or AI_PROVIDER=openai-compatible is set).
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      AI_PROVIDER: ${AI_PROVIDER:-claude}
+      # AI is local-model-only and entirely optional. Unset AI_BASE_URL means no
+      # assistant: the API boots normally and chat falls back to a canned
+      # network-aware summary. No hosted provider exists, by design — the AI
+      # context carries device IPs and topology that must not leave the site.
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-qwen2.5}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
       # Proxy hops to trust for the real client IP (per-IP AI rate limiting +
       # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare

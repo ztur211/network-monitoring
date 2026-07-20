@@ -1,4 +1,4 @@
-import type { Config } from 'jest';
+import type { Config } from '@jest/types';
 
 /**
  * Web jest config — covers pure-TS logic files only (lib/*, store/*).
@@ -8,7 +8,7 @@ import type { Config } from 'jest';
  * down a small set of regression-prone TS modules without standing up the
  * full RN preset.
  */
-const config: Config = {
+const config: Config.InitialOptions = {
   moduleFileExtensions: ['js', 'mjs', 'json', 'ts', 'tsx'],
   rootDir: '.',
   testRegex: '(lib|store)/__tests__/.*\\.spec\\.ts$',

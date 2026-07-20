@@ -151,7 +151,7 @@ Copy `deploy/.env.example` → `deploy/.env`, then fill:
 - `BETTER_AUTH_SECRET` — `openssl rand -base64 48`
 - `SECRET_ENCRYPTION_KEY` — `openssl rand -base64 32` (SNMP credential crypto; boot-required)
 - `POSTGRES_PASSWORD` — `openssl rand -base64 24` (and matching `DATABASE_URL`)
-- `ANTHROPIC_API_KEY` — your key
+- `AI_BASE_URL` — optional; a local OpenAI-compatible model server (e.g. `http://host.docker.internal:11434/v1`). Leave empty to run without an assistant
 - `SEED_PASSWORD` — for the one-shot demo seed user
 - the single-origin URLs (filled once §2 is decided)
 
@@ -227,8 +227,8 @@ assistant → confirm live metrics tick.
 | `BETTER_AUTH_SECRET` | api | `openssl rand -base64 48` |
 | `BETTER_AUTH_URL` | api | `https://<origin>` |
 | `FRONTEND_URL` | api | `https://<origin>` (required — `main.ts` throws without it) |
-| `ANTHROPIC_API_KEY` | api | your key (spend cap set) |
-| `AI_PROVIDER` | api | `claude` |
+| `AI_BASE_URL` | api | optional; local OpenAI-compatible server, empty = no assistant |
+| `AI_MODEL` | api | `qwen2.5` |
 | `GEOCODING_USER_AGENT` | api | `NodeScope/1.0 (you@example.com)` |
 | `SEED_PASSWORD` | api (seed only) | demo user password |
 | `EXPO_PUBLIC_API_URL` | web (build-time) | `https://<origin>` |

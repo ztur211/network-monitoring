@@ -1,11 +1,11 @@
-import type { Config } from 'jest';
+import type { Config } from '@jest/types';
 
 /**
  * Shared jest settings for the api's three suites (unit / integration / e2e). These were byte-identical
  * across all three configs; each suite now spreads this base and overrides only what genuinely differs:
  * `testRegex` (which files it runs), `coverageDirectory`, and `testTimeout`.
  */
-export const base: Config = {
+export const base: Config.InitialOptions = {
   moduleFileExtensions: ['js', 'mjs', 'json', 'ts'],
   rootDir: 'src',
   transform: {

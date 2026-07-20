@@ -1,8 +1,8 @@
 import { OpenAICompatibleAdapter } from '../openai-compatible.adapter';
 
 /**
- * Unit tests for the OpenAI-compatible adapter (selected when AI_PROVIDER points
- * at an OpenAI-style endpoint, e.g. a local Ollama). Mocks global fetch — the only
+ * Unit tests for the OpenAI-compatible adapter — the only adapter, pointed at a
+ * local model server via AI_BASE_URL. Mocks global fetch — the only
  * branchy logic is response mapping and the SSE stream parser. Throwing on a
  * non-OK / bodyless response is correct: AiService catches it and returns the
  * documented graceful fallback.

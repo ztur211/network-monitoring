@@ -1,7 +1,7 @@
-import type { Config } from 'jest';
+import type { Config } from '@jest/types';
 import { base } from './jest.base.config';
 
-const config: Config = {
+const config: Config.InitialOptions = {
   ...base,
   testRegex: [
     '.*\\.(service|provider|state-machine|guard|interceptor|validator|cursor|adapter|config|filter)\\.spec\\.ts$',

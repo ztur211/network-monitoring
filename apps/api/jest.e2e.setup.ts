@@ -29,7 +29,6 @@ process.env.BETTER_AUTH_SECRET ??= 'test-secret-minimum-32-characters-long-aaa';
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
 process.env.FRONTEND_URL ??= 'http://localhost:8081';
 process.env.REDIS_URL ??= 'redis://localhost:6380';
-process.env.ANTHROPIC_API_KEY ??= 'test-dummy-key';
 process.env.NODE_ENV ??= 'test';
 process.env.STORAGE_ENDPOINT ??= 'http://localhost:9100';
 process.env.STORAGE_BUCKET ??= 'nodescope-test';

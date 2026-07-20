@@ -100,9 +100,10 @@ Paste the output into `.env`:
 SECRET_ENCRYPTION_KEY=<the value you just generated>
 ```
 
-That's the only required edit. (`ANTHROPIC_API_KEY` is only needed if you want
-to exercise the AI assistant; everything else works with the defaults, which
-match `docker-compose.yml`.)
+That's the only required edit. (`AI_BASE_URL` is only needed if you want to
+exercise the AI assistant, and it must point at a local OpenAI-compatible model
+server such as Ollama — there is no hosted provider. Everything else works with
+the defaults, which match `docker-compose.yml`.)
 
 ## 3. Start the backing services
 

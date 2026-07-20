@@ -32,7 +32,7 @@ Every value has a working local default **except `SECRET_ENCRYPTION_KEY`**, whic
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # or: openssl rand -base64 32
 ```
 
-(`ANTHROPIC_API_KEY` is only needed for the AI assistant; `BETTER_AUTH_SECRET` and `SEED_PASSWORD` ship with working dev placeholders.) `.env` is read by the backend; the web app reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_MAP_TILE_STYLE_URL`, whose defaults (`http://localhost:3000`, OpenFreeMap) are what `npm run dev:web` expects.
+(`AI_BASE_URL` is only needed for the AI assistant, and must point at a local OpenAI-compatible model server such as Ollama — there is no hosted provider; `BETTER_AUTH_SECRET` and `SEED_PASSWORD` ship with working dev placeholders.) `.env` is read by the backend; the web app reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_MAP_TILE_STYLE_URL`, whose defaults (`http://localhost:3000`, OpenFreeMap) are what `npm run dev:web` expects.
 
 ### 3. Start local services
 
@@ -112,9 +112,9 @@ The platform topology is codified in [`.do/app.yaml`](./.do/app.yaml) — that f
    doctl apps create --spec .do/app.yaml
    ```
    This creates two components in one app: the NestJS API (2 × `basic-xxs`) and the Expo Web static site. Note the returned app UUID for `DO_APP_ID`.
-5. **Attach the secrets** (DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, ANTHROPIC_API_KEY) via the DO console or `doctl apps update <APP_ID> --spec -`. The spec declares them with empty values so the file round-trips without leaking them, but they must be set once per app.
+5. **Attach the secrets** (DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET) via the DO console or `doctl apps update <APP_ID> --spec -`. The spec declares them with empty values so the file round-trips without leaking them, but they must be set once per app.
 6. **DNS** — CNAME `api.nodescope.io` and `app.nodescope.io` to the App Platform default ingress hostname (visible in the DO console after the first deploy).
-7. **Anthropic spend cap** — set a hard spend cap in the Anthropic console **before** the first production deploy. This is the sixth layer of AI rate limiting and the only one that lives outside this codebase.
+7. **AI assistant** — the assistant is local-model-only (no hosted provider, no API key, no spend to cap). Set `AI_BASE_URL` to an OpenAI-compatible server reachable from the API, or leave it empty to deploy without an assistant.
 
 ### Updating the platform spec
 

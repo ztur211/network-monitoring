@@ -4,7 +4,6 @@ import { RedisModule } from '../redis/redis.module';
 import { DataSourcesModule } from '../data-sources/data-sources.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { AI_PROVIDER_TOKEN } from './adapters/ai-provider.interface';
-import { ClaudeAdapter } from './adapters/claude.adapter';
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible.adapter';
 import {
   NETWORK_CONTEXT_PROVIDER,
@@ -29,15 +28,12 @@ import { AiController } from './ai.controller';
   imports: [PrismaModule, RedisModule, DataSourcesModule, PermissionsModule],
   controllers: [AiController],
   providers: [
-    {
-      provide: AI_PROVIDER_TOKEN,
-      useFactory: () => {
-        const provider = process.env.AI_PROVIDER ?? 'claude';
-        return provider === 'openai-compatible'
-          ? new OpenAICompatibleAdapter()
-          : new ClaudeAdapter();
-      },
-    },
+    // One adapter, no provider selection. Ollama, llama.cpp, vLLM and LM Studio
+    // all speak the OpenAI-compatible wire format, so the runtime is chosen by
+    // pointing AI_BASE_URL at it. Hosted providers are deliberately unreachable:
+    // the network context carries device IPs, topology and circuit IDs, which
+    // must never leave the building.
+    { provide: AI_PROVIDER_TOKEN, useClass: OpenAICompatibleAdapter },
     { provide: NETWORK_CONTEXT_PROVIDER, useClass: NetworkContextProvider },
     NetworkContextRepository,
     { provide: REALTIME_CONTEXT_PROVIDER, useClass: RealtimeContextProvider },

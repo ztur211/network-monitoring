@@ -16,9 +16,12 @@ export interface AiProviderAdapter {
   complete(payload: AiCompletionPayload): Promise<AiResponse>;
   stream(payload: AiCompletionPayload, onChunk: (token: string) => void): Promise<AiResponse>;
   /**
-   * Optional liveness probe for availability-aware provider selection (prefer a local model only when
-   * it's actually running). Implemented by the local/OpenAI-compatible adapter; absent on adapters
-   * whose availability can't be cheaply checked without a billable call (e.g. Claude).
+   * Liveness probe. Optional on the interface so a test double can omit it.
+   *
+   * NOTE: nothing calls this yet. `AiService` relies on its graceful-degradation
+   * path instead, so an unreachable model server surfaces as the canned
+   * network-aware fallback rather than an error. Wire this up if the client ever
+   * needs to distinguish "no model configured" from "model is down".
    */
   isAvailable?(): Promise<boolean>;
 }

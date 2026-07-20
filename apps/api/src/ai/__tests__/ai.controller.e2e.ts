@@ -8,7 +8,7 @@ import { AI_PROVIDER_TOKEN } from '../adapters/ai-provider.interface';
 
 // AI messaging is WebSocket-only; the HTTP surface is just GET /usage and
 // DELETE /conversation/:id. The adapter is mocked only so AppModule boots
-// without constructing a live Claude client.
+// without reaching for a real model server.
 const mockAdapter = {
   complete: jest.fn(),
   stream: jest.fn(),

@@ -34,10 +34,12 @@ async function errorDetail(res: { text?: () => Promise<string> }): Promise<strin
 }
 
 /**
- * Talks to any OpenAI-compatible chat endpoint — primarily a LOCAL model server (Ollama / llama.cpp /
- * LM Studio), which is the local-first AI path (see docs/design/local-ai-and-voice.md). Hardened for
- * local serving: a request timeout (a hung local model must not hang the request forever) and an
- * availability probe so provider selection can prefer the local model when it's actually up.
+ * Talks to any OpenAI-compatible chat endpoint. This is the ONLY adapter: hosted providers were
+ * removed on 2026-07-19 because the AI context carries device IPs, topology and circuit IDs that
+ * must not leave the site (docs/design/2026-07-19-systems-architecture-and-data-flows.md). Ollama,
+ * llama.cpp, vLLM and LM Studio all speak this format, so the runtime is chosen by AI_BASE_URL.
+ * Hardened for local serving: a request timeout, since a hung local model must not hang the request
+ * forever.
  */
 export class OpenAICompatibleAdapter implements AiProviderAdapter {
   private readonly baseUrl: string;
@@ -46,9 +48,14 @@ export class OpenAICompatibleAdapter implements AiProviderAdapter {
   private readonly timeoutMs: number;
 
   constructor() {
-    this.baseUrl = process.env.AI_BASE_URL ?? 'http://localhost:11434/v1';
-    this.apiKey = process.env.AI_API_KEY ?? 'ollama';
-    this.model = process.env.AI_MODEL ?? 'llama3';
+    // `||` not `??`: the appliance ships AI_BASE_URL="" to mean "no assistant
+    // configured". An empty string is not nullish, so `??` would leave baseUrl
+    // empty and every call would throw an invalid-URL TypeError instead of a
+    // connection error. Falling back to the local default keeps the failure a
+    // plain unreachable-server one, which AiService degrades gracefully.
+    this.baseUrl = process.env.AI_BASE_URL?.trim() || 'http://localhost:11434/v1';
+    this.apiKey = process.env.AI_API_KEY?.trim() || 'ollama';
+    this.model = process.env.AI_MODEL?.trim() || 'llama3';
     // Guard a misconfigured AI_TIMEOUT_MS: parseInt('abc') → NaN, and setTimeout(_, NaN) fires
     // immediately, which would abort every request. Fall back to the default on NaN/≤0.
     const t = parseInt(process.env.AI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS), 10);

@@ -51,8 +51,9 @@ async function bootstrap() {
   app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
 
   // CSP whitelist per SAD §12.4: self + OpenFreeMap tiles + Nominatim geocoder.
-  // Anthropic API is server-to-server only (never called from the browser), so
-  // it is not in connect-src. NestJS responses (REST + Better Auth) are same-origin.
+  // The AI model server is server-to-server only (never called from the browser),
+  // so it is not in connect-src. NestJS responses (REST + Better Auth) are
+  // same-origin.
   app.use(
     helmet({
       contentSecurityPolicy: {
