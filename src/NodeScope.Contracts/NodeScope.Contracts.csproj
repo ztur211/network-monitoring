@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DTOs and integration events. Shared with the agent and the desktop client,
+    so this must stay free of server-only dependencies (no EF, no ASP.NET) - it
+    is compiled into a NativeAOT binary at the other end.
+    Deliberately references nothing.
+  -->
+
+</Project>

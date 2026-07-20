@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Composition root: DI wiring, middleware pipeline, auth schemes, and the
+    endpoint composition that calls each module's one registration extension
+    method. Contains no business logic.
+
+    References each module's Infrastructure project and nothing else - the
+    Application and Domain layers arrive transitively. This is the only project
+    in the solution permitted to reference more than one module.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Modules/Identity/NodeScope.Modules.Identity.Infrastructure/NodeScope.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="../Modules/Inventory/NodeScope.Modules.Inventory.Infrastructure/NodeScope.Modules.Inventory.Infrastructure.csproj" />
+    <ProjectReference Include="../Modules/Monitoring/NodeScope.Modules.Monitoring.Infrastructure/NodeScope.Modules.Monitoring.Infrastructure.csproj" />
+    <ProjectReference Include="../Modules/Assistant/NodeScope.Modules.Assistant.Infrastructure/NodeScope.Modules.Assistant.Infrastructure.csproj" />
+    <ProjectReference Include="../Modules/Realtime/NodeScope.Modules.Realtime.Infrastructure/NodeScope.Modules.Realtime.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

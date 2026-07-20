@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pure cross-cutting abstractions: marker interfaces (IAuditable), the event
+    bus contract, and the neutral home for cross-module service interfaces.
+
+    This project exists because of the three-project-per-module split. If Domain
+    referenced NodeScope.Platform directly it would transitively depend on EF
+    Core, and "the domain model does not know about persistence" would stop
+    being true the moment the first module compiled. Splitting the interfaces
+    out keeps that boundary a compile error rather than a convention.
+
+    IRealtimeService lives here. Decision 2: this is the neutral home that lets
+    permissions.service.ts:37 drop its moduleRef service-locator hack.
+
+    Deliberately references nothing - not even Contracts.
+  -->
+
+</Project>

@@ -1,0 +1,107 @@
+root = true
+
+# ---------------------------------------------------------------------------
+# Layer 2 of the three enforcement layers in Decision 6 of
+# docs/migration/csharp-migration-decisions.md.
+#
+# Why this file carries weight even though Directory.Build.props already sets
+# TreatWarningsAsErrors: most CA rules under AnalysisLevel=latest-all ship at
+# *suggestion* or *silent* severity. They never become warnings, so they never
+# become errors, so TreatWarningsAsErrors alone does nothing for them. Elevating
+# a rule here is what actually puts it in the build's path.
+# ---------------------------------------------------------------------------
+
+# The [*] block stays deliberately small. This file sits at the repo root and so
+# also applies to the TypeScript tree; these four settings are editor hygiene
+# that no JS tooling disagrees with.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{js,jsx,ts,tsx,json,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_style = space
+indent_size = 2
+
+[*.cs]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+# --- The rule that matters most --------------------------------------------
+# CA1852: seal internal types that are never inherited from. This is what makes
+# `sealed` the default and inheritance an explicit, deliberate opt-in. Decision 6
+# allows inheritance for framework integration (DbContext, Hub, Exception,
+# Migration) and refuses it for code reuse; this rule enforces exactly that split
+# without needing anyone to remember it.
+dotnet_diagnostic.CA1852.severity = error
+
+# --- Async and lifetime correctness ----------------------------------------
+# Weighted heavily on purpose. The migration doc is explicit that a compiled
+# language does NOT fix the async-lifetime bugs this project has fought (prober
+# pileup, socket leaks, shutdown ordering) - a leaked Task in C# leaks exactly
+# like a leaked timer in Node. These rules are the part of that problem a tool
+# genuinely can catch, so they are errors rather than suggestions.
+dotnet_diagnostic.CA2007.severity = none      # ConfigureAwait: not wanted in ASP.NET Core (no sync context)
+dotnet_diagnostic.CA2016.severity = error     # forward CancellationToken to the callee
+dotnet_diagnostic.CA1849.severity = error     # do not block on async calls (.Result/.Wait)
+dotnet_diagnostic.CA2012.severity = error     # use ValueTask correctly
+dotnet_diagnostic.CA1063.severity = error     # implement IDisposable correctly
+dotnet_diagnostic.CA2213.severity = error     # disposable fields must be disposed
+dotnet_diagnostic.CA2000.severity = error     # dispose objects before losing scope
+dotnet_diagnostic.VSTHRD200.severity = none   # Async suffix naming, handled by CA1711 style
+
+# --- Security ---------------------------------------------------------------
+dotnet_diagnostic.CA2100.severity = error     # SQL injection in raw queries (20 raw SQL sites port over)
+dotnet_diagnostic.CA5350.severity = error     # weak crypto
+dotnet_diagnostic.CA5351.severity = error     # broken crypto
+dotnet_diagnostic.CA3075.severity = error     # insecure XML (IFC/BCF parsing)
+
+# --- Nullability ------------------------------------------------------------
+dotnet_diagnostic.CS8600.severity = error
+dotnet_diagnostic.CS8602.severity = error
+dotnet_diagnostic.CS8603.severity = error
+dotnet_diagnostic.CS8604.severity = error
+dotnet_diagnostic.CS8618.severity = error
+
+# --- Style: modern C#, enforced ---------------------------------------------
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_namespace_declarations = file_scoped:error
+csharp_prefer_braces = true:error
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+dotnet_style_require_accessibility_modifiers = always:error
+dotnet_style_readonly_field = true:error
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+
+# using directives outside the namespace, sorted, System first
+csharp_using_directive_placement = outside_namespace:error
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# --- Naming: private fields are _camelCase ----------------------------------
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = error
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+# --- Relaxed in test projects ------------------------------------------------
+# Test classes are instantiated by the xUnit runner and assert on values that
+# analyzers read as unused; CA1707 fights the Method_Scenario_Expectation naming
+# convention that makes a failing test name self-explaining.
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none      # underscores in member names
+dotnet_diagnostic.CA1852.severity = none      # xUnit needs test classes unsealed
+dotnet_diagnostic.CA2007.severity = none

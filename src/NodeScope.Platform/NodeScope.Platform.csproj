@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Cross-cutting implementation: EF base types and conventions, cache, audit,
+    event bus. Infrastructure layers reference this; Domain and Application
+    layers must not (they get NodeScope.Platform.Abstractions instead).
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
+    <ProjectReference Include="../NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Monitoring use cases, and the ports (interfaces) that Infrastructure implements.
+    Maps Domain types onto Contracts DTOs.
+
+    Does NOT reference NodeScope.Platform - persistence stays out of the use
+    case layer by construction.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Modules.Monitoring.Domain/NodeScope.Modules.Monitoring.Domain.csproj" />
+    <ProjectReference Include="../../../NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
+    <ProjectReference Include="../../../NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

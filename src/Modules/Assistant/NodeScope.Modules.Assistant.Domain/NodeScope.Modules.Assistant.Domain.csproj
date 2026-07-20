@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Assistant domain model: entities, value objects, domain events, domain services,
+    and the invariants that hold regardless of how anything is stored or served.
+
+    References Platform.Abstractions ONLY. No EF, no ASP.NET, no other module.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../../../NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

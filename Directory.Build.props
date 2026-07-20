@@ -1,0 +1,52 @@
+<Project>
+
+  <!--
+    Repo-wide build settings, picked up automatically by every .csproj beneath
+    this directory. Layer 1 of the three enforcement layers in Decision 6 of
+    docs/migration/csharp-migration-decisions.md.
+
+    These are installed before the first module is ported, deliberately: a style
+    preference held in your head erodes when reviewing generated code by volume,
+    because each violation looks reasonable in isolation. A preference encoded in
+    the build never reaches review.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Warnings are errors everywhere, including analyzer diagnostics elevated in
+      .editorconfig. AnalysisLevel=latest-all opts into the full CA ruleset
+      rather than the small default subset - notably CA1852 (seal internal
+      types), which is what makes `sealed` the default and inheritance an
+      explicit opt-in rather than the path of least resistance.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Deterministic, source-linked builds. ContinuousIntegrationBuild is set by
+      the build pipeline rather than hardcoded, so local builds keep usable
+      absolute paths in stack traces.
+    -->
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591 (missing XML comment on a public member) is off. The documentation
+      file is generated for the analyzer's benefit, not to force a doc comment
+      onto every DTO property.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

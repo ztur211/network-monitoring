@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Monitoring adapters, inbound and outbound: the module DbContext and EF configuration
+    (Decision 5: per-module contexts), external clients, and the minimal-API
+    endpoint group this module exposes as a single extension method for the host
+    to compose (Decision 6 - no ControllerBase anywhere).
+
+    Endpoints live here rather than in a fourth Presentation project because
+    Decision 2 names exactly three layers. If HTTP and persistence concerns
+    start colliding in review, splitting Presentation out is an incremental,
+    per-module change - which is the reversibility property Decision 2 was
+    chosen for.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Modules.Monitoring.Application/NodeScope.Modules.Monitoring.Application.csproj" />
+    <ProjectReference Include="../../../NodeScope.Platform/NodeScope.Platform.csproj" />
+  </ItemGroup>
+
+</Project>

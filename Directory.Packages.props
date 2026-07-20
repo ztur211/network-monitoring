@@ -1,0 +1,40 @@
+<Project>
+
+  <!--
+    Central Package Management: every NuGet version for the whole solution is
+    declared here exactly once, and .csproj files carry bare <PackageReference
+    Include="..." /> with no Version attribute.
+
+    This exists because dependency sprawl is motivation #2 of the migration
+    (docs/migration/csharp-migration-decisions.md). The TypeScript monorepo
+    reached `legacy-peer-deps=true` and patch-package partly because versions
+    were scattered across seven package.json files and drifted against each
+    other. One file makes that drift impossible rather than merely visible.
+
+    Versions are deliberately left off until the packages are actually needed -
+    an empty list is the honest starting state, and each entry gets pinned when
+    the module that needs it lands.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Test stack (Decision 18: xUnit + Testcontainers).
+
+      NetArchTest was pinned here and then removed: the architecture rules ended
+      up expressible with plain reflection over assembly references, so the
+      dependency bought nothing. Reconsider it if a rule is ever needed at
+      namespace granularity *within* an assembly, which reflection handles
+      poorly. Testcontainers gets pinned when the first module-level integration
+      test lands.
+    -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+
+</Project>

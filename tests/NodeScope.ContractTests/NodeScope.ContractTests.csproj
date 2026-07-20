@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Decision 4: the parity suite. Talks to a BASE_URL over HTTP and references
+    NO implementation project, by design - it must be pointable at the NestJS
+    API and the C# API without recompilation. Green against Node before the port
+    begins, then re-run against the C# host as modules land.
+
+    The absence of a ProjectReference here is load-bearing, not an oversight.
+    Contracts is referenced only for DTO shapes; if that ever tempts anyone
+    toward referencing a module, the suite has stopped being black-box.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

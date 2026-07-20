@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Layer 3 of Decision 6's enforcement. Covers what project references and
+    analyzers cannot express:
+      - no type in our assemblies has a base class outside the allowlist
+        (DbContext, Hub, Exception, Migration)
+      - modules do not reference each other, even transitively
+      - Domain and Application carry no EF Core / ASP.NET dependency
+
+    Scope note (verified 2026-07-20): the build system already blocks more than
+    it appears to. Illegal code never compiles, and layer inversion inside a
+    module is impossible to even enable - Domain -> Infrastructure closes a cycle
+    and MSBuild rejects it with MSB4006 at restore. The one gap these rules cover
+    is a deliberate .csproj edit adding a cross-module reference, which is
+    acyclic and therefore compiles fine.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/NodeScope.Api/NodeScope.Api.csproj" />
+  </ItemGroup>
+
+</Project>
