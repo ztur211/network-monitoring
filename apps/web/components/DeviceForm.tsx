@@ -50,7 +50,11 @@ const schema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// `floor` is entered as text and transformed to a number, so input and output
+// types differ. Declaring both on useForm is what lets handleSubmit hand back the
+// transformed values; without it, `floor` arrived as a string and needed a cast.
 type FormValues = z.input<typeof schema>;
+type FormOutput = z.output<typeof schema>;
 
 interface DeviceFormProps {
   device?: DeviceDto | null;
@@ -100,7 +104,7 @@ export function DeviceForm({
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FormValues>({
+  } = useForm<FormValues, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
@@ -132,7 +136,7 @@ export function DeviceForm({
       category: values.category,
       ...(effectiveLatitude !== null && { latitude: effectiveLatitude }),
       ...(effectiveLongitude !== null && { longitude: effectiveLongitude }),
-      ...(values.floor !== undefined && { floor: values.floor as unknown as number }),
+      ...(values.floor !== undefined && { floor: values.floor }),
       ...(values.floorLabel && { floorLabel: values.floorLabel }),
       ...(values.ipAddress && { ipAddress: values.ipAddress }),
       ...(values.macAddress && { macAddress: values.macAddress }),

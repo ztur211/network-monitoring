@@ -18,7 +18,12 @@ const schema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-type FormData = z.infer<typeof schema>;
+// `bandwidth` runs through z.preprocess, so the schema's input and output types
+// genuinely differ: the field holds whatever the text input produced on the way
+// in, and a validated number on the way out. useForm takes both, which is what
+// makes `data` in handleSubmit the transformed shape rather than the raw one.
+type FormInput = z.input<typeof schema>;
+type FormData = z.output<typeof schema>;
 
 interface CircuitFormProps {
   mode: 'create' | 'edit';
@@ -39,7 +44,7 @@ export function CircuitForm({ mode, circuit, onSubmit, onCancel, isSubmitting }:
     formState: { errors },
     watch,
     setValue,
-  } = useForm<FormData>({
+  } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       ispName: circuit?.ispName ?? '',
