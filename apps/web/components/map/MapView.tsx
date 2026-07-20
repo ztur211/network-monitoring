@@ -3,6 +3,11 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import maplibregl from 'maplibre-gl';
+// Bundled, not CDN-loaded: the appliance runs on a LAN that may have no WAN at
+// all, and a monitoring map that goes unstyled during an outage fails the same
+// test as a dashboard that goes dark. Importing it also keeps the CSS locked to
+// the same maplibre-gl version as the JS above.
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { DeviceDto, FiberRunDto, DeviceCategory, DEVICE_CATEGORY_CONFIG } from '@nodescope/shared';
 import { useDeviceStore } from '../../store/device.store';
@@ -75,16 +80,6 @@ export function MapView({
     useUiStore();
   const user = useAuthStore((s) => s.user);
   const metrics = useRealtimeStore((s) => s.metrics);
-
-  // Inject MapLibre CSS once
-  useEffect(() => {
-    if (document.getElementById('maplibre-gl-css')) return;
-    const link = document.createElement('link');
-    link.id = 'maplibre-gl-css';
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
-    document.head.appendChild(link);
-  }, []);
 
   // Initialize map
   useEffect(() => {
