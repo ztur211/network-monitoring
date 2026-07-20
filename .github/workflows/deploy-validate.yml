@@ -10,27 +10,31 @@ name: Deploy Stack Validation
 # the image actually changes (keeps normal CI fast / saves Actions minutes).
 
 on:
-  # Only deploy config + Docker-build inputs trigger this heavy (~15 min) build —
-  # app-code buildability is already covered by the normal CI `build` job. Trigger
-  # it manually (workflow_dispatch) after significant app/dependency changes that
-  # could affect the production image or boot.
-  pull_request:
-    paths:
-      - 'deploy/**'
-      - '!deploy/**.md'          # docs-only edits don't need the full build
-      - '.dockerignore'
-      - 'scripts/smoke.mjs'
-      - '.github/workflows/deploy-validate.yml'
-      # Image-build inputs the Dockerfiles COPY before `npm ci` — changes here
-      # broke the image invisibly for a month (June–July 2026: postinstall grew
-      # workspaces + tsconfigs moved to a shared base, and nothing ran this job).
-      - 'package.json'
-      - 'tsconfig.base.json'
-      - 'patches/**'
-  # Weekly safety net for everything the path filter can't see (dep bumps,
-  # workspace growth, base-image drift). Runs on the self-hosted runner — free.
-  schedule:
-    - cron: '0 6 * * 1'
+  # Automatic triggers disabled 2026-07-19 along with ci.yml - the self-hosted
+  # runner has been offline since 2026-07-10, so the weekly cron and the PR
+  # trigger only produced runs that GitHub cancelled 24h later. Dispatch this
+  # manually before a release, or run the same flow locally:
+  #
+  #   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+  #   node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
+  #
+  # The path filter below is preserved verbatim: it encodes which files can break
+  # the production image invisibly. Uncomment both blocks to restore automation.
+  #   pull_request:
+  #     paths:
+  #       - 'deploy/**'
+  #       - '!deploy/**.md'          # docs-only edits don't need the full build
+  #       - '.dockerignore'
+  #       - 'scripts/smoke.mjs'
+  #       - '.github/workflows/deploy-validate.yml'
+  #       # Image-build inputs the Dockerfiles COPY before `npm ci` - changes here
+  #       # broke the image invisibly for a month (June-July 2026: postinstall grew
+  #       # workspaces + tsconfigs moved to a shared base, and nothing ran this job).
+  #       - 'package.json'
+  #       - 'tsconfig.base.json'
+  #       - 'patches/**'
+  #   schedule:
+  #     - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -54,12 +58,9 @@ jobs:
           POSTGRES_DB=nodescope
           BETTER_AUTH_SECRET=ci-test-secret-minimum-32-characters-long
           SECRET_ENCRYPTION_KEY=Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
-          ANTHROPIC_API_KEY=sk-ci-placeholder-not-used-by-smoke
-          AI_PROVIDER=claude
           GEOCODING_USER_AGENT=NodeScope/1.0 (ci@example.com)
           WEB_PORT=8080
           SITE_ADDRESS=:80
-          SECRET_ENCRYPTION_KEY=bm9kZXNjb3BlLWNpLXNlY3JldC1rZXktMzJieXRlcyE=
           STORAGE_DRIVER=fs
           ENV
 

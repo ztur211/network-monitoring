@@ -1,10 +1,21 @@
 name: CI
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+  # Automatic triggers disabled 2026-07-19. The only registered runner
+  # (archlinux-nodescope, self-hosted) went offline on 2026-07-10, so every push
+  # and PR queued a run that sat for 24h and was then cancelled by GitHub - six
+  # dead runs and no signal. Pre-prod and single-developer, so verification runs
+  # locally until the C# cutover needs a parity gate:
+  #
+  #   docker compose -f docker-compose.test.yml up -d
+  #   npm run test:integration && npm run test:e2e
+  #
+  # Restore the push/pull_request triggers below once a reliable runner exists.
+  #   push:
+  #     branches: [main, master]
+  #   pull_request:
+  #     branches: [main, master]
+  workflow_dispatch:
 
 # Cancel an in-progress run when a newer commit lands on the same ref, so a burst of pushes
 # (e.g. merging a stack of PRs) doesn't queue a full CI run per commit - only the latest runs.
