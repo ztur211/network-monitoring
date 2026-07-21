@@ -101,9 +101,13 @@ credential families (Decision 7) carried by `Auth.WithHeader`.
       (accepts x-agent-token OR org token as x-ingest-token/Bearer; 202 `{ accepted }`;
       OWNER-only mint `ORG_003`; foreign device `ORG_008`; over-cap 413 `GEN_005` vs malformed
       400 `GEN_001`; round-trip proven through device-status = UP)
-- [~] monitoring.controller (4): device-status, metrics, metric-names, status-events
-      (device-status GET touched only as the ingest round-trip assertion; the read-side slice -
-      metrics/metric-names/status-events, F3 scope, MON_001/MON_002 windows - is still open)
+- [x] monitoring.controller (4): device-status, metrics, metric-names, status-events
+      (`Monitoring/MonitoringReadContractTests.cs`: UNKNOWN + null fields for a never-probed
+      device, bucketed averages for reachable + latency_ms, metric-names, status-events
+      newest-first honoring `?limit`, the window guards MON_001 (inverted) / MON_002 (bucket
+      cap) vs GEN_001 (non-allow-listed bucket, validation - fires before the window rules),
+      and invisible-not-forbidden DEVICE_001 for unknown/foreign/out-of-scope alike with the
+      F3 flip: a MEMBER 404s until granted the governing site, then reads the series)
 - [ ] snmp.controller (9): credentials + oid-profiles CRUD + assign
 - [ ] bandwidth.controller (2): GET/POST `/api/bandwidth/echo`
 
@@ -161,7 +165,7 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 143 tests green.
+**Done so far:** 152 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -179,7 +183,7 @@ adapter, not at the wire level (Decision 4).
   conflict shared across all four, and the module-specific invariants: the
   property-nesting rules, the one-network-per-org limit, the summary/detail
   `homePublicIp` split, cursor vs offset pagination, and the device placement rule.
-- **Monitoring machine-auth (28):** the agents/agent-ingest/ingest surface under
+- **Monitoring machine-auth + reads (37):** the agents/agent-ingest/ingest surface under
   `tests/NodeScope.ContractTests/Monitoring/`, covering both custom-header credential
   families (`x-agent-token` / `x-ingest-token`) end to end. `Monitoring/MonitoringScaffold.cs`
   mints the credentials the way an operator and collector would - an owner issues an
@@ -190,7 +194,12 @@ adapter, not at the wire level (Decision 4).
   actually invalidates a live machine token; the ingest test proves a machine credential's
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
-  member, the case `ORG_003` exists to reject.
+  member, the case `ORG_003` exists to reject. The read side
+  (`Monitoring/MonitoringReadContractTests.cs`) closes monitoring.controller: the UNKNOWN
+  snapshot, the bucketed series and names the ingest wrote, status-events newest-first with
+  `?limit`, the MON_001/MON_002 window guards vs the GEN_001 validation layer, and the
+  invisible-not-forbidden DEVICE_001 contract proven across unknown, foreign-org, and
+  out-of-F3-scope devices - including the grant flip that makes a member's 404 turn 200.
 - **Realtime adapter (47):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
