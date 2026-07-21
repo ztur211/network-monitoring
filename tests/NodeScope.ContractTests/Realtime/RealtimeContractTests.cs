@@ -215,6 +215,85 @@ public class RealtimeContractTests
     }
 
     [Fact]
+    public async Task Owner_socket_receives_member_added_when_an_invitation_is_accepted()
+    {
+        // Member events fan out to the org room (pushToOrg), which every member socket
+        // joins - so the OWNER sees them. The whole invite -> sign-up -> accept flow runs
+        // after the owner socket is ready; the accept step is what emits member:added.
+        var org = await _fixture.ProvisionOrgAsync();
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var member = await OrgProvisioning.AddMemberAsync(_api, org);
+
+        var evt = await socket.WaitForEventAsync("v1:org:member:added", p => UserIdIs(p, member.UserId));
+        Assert.Equal(member.UserId, evt.GetProperty("userId").GetString());
+        Assert.Equal("MEMBER", evt.GetProperty("role").GetString());
+        Assert.True(evt.TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_member_updated_when_a_member_role_changes()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var member = await OrgProvisioning.AddMemberAsync(_api, org);
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var patch = await _api.PatchAsync(
+            $"v1/organizations/me/members/{member.UserId}",
+            new { role = "ADMIN" },
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, patch.Status);
+
+        var evt = await socket.WaitForEventAsync("v1:org:member:updated", p => UserIdIs(p, member.UserId));
+        Assert.Equal(member.UserId, evt.GetProperty("userId").GetString());
+        Assert.Equal("ADMIN", evt.GetProperty("role").GetString());
+        Assert.True(evt.TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_member_removed_when_a_member_is_removed()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var member = await OrgProvisioning.AddMemberAsync(_api, org);
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var removed = await _api.DeleteAsync($"v1/organizations/me/members/{member.UserId}", org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, removed.Status);
+
+        var evt = await socket.WaitForEventAsync("v1:org:member:removed", p => UserIdIs(p, member.UserId));
+        Assert.Equal(member.UserId, evt.GetProperty("userId").GetString());
+    }
+
+    [Fact]
+    public async Task Renaming_the_org_emits_no_realtime_event()
+    {
+        // v1:org:updated is in the event catalogue but no code path emits it: the org
+        // rename (PATCH v1/organizations/me) is realtime-silent, unlike every entity
+        // mutation. The C# port must preserve that silence, so it is asserted here.
+        var org = await _fixture.ProvisionOrgAsync();
+
+        var before = await _api.GetAsync("v1/organizations/me", org.OwnerCookie);
+        var baseVersion = before.Data.GetProperty("version").GetInt32();
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var patch = await _api.PatchAsync(
+            "v1/organizations/me",
+            new
+            {
+                baseVersion,
+                changes = new[] { new { field = "name", oldValue = (string?)null, newValue = $"rt-{Guid.NewGuid():N}" } },
+            },
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, patch.Status);
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => socket.WaitForEventAsync("v1:org:updated", timeout: NegativeWindow));
+    }
+
+    [Fact]
     public async Task Ping_is_answered_with_a_pong()
     {
         var org = await _fixture.ProvisionOrgAsync();
@@ -269,6 +348,9 @@ public class RealtimeContractTests
 
     private static bool DeviceIdIs(JsonElement payload, string deviceId) =>
         payload.TryGetProperty("deviceId", out var d) && d.GetString() == deviceId;
+
+    private static bool UserIdIs(JsonElement payload, string userId) =>
+        payload.TryGetProperty("userId", out var u) && u.GetString() == userId;
 
     private async Task PatchDeviceNameAsync(string deviceId, int baseVersion, string newName, Auth auth)
     {
