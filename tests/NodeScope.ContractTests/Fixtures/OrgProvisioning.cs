@@ -76,4 +76,38 @@ public static class OrgProvisioning
 
         return new ProvisionedOrg(organizationId, name, owner);
     }
+
+    /// <summary>
+    /// Adds a fresh, non-owner member to <paramref name="org"/> through the real
+    /// invitation flow: the owner invites an email at <paramref name="role"/>, a new
+    /// user signs up as that email, then accepts the token. Returns the member's
+    /// session. This is how the suite gets a principal that is inside the org but
+    /// under OWNER - the case the role-gated endpoints (agent management, ingest-token)
+    /// must reject with <c>ORG_003</c>, and one plain sign-up cannot produce.
+    /// </summary>
+    public static async Task<UserSession> AddMemberAsync(
+        ApiClient api,
+        ProvisionedOrg org,
+        string role = "MEMBER",
+        CancellationToken cancellationToken = default)
+    {
+        var email = AuthWorkflow.NewEmail("member");
+
+        var invite = await api.PostAsync(
+            "v1/organizations/me/invitations",
+            new { email, role },
+            org.OwnerCookie,
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, invite.Status);
+        var token = invite.Data.GetProperty("token").GetString()
+            ?? throw new InvalidOperationException("invitation response carried no token");
+
+        // The invitee must be a fresh, org-less account whose email matches the invite.
+        var member = await AuthWorkflow.SignUpAsync(api, email: email, name: "Contract Org Member", cancellationToken: cancellationToken);
+
+        var accept = await api.PostAsync("v1/invitations/accept", new { token }, member.AsCookie(), cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, accept.Status);
+
+        return member;
+    }
 }
