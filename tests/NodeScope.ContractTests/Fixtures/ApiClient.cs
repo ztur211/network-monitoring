@@ -33,6 +33,31 @@ public sealed class ApiClient
     public Task<ApiResponse> DeleteAsync(string path, Auth? auth = null, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, path, null, auth, cancellationToken);
 
+    /// <summary>
+    /// POSTs raw bytes as the request body - the shape of the building-model version
+    /// upload, which streams the file straight off the request rather than multipart.
+    /// </summary>
+    public async Task<ApiResponse> PostRawAsync(
+        string path,
+        byte[] body,
+        string contentType = "application/octet-stream",
+        Auth? auth = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path.TrimStart('/'), UriKind.Relative));
+        request.Content = new ByteArrayContent(body);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        ApplyAuth(request, auth);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? cookies.ToArray()
+            : [];
+
+        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, setCookies, text);
+    }
+
     private async Task<ApiResponse> SendAsync(
         HttpMethod method,
         string path,

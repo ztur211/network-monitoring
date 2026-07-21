@@ -79,7 +79,9 @@ controller, so the tracker doubles as the port work-list.
 - [~] bcf.controller (7): import/export/topics/comments under `/api/v1/buildings/:propertyId/bcf` + `/api/v1/bcf/topics/:id`
       (topic create/patch/comment happy paths exercised by `Realtime/`; import/export,
       topic list/detail, and the `BCF_005`/`PROP_001` envelopes still open)
-- [ ] building-models.controller (7): model versions/active/file (needs storage)
+- [~] building-models.controller (7): model versions/active/file (needs storage)
+      (raw-body upload + PUT active + DELETE version happy paths exercised by `Realtime/`
+      against the test MinIO; the reads, file downloads, and `MODEL_00x` envelopes still open)
 - [ ] export.controller (1): GET `/api/v1/buildings/:propertyId/export/ifc`
 - [ ] clients.controller (1): GET `/api/v1/clients`
 - [~] onboarding.controller (2): POST `/api/v1/onboarding/{turn,skip}`
@@ -122,18 +124,20 @@ adapter, not at the wire level (Decision 4).
       `IRealtimeClient` + `SocketIoRealtimeClient` over SocketIOClient; cookie-authed
       connect, buffered consume-once `WaitForEventAsync`, ping/pong, unauth rejection,
       **cross-org scope isolation**, and the onHome readiness barrier - `Realtime/RealtimeScaffold.cs`)
-- [~] Device / circuit / fiber-run / connection / network mutation events
+- [x] Device / circuit / fiber-run / connection / network mutation events
       (device, circuit, fiber-run, and connection updated + deleted, network updated on
       create, charter added + removed - added carries the charter id, removed only the pair;
       device:status proven edge-triggered through the whole anti-flap ladder: first-check
       UP emits, one failure emits WARNING, a second same-state failure is silent, and the
       third crosses MONITORING_DOWN_THRESHOLD to emit DOWN)
-- [~] Property / building-model / bcf events
+- [x] Property / building-model / bcf events
       (property created + updated + deleted, and the moved-vs-updated split: a reparent
       emits property:moved INSTEAD of updated, asserted with a negative window; bcf topic
       created + updated carrying the full topic DTO and comment added carrying the new
-      comment; building-model events open - the upload arrange step needs multipart)
-- [~] Org / member / invitation / join-request / team / assignment events
+      comment; the building-model version lifecycle - uploaded, activated only on the
+      explicit PUT (the upload's auto-activation is event-silent), deleted - via
+      `ApiClient.PostRawAsync`, since the upload streams raw bytes, not multipart)
+- [x] Org / member / invitation / join-request / team / assignment events
       (member added + updated + removed to the org room, including the second member:added
       emit path via join-request approval; invitation created + revoked + accepted, with the
       created event carrying the normalized email; joinRequest created + decided for both
@@ -151,11 +155,13 @@ adapter, not at the wire level (Decision 4).
       so a push cycle is observable; onboarding:turn covered mirroring the HTTP response's
       stepId/complete; AI streaming covered in the degraded mode the target runs in - the
       canned fallback arrives as one ai:token followed by ai:complete with matching content,
-      providerStatus 'unavailable', and zero tokens charged)
+      providerStatus 'unavailable', and zero tokens charged. Still open: `v1:error` - its
+      only emit path is an AI rate-limit/internal failure, and with the degraded provider
+      usage never increments, so no deterministic trigger exists over the black-box surface)
 
 ---
 
-**Done so far:** 142 tests green.
+**Done so far:** 143 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -185,7 +191,7 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (46):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (47):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
@@ -212,12 +218,17 @@ adapter, not at the wire level (Decision 4).
   the second, DOWN crossing the threshold), the metrics submit -> scheduled per-user push
   round-trip with the submitted sample echoed back tagged `browser`, and onboarding:turn
   mirroring the HTTP response's stepId/complete pair to the org room. And the last two
-  families (`Realtime/{BcfRealtimeTests,AiRealtimeTests}.cs`): bcf topic created + updated
-  (full topic DTO) and comment added (the new comment itself), plus the AI streaming shape
-  in the degraded mode the target deliberately runs in - the canned fallback arriving as
-  one ai:token followed by an ai:complete with matching content, providerStatus
-  'unavailable', and zero tokens charged. The
-  connect/emit race is closed deterministically by a readiness barrier
+  families (`Realtime/{BcfRealtimeTests,AiRealtimeTests,BuildingModelRealtimeTests}.cs`):
+  bcf topic created + updated (full topic DTO) and comment added (the new comment itself);
+  the AI streaming shape in the degraded mode the target deliberately runs in - the canned
+  fallback arriving as one ai:token followed by an ai:complete with matching content,
+  providerStatus 'unavailable', and zero tokens charged; and the building-model version
+  lifecycle (uploaded via the raw-byte `ApiClient.PostRawAsync` against the test MinIO,
+  activated only by the explicit PUT while the upload's auto-activation stays event-silent,
+  deleted). With that, every deterministically-reachable event in the 49-event catalogue is
+  asserted; the lone remainder is `v1:error`, whose only trigger (an AI rate-limit or
+  internal failure) cannot be provoked over the black-box surface while the provider is
+  degraded. The connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
