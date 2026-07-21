@@ -76,7 +76,9 @@ controller, so the tracker doubles as the port work-list.
 - [x] properties.controller (5): CRUD under `/api/v1/properties`
       (nesting `PROP_002`, sibling-name `PROP_003`, not-empty delete `PROP_004`, `PROP_001`, `SYNC_001`)
 - [ ] map.controller (3): `/api/v1/map/{devices,fiber-runs,circuits}`
-- [ ] bcf.controller (7): import/export/topics/comments under `/api/v1/buildings/:propertyId/bcf` + `/api/v1/bcf/topics/:id`
+- [~] bcf.controller (7): import/export/topics/comments under `/api/v1/buildings/:propertyId/bcf` + `/api/v1/bcf/topics/:id`
+      (topic create/patch/comment happy paths exercised by `Realtime/`; import/export,
+      topic list/detail, and the `BCF_005`/`PROP_001` envelopes still open)
 - [ ] building-models.controller (7): model versions/active/file (needs storage)
 - [ ] export.controller (1): GET `/api/v1/buildings/:propertyId/export/ifc`
 - [ ] clients.controller (1): GET `/api/v1/clients`
@@ -128,8 +130,9 @@ adapter, not at the wire level (Decision 4).
       third crosses MONITORING_DOWN_THRESHOLD to emit DOWN)
 - [~] Property / building-model / bcf events
       (property created + updated + deleted, and the moved-vs-updated split: a reparent
-      emits property:moved INSTEAD of updated, asserted with a negative window;
-      building-model/bcf open)
+      emits property:moved INSTEAD of updated, asserted with a negative window; bcf topic
+      created + updated carrying the full topic DTO and comment added carrying the new
+      comment; building-model events open - the upload arrange step needs multipart)
 - [~] Org / member / invitation / join-request / team / assignment events
       (member added + updated + removed to the org room, including the second member:added
       emit path via join-request approval; invitation created + revoked + accepted, with the
@@ -146,11 +149,13 @@ adapter, not at the wire level (Decision 4).
       on both the direct-grant and team-membership paths; the metrics submit -> scheduled
       per-user push round-trip covered end to end - the target runs REFRESH_INTERVAL_SECONDS=2
       so a push cycle is observable; onboarding:turn covered mirroring the HTTP response's
-      stepId/complete; AI streaming open)
+      stepId/complete; AI streaming covered in the degraded mode the target runs in - the
+      canned fallback arrives as one ai:token followed by ai:complete with matching content,
+      providerStatus 'unavailable', and zero tokens charged)
 
 ---
 
-**Done so far:** 138 tests green.
+**Done so far:** 142 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -180,7 +185,7 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (42):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (46):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
@@ -206,7 +211,12 @@ adapter, not at the wire level (Decision 4).
   edge-triggered through the full anti-flap ladder (UP, WARNING on one failure, silence on
   the second, DOWN crossing the threshold), the metrics submit -> scheduled per-user push
   round-trip with the submitted sample echoed back tagged `browser`, and onboarding:turn
-  mirroring the HTTP response's stepId/complete pair to the org room. The
+  mirroring the HTTP response's stepId/complete pair to the org room. And the last two
+  families (`Realtime/{BcfRealtimeTests,AiRealtimeTests}.cs`): bcf topic created + updated
+  (full topic DTO) and comment added (the new comment itself), plus the AI streaming shape
+  in the degraded mode the target deliberately runs in - the canned fallback arriving as
+  one ai:token followed by an ai:complete with matching content, providerStatus
+  'unavailable', and zero tokens charged. The
   connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
