@@ -105,3 +105,8 @@ dotnet_naming_style.underscore_camel.capitalization = camel_case
 dotnet_diagnostic.CA1707.severity = none      # underscores in member names
 dotnet_diagnostic.CA1852.severity = none      # xUnit needs test classes unsealed
 dotnet_diagnostic.CA2007.severity = none
+# A test assembly's "public API" is consumed only by the xUnit runner, which
+# requires public test classes, collection-definition classes, and fixtures - so
+# the externally-visible-API rules describe a surface that does not exist here.
+dotnet_diagnostic.CA1515.severity = none      # xUnit needs public fixtures/collection types
+dotnet_diagnostic.CA1062.severity = none      # fixtures are injected by the runner, never null

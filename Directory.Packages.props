@@ -35,6 +35,15 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
+
+    <!--
+      The contract suite's single, deliberate non-HTTP dependency: it runs one
+      `UPDATE "User" SET "isSuperAdmin" = true` to bootstrap a super-admin, because
+      that flag is `input: false` in Better Auth and settable only in the database.
+      Everything else the suite does is black-box HTTP. See
+      tests/NodeScope.ContractTests/Fixtures/SuperAdminGrant.cs.
+    -->
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
 </Project>
