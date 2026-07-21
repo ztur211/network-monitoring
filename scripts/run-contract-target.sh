@@ -32,5 +32,8 @@ export STORAGE_SECRET_KEY="${STORAGE_SECRET_KEY:-minioadmin}"
 export SECRET_ENCRYPTION_KEY="${SECRET_ENCRYPTION_KEY:-$(node -e "process.stdout.write(Buffer.alloc(32,1).toString('base64'))")}"
 # AI intentionally unreachable: the assistant degrades to its canned fallback.
 export AI_BASE_URL="${AI_BASE_URL:-http://localhost:11434/v1}"
+# Fast metrics push so the v1:metrics:update contract test observes a cycle in
+# seconds instead of the 30s production default. Cadence only - same code path.
+export REFRESH_INTERVAL_SECONDS="${REFRESH_INTERVAL_SECONDS:-2}"
 
 exec node apps/api/dist/main

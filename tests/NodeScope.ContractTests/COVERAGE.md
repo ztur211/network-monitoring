@@ -80,7 +80,8 @@ controller, so the tracker doubles as the port work-list.
 - [ ] building-models.controller (7): model versions/active/file (needs storage)
 - [ ] export.controller (1): GET `/api/v1/buildings/:propertyId/export/ifc`
 - [ ] clients.controller (1): GET `/api/v1/clients`
-- [ ] onboarding.controller (2): POST `/api/v1/onboarding/{turn,skip}`
+- [~] onboarding.controller (2): POST `/api/v1/onboarding/{turn,skip}`
+      (turn happy path exercised by `Realtime/`; skip, the chip/field flows, and `ONBOARD_002` still open)
 
 ## Monitoring  (agents, snmp, ingest, bandwidth)
 
@@ -121,7 +122,10 @@ adapter, not at the wire level (Decision 4).
       **cross-org scope isolation**, and the onHome readiness barrier - `Realtime/RealtimeScaffold.cs`)
 - [~] Device / circuit / fiber-run / connection / network mutation events
       (device, circuit, fiber-run, and connection updated + deleted, network updated on
-      create, charter added + removed - added carries the charter id, removed only the pair)
+      create, charter added + removed - added carries the charter id, removed only the pair;
+      device:status proven edge-triggered through the whole anti-flap ladder: first-check
+      UP emits, one failure emits WARNING, a second same-state failure is silent, and the
+      third crosses MONITORING_DOWN_THRESHOLD to emit DOWN)
 - [~] Property / building-model / bcf events
       (property created + updated + deleted, and the moved-vs-updated split: a reparent
       emits property:moved INSTEAD of updated, asserted with a negative window;
@@ -139,11 +143,14 @@ adapter, not at the wire level (Decision 4).
 - [~] AI streaming (token/complete), onboarding turn, metrics, ping/pong, access-changed
       (ping/pong + the onHome per-connection event covered; access-changed proven to target
       the affected USER's room - the granted member's socket hears it, with `{organizationId}` -
-      on both the direct-grant and team-membership paths; AI/onboarding/metrics open)
+      on both the direct-grant and team-membership paths; the metrics submit -> scheduled
+      per-user push round-trip covered end to end - the target runs REFRESH_INTERVAL_SECONDS=2
+      so a push cycle is observable; onboarding:turn covered mirroring the HTTP response's
+      stepId/complete; AI streaming open)
 
 ---
 
-**Done so far:** 135 tests green.
+**Done so far:** 138 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -173,7 +180,7 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (39):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (42):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
@@ -194,7 +201,13 @@ adapter, not at the wire level (Decision 4).
   assigned + unassigned), the direct member-site grant + revoke, and access:changed proven
   to target the affected USER's room on both the grant and team-membership paths - with the
   whole family pinned timestamp-less, since it bypasses the conflict-service wrapper that
-  stamps entity events. The connect/emit race is closed deterministically by a readiness barrier
+  stamps entity events. And the telemetry loop
+  (`Realtime/{MonitoringRealtimeTests,OnboardingRealtimeTests}.cs`): device:status
+  edge-triggered through the full anti-flap ladder (UP, WARNING on one failure, silence on
+  the second, DOWN crossing the threshold), the metrics submit -> scheduled per-user push
+  round-trip with the submitted sample echoed back tagged `browser`, and onboarding:turn
+  mirroring the HTTP response's stepId/complete pair to the org room. The
+  connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
