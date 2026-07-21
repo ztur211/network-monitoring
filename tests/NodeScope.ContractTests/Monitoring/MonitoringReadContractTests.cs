@@ -178,7 +178,7 @@ public class MonitoringReadContractTests
         var (org, monitored, token) = await IngestedDeviceAsync();
         await IngestCheckAsync(monitored.DeviceId, ok: true, token);
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
-        var memberId = await OrgMemberIdAsync(org, member.UserId);
+        var memberId = await OrgProvisioning.OrgMemberIdAsync(_api, org, member.UserId);
 
         // F3: a MEMBER with no site grant cannot see the device - 404, not 403.
         var invisible = await _api.GetAsync(
@@ -221,14 +221,5 @@ public class MonitoringReadContractTests
             new { checks = new[] { check } },
             MonitoringScaffold.IngestToken(ingestToken));
         Assert.Equal(HttpStatusCode.Accepted, ingest.Status);
-    }
-
-    private async Task<string> OrgMemberIdAsync(ProvisionedOrg org, string userId)
-    {
-        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerCookie);
-        Assert.Equal(HttpStatusCode.OK, list.Status);
-        var member = list.Data.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == userId);
-        return member.GetProperty("id").GetString()
-            ?? throw new InvalidOperationException("members list entry carried no id");
     }
 }

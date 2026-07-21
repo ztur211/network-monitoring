@@ -93,6 +93,70 @@ internal static class MonitoringScaffold
     }
 
     /// <summary>
+    /// A created SNMP credential together with the plaintext community it was created
+    /// with. Responses only ever carry presence flags, so a test that wants to prove
+    /// the decrypt round-trip (through the agent devices list) must remember the
+    /// plaintext itself.
+    /// </summary>
+    internal sealed record SnmpCredential(string Id, string Community);
+
+    /// <summary>Creates a V2C credential with a unique community and returns both.</summary>
+    public static async Task<SnmpCredential> CreateCredentialAsync(
+        ApiClient api,
+        Auth auth,
+        string? name = null,
+        CancellationToken cancellationToken = default)
+    {
+        var community = $"community-{Guid.NewGuid():N}";
+        name ??= $"cred-{Guid.NewGuid():N}";
+        var response = await api.PostAsync(
+            "v1/snmp/credentials",
+            new { name, snmpVersion = "V2C", community },
+            auth,
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return new SnmpCredential(RequireId(response.Data), community);
+    }
+
+    /// <summary>Creates an OID profile (one sysName entry unless given) and returns its id.</summary>
+    public static async Task<string> CreateOidProfileAsync(
+        ApiClient api,
+        Auth auth,
+        string? name = null,
+        bool includeInterfaceMetrics = false,
+        object[]? entries = null,
+        CancellationToken cancellationToken = default)
+    {
+        name ??= $"prof-{Guid.NewGuid():N}";
+        entries ??= [new { oid = "1.3.6.1.2.1.1.5.0", metric = "sysname" }];
+        var response = await api.PostAsync(
+            "v1/snmp/oid-profiles",
+            new { name, includeInterfaceMetrics, entries },
+            auth,
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return RequireId(response.Data);
+    }
+
+    /// <summary>
+    /// POSTs an assignment. Both assignment fields are always serialized - the contract
+    /// requires them present, with an explicit null meaning unassign.
+    /// </summary>
+    public static Task<ApiResponse> AssignAsync(
+        ApiClient api,
+        Auth auth,
+        string targetType,
+        string targetId,
+        string? snmpCredentialId,
+        string? oidProfileId,
+        CancellationToken cancellationToken = default) =>
+        api.PostAsync(
+            "v1/snmp/assign",
+            new { targetType, targetId, snmpCredentialId, oidProfileId },
+            auth,
+            cancellationToken);
+
+    /// <summary>
     /// Creates a device and returns its <c>data</c> element. An <paramref name="ip"/>
     /// makes it probeable (the agent devices list only returns IP'd devices); passing
     /// null creates one the agent would skip.

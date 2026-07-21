@@ -110,4 +110,22 @@ public static class OrgProvisioning
 
         return member;
     }
+
+    /// <summary>
+    /// Resolves a user's org-member id from the owner's members list. Sessions speak
+    /// user ids, but grants and team membership are keyed by the OrganizationMember
+    /// row, so every permissions call needs this translation first.
+    /// </summary>
+    public static async Task<string> OrgMemberIdAsync(
+        ApiClient api,
+        ProvisionedOrg org,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var list = await api.GetAsync("v1/organizations/me/members", org.OwnerCookie, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, list.Status);
+        var member = list.Data.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == userId);
+        return member.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("members list entry carried no id");
+    }
 }

@@ -108,7 +108,18 @@ credential families (Decision 7) carried by `Auth.WithHeader`.
       cap) vs GEN_001 (non-allow-listed bucket, validation - fires before the window rules),
       and invisible-not-forbidden DEVICE_001 for unknown/foreign/out-of-scope alike with the
       F3 flip: a MEMBER 404s until granted the governing site, then reads the series)
-- [ ] snmp.controller (9): credentials + oid-profiles CRUD + assign
+- [x] snmp.controller (9): credentials + oid-profiles CRUD + assign
+      (`Monitoring/{SnmpContractTests,SnmpAssignContractTests}.cs`: secrets in, presence
+      flags out - no response ever carries a plaintext secret or the `*Enc` names; unknown
+      AND foreign ids are the same `SNMP_001`/`SNMP_002` 404; `SNMP_003`/409 refuses deleting
+      an assigned credential/profile until an explicit-null assign clears it; assign requires
+      both fields present (null = unassign, absence = `GEN_001`), validates cred/profile
+      before target (`NETWORK_002`/`DEVICE_001`), and is F3-scoped per target - device
+      `PERM_001`, network full-charter-coverage `PERM_004`, both proven with the grant flip
+      on an HTTP-built ADMIN; MEMBER is `ORG_003` even on reads; resolution proven through
+      the agent devices list: decrypted community round-trip, per-field override-wins (a
+      device credential beats the network's while the profile still falls back), and
+      explicit-null clearing restores the network default)
 - [ ] bandwidth.controller (2): GET/POST `/api/bandwidth/echo`
 
 ## Assistant  (ai)
@@ -165,7 +176,7 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 152 tests green.
+**Done so far:** 171 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -183,7 +194,7 @@ adapter, not at the wire level (Decision 4).
   conflict shared across all four, and the module-specific invariants: the
   property-nesting rules, the one-network-per-org limit, the summary/detail
   `homePublicIp` split, cursor vs offset pagination, and the device placement rule.
-- **Monitoring machine-auth + reads (37):** the agents/agent-ingest/ingest surface under
+- **Monitoring machine-auth + reads + SNMP (56):** the agents/agent-ingest/ingest surface under
   `tests/NodeScope.ContractTests/Monitoring/`, covering both custom-header credential
   families (`x-agent-token` / `x-ingest-token`) end to end. `Monitoring/MonitoringScaffold.cs`
   mints the credentials the way an operator and collector would - an owner issues an
@@ -200,6 +211,15 @@ adapter, not at the wire level (Decision 4).
   `?limit`, the MON_001/MON_002 window guards vs the GEN_001 validation layer, and the
   invisible-not-forbidden DEVICE_001 contract proven across unknown, foreign-org, and
   out-of-F3-scope devices - including the grant flip that makes a member's 404 turn 200.
+  The SNMP surface (`Monitoring/{SnmpContractTests,SnmpAssignContractTests}.cs`) closes the
+  module: credential/profile CRUD with the secrets-in-flags-out contract, the SNMP_003
+  assigned-delete refusal, the assign envelope with its explicit-null unassign semantics and
+  per-target F3 rules (device PERM_001, network full-charter PERM_004, flipped by direct
+  member-site grants on an ADMIN built entirely over HTTP - invite at role ADMIN, accept,
+  grant), and the resolution contract proven through the agent devices list: the community
+  decrypts back to the created plaintext, a device-level credential overrides the network's
+  per field while the profile falls back, and clearing the device pair restores the network
+  default.
 - **Realtime adapter (47):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
