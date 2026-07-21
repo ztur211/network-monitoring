@@ -33,4 +33,23 @@ public sealed class Auth
     /// <summary>Authenticate with a single custom header, e.g. an agent or ingest token.</summary>
     public static Auth WithHeader(string name, string value) =>
         new(null, null, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [name] = value });
+
+    /// <summary>
+    /// This credential plus one extra request header (e.g. a User-Agent), for
+    /// endpoints whose contract reads request headers alongside the session.
+    /// </summary>
+    public Auth WithExtraHeader(string name, string value)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (Headers is not null)
+        {
+            foreach (var (key, existing) in Headers)
+            {
+                headers[key] = existing;
+            }
+        }
+
+        headers[name] = value;
+        return new Auth(BearerToken, Cookie, headers);
+    }
 }

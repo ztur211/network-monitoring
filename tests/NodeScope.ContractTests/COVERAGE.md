@@ -18,14 +18,19 @@ controller, so the tracker doubles as the port work-list.
 - [x] POST `/api/auth/sign-up/email`, `/sign-in/email`, `/sign-out`
 - [x] GET `/api/auth/get-session`
 - [x] POST `/api/auth/request-password-reset`
-- [ ] reset-password, update-user, change-password (if exercised by clients)
+- [x] reset-password, update-user, change-password: NOT exercised by any client
+      (repo-wide, the auth client calls only `getSession`/`signUp.email`/`signIn.email`),
+      so they sit outside the parity surface - excluded, not pending
 
 **users.controller** (6)
 - [x] GET `/api/v1/users/me`
 - [x] PATCH `/api/v1/users/me`
 - [x] GET `/api/v1/users/me/preferences` · [x] PUT `/api/v1/users/me/preferences`
-- [ ] POST `/api/v1/users/location`
-- [ ] GET `/api/v1/users/me/data-sources`  (needs org context)
+- [x] POST `/api/v1/users/location`  (`UsersExtrasContractTests`: lat/lng echo + persist
+      to `users/me`; empty body and out-of-range latitude `GEN_001`; the address branch
+      geocodes through Nominatim - external network - so only its validation is pinned)
+- [x] GET `/api/v1/users/me/data-sources`  (browser source disconnected/null for a fresh
+      owner; org-less user `ORG_002`)
 
 **organizations.controller** (3)
 - [x] GET `/api/v1/organizations/me` · [x] GET `/api/v1/organizations/me/members`
@@ -36,56 +41,108 @@ controller, so the tracker doubles as the port work-list.
 - [x] guard chain: unauth `AUTH_002`, authed non-super-admin `ORG_007`
 
 **invitations / join-requests / members** (2+3+1+3+2)
-- [~] invitations.controller: POST/GET/DELETE `/api/v1/organizations/me/invitations`
-      (POST + DELETE happy paths exercised by `Realtime/` and `OrgProvisioning.AddMemberAsync`;
-      GET list + the error envelopes `ORG_009`/`PERM_003` still open)
-- [~] invitation-accept.controller: POST `/api/v1/invitations/accept`
-      (happy path exercised; `ORG_009`/`ORG_010`/`ORG_011` envelopes still open)
-- [~] join-request-submit.controller: POST `/api/v1/join-requests`
-      (domain-matched happy path exercised by `Realtime/`; `ORG_011`/`ORG_014`/`ORG_015` still open)
-- [~] join-requests.controller: GET + approve/deny under `/api/v1/organizations/me/join-requests`
-      (pending list + approve + deny exercised by `Realtime/`; status filter + `ORG_012` still open)
-- [ ] members.controller: PATCH/DELETE `/api/v1/organizations/me/members/:userId`
+- [x] invitations.controller: POST/GET/DELETE `/api/v1/organizations/me/invitations`
+      (`InvitationsContractTests`: pending list drops accepted invitations; revoke unknown
+      `ORG_009`; ADMIN invites MEMBERs only - anything higher `PERM_003` - and a MEMBER
+      nothing at all `ORG_003`)
+- [x] invitation-accept.controller: POST `/api/v1/invitations/accept`
+      (bad/spent token `ORG_009`, mismatched email `ORG_010`/403, already-membered user
+      `ORG_011`/409)
+- [x] join-request-submit.controller: POST `/api/v1/join-requests`
+      (`JoinRequestsContractTests`: unclaimed domain `ORG_014`, already-member `ORG_011`,
+      duplicate pending `ORG_015`)
+- [x] join-requests.controller: GET + approve/deny under `/api/v1/organizations/me/join-requests`
+      (list defaults to PENDING and honors `?status=`; deciding an unknown OR already-decided
+      request is the same `ORG_012`)
+- [x] members.controller: PATCH/DELETE `/api/v1/organizations/me/members/:userId`
+      (`MembersContractTests`: OWNER promotes and the members list reflects it; unknown target
+      `ORG_002`/404; the last OWNER can neither self-demote nor be removed `ORG_013`/409;
+      ADMIN removes MEMBERs but any privileged target or destination role is `ORG_003`;
+      removal observably evicts - the ex-member's org calls flip to `ORG_002`)
 
 **permissions / teams / member-assignments** (1+8+3)
-- [ ] permissions.controller: GET `/api/v1/access/me`
-- [~] teams.controller: 8 endpoints under `/api/v1/teams`
-      (create/rename/delete/member add + remove/property assign + unassign happy paths
-      exercised by `Realtime/`; GET list + `TEAM_002`/`SYNC_001`/role-gate envelopes still open)
-- [~] member-assignments.controller: GET `/api/v1/members/:memberId/access`, POST/DELETE properties
-      (POST grant + DELETE revoke exercised by `Realtime/`; GET access + `PERM_002`/`PERM_003` still open)
+- [x] permissions.controller: GET `/api/v1/access/me`
+      (`AccessContractTests`: OWNER unscoped+empty roots; MEMBER exact granted roots,
+      empty before the grant; org-less `ORG_002`)
+- [x] teams.controller: 8 endpoints under `/api/v1/teams`
+      (`TeamsContractTests`: TeamDto shape; `TEAM_002` on create AND rename collision; flat
+      versioned rename with `SYNC_001`; `TEAM_001` unknown; scope-filtered list - a site-less
+      team reaches only the OWNER; member-add and site-assign are IDEMPOTENT, returning the
+      same association id; unknown member `ORG_001`; MEMBER `ORG_003`)
+- [x] member-assignments.controller: GET `/api/v1/members/:memberId/access`, POST/DELETE properties
+      (`MemberAccessContractTests`: access-as-seen-by with grant/revoke flip; unknown member
+      `ORG_001`; ADMIN delegating beyond own scope `PERM_002`; ADMIN touching a privileged
+      target `PERM_003`)
 
 **desktop-auth.controller** (3)
-- [ ] GET `/api/v1/desktop-auth/authorize` · POST `/token` · POST `/revoke`
+- [x] GET `/api/v1/desktop-auth/authorize` · POST `/token` · POST `/revoke`
+      (`DesktopAuthContractTests`, asserted with redirects unfollowed: wrong redirect_uri
+      `DAUTH_001`; anonymous → 302 to `/login?returnTo=`; with a session → 302 to the app
+      scheme carrying code+state; the full PKCE exchange yields a WORKING Bearer session
+      token and revoke kills it; bad code `DAUTH_002`, wrong verifier `DAUTH_003` - and the
+      failed attempt burns the code, so the retry is `DAUTH_002`)
 
 ## Inventory  (devices, networks, circuits, fiber, properties, map, spatial, bcf, models)
 
 - [x] devices.controller (6): GET/POST `/api/v1/devices`, name-suggestion, GET/PATCH/DELETE `:id`
       (placement `PROP_007`, name-clash `ORG_005`, `?buildingPropertyId` bare array, `DEVICE_001`, `SYNC_001`)
-- [ ] spatial.controller (2): PATCH `/api/v1/devices/:id/position`, `/ifc-link`
+- [x] spatial.controller (2): PATCH `/api/v1/devices/:id/position`, `/ifc-link`
+      (`SpatialContractTests`: setting either requires an actively-modeled building
+      `SPATIAL_001`/422 while explicit-null CLEARING never does - and absent fields are
+      left untouched, nulls must be explicit; a partial x/y/z triple is `SPATIAL_002`/422;
+      unknown device `DEVICE_001`)
 - [x] networks.controller (6): CRUD + `:id/set-home-ip`
       (one-per-org `NETWORK_001`, summary hides `homePublicIp` / detail reveals it, `NETWORK_002`, `SYNC_001`)
-- [~] network-property.controller (3): `/api/v1/networks/:networkId/properties`
-      (POST add envelope `{id, networkId, propertyId}` + DELETE remove exercised by `Realtime/`;
-      GET list + the coverage/containment error paths still open)
+- [x] network-property.controller (3): `/api/v1/networks/:networkId/properties`
+      (`NetworkPropertyContractTests`: list rows `{id, networkId, propertyId}`; duplicate
+      charter `PROP_006`/409; unknown property (add) and non-chartered site (remove) are
+      `PROP_001`; removing a charter still governing devices is `PROP_008`/409 - the guard
+      that makes device placement permanent)
 - [x] circuits.controller (5): CRUD under `/api/v1/circuits`
       (cursor page `items/nextCursor/total`, device link + unknown-device `DEVICE_001`, `CIRCUIT_001`, `SYNC_001`)
-- [ ] fiber-runs.controller (5): CRUD under `/api/v1/fiber-runs`
-- [~] connections.controller (4): CRUD under `/api/v1/device-connections`
-      (updated + deleted realtime events covered under `Realtime/`; HTTP CRUD envelopes still open)
+- [x] fiber-runs.controller (5): CRUD under `/api/v1/fiber-runs`
+      (`FiberRunsContractTests`: create between two distinct devices - same device
+      `FIBER_002`/422, missing endpoint `DEVICE_001`; flat items/total list with a
+      UUID-validated `?deviceId` filter (`GEN_001` otherwise); unknown AND foreign runs
+      the same `FIBER_001`; changeset patch + `SYNC_001`; delete returns null data)
+- [x] connections.controller (4): CRUD under `/api/v1/device-connections`
+      (`ConnectionsContractTests`: uniqueness is the (source, target, type) TRIPLE -
+      same triple `CONN_003`/409, different type is a distinct link; self-connection
+      `CONN_002`/422; items/total list + `?deviceId` filter; changeset patch + `SYNC_001`;
+      unknown/foreign `CONN_001`)
 - [x] properties.controller (5): CRUD under `/api/v1/properties`
       (nesting `PROP_002`, sibling-name `PROP_003`, not-empty delete `PROP_004`, `PROP_001`, `SYNC_001`)
-- [ ] map.controller (3): `/api/v1/map/{devices,fiber-runs,circuits}`
-- [~] bcf.controller (7): import/export/topics/comments under `/api/v1/buildings/:propertyId/bcf` + `/api/v1/bcf/topics/:id`
-      (topic create/patch/comment happy paths exercised by `Realtime/`; import/export,
-      topic list/detail, and the `BCF_005`/`PROP_001` envelopes still open)
-- [~] building-models.controller (7): model versions/active/file (needs storage)
-      (raw-body upload + PUT active + DELETE version happy paths exercised by `Realtime/`
-      against the test MinIO; the reads, file downloads, and `MODEL_00x` envelopes still open)
-- [ ] export.controller (1): GET `/api/v1/buildings/:propertyId/export/ifc`
-- [ ] clients.controller (1): GET `/api/v1/clients`
-- [~] onboarding.controller (2): POST `/api/v1/onboarding/{turn,skip}`
-      (turn happy path exercised by `Realtime/`; skip, the chip/field flows, and `ONBOARD_002` still open)
+- [x] map.controller (3): `/api/v1/map/{devices,fiber-runs,circuits}`
+      (`MapContractTests`: malformed AND out-of-range bboxes `GEN_001`; geometry rides on
+      device lat/lng (the DB trigger fills the PostGIS point) - a device answers iff inside
+      the envelope with `?floor` honored, a fiber run iff EITHER endpoint is, a circuit iff
+      its linked device is)
+- [x] bcf.controller (7): import/export/topics/comments under `/api/v1/buildings/:propertyId/bcf` + `/api/v1/bcf/topics/:id`
+      (`BcfContractTests`: list + detail (comments included); unknown topic `BCF_004`,
+      stale patch `BCF_005`/409, unknown building `PROP_001`; export streams a real ZIP
+      (PK magic, octet-stream, .bcfzip disposition); import is multipart - garbage is
+      `BCF_003`/422, and the export re-imports into ANOTHER org's building round-trip
+      (same-org re-import would only upsert the source topic, keyed [org, guid]))
+- [x] building-models.controller (7): model versions/active/file
+      (`BuildingModelsContractTests` against the test MinIO: modelless building `MODEL_001`
+      on every read; upload refuses non-BUILDINGs `MODEL_002` and non-IFC bytes `MODEL_007`;
+      upload auto-activates and both file downloads round-trip the exact bytes with
+      attachment headers; unknown versions `MODEL_004`; deleting the ACTIVE version is
+      `MODEL_005`/409 until a newer upload frees it)
+- [x] export.controller (1): GET `/api/v1/buildings/:propertyId/export/ifc`
+      (`ExportContractTests`: a placed device exports as a raw ISO-10303-21 STEP file,
+      application/x-step, `-network.ifc` disposition; SITEs and unknown ids are the same
+      invisible `PROP_001` - only BUILDINGs export)
+- [x] clients.controller (1): GET `/api/v1/clients`
+      (`ClientsContractTests`: User-Agent echoed and platform parsed from it; metrics null
+      for a fresh user; agentStatus fixed unavailable; org-less `ORG_002`)
+- [x] onboarding.controller (2): POST `/api/v1/onboarding/{turn,skip}`
+      (`OnboardingContractTests`: the full wizard walk - welcome→networkName→address→
+      browserDeviceName→mobility→confirmHomeIp→routerMac→modemMac→isp→speeds→done - with
+      chips/fields/progress asserted per step and the address-step save observably creating
+      the org's network; an input of the wrong kind stays on the step; after completion a
+      fresh turn is `ONBOARD_002`/409; skip clears in-flight state so a later turn restarts;
+      MEMBER `ORG_003`)
 
 ## Monitoring  (agents, snmp, ingest, bandwidth)
 
@@ -120,11 +177,20 @@ credential families (Decision 7) carried by `Auth.WithHeader`.
       the agent devices list: decrypted community round-trip, per-field override-wins (a
       device credential beats the network's while the profile still falls back), and
       explicit-null clearing restores the network default)
-- [ ] bandwidth.controller (2): GET/POST `/api/bandwidth/echo`
+- [x] bandwidth.controller (2): GET/POST `/api/bandwidth/echo`
+      (`BandwidthContractTests`: public + unthrottled raw-wire surface, no JSON envelope;
+      GET serves exactly 1,000,000 octet-stream bytes with matching Content-Length and
+      Cache-Control no-store, and the payload is measurably random (incompressible on the
+      wire); POST drains a 1 MB body - and an empty one - to 204)
 
 ## Assistant  (ai)
 
-- [ ] ai.controller (2): GET `/api/v1/ai/usage`, DELETE `/api/v1/ai/conversation/:conversationId`
+- [x] ai.controller (2): GET `/api/v1/ai/usage`, DELETE `/api/v1/ai/conversation/:conversationId`
+      (`Assistant/AiContractTests`: usage returns zeroed counters with positive limits and a
+      resetsAt for a fresh user; unauth `AUTH_002`. Delete: unknown conversation `GEN_002`/404 -
+      the only reachable envelope, since the degraded provider never persists a conversation
+      (the fallback path skips the append), so the happy-path delete cannot be provoked
+      black-box)
 
 ## Platform / host
 
@@ -176,15 +242,28 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 171 tests green.
+**Done so far:** 260 tests green - every HTTP endpoint and websocket event in the
+tracker is covered (or explicitly excluded with its reason inline above). The suite
+is the complete parity gate for the C# port.
 
-- **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
+Running the full suite trips the interactive-client rate limits (hundreds of
+sign-ups from one IP), so the non-production throttle limits are env-overridable
+(`THROTTLE_DEFAULT_LIMIT`/`THROTTLE_AUTH_LIMIT` - the route-level strict auth and
+enroll throttles honor the same variable) and `run-contract-target.sh` lifts them.
+Production limits stay hardcoded.
+
+- **Identity (24 → 64):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
   the **super-admin bootstrap + per-test org provisioning** harness
   (`Fixtures/{SuperAdminGrant,OrgProvisioning}.cs`,
   `ContractApiFixture.ProvisionOrgAsync`) and the admin-organizations surface it
-  unlocks.
-- **Inventory (44):** properties, networks, circuits, and devices under
+  unlocks. The close-out sweep added the users extras (location, data-sources), the
+  full member-management matrix with the ORG_013 last-owner invariant, the
+  invitation/join-request error envelopes, the access summary, the team surface
+  (idempotent associations, scope-filtered list, TEAM_002/SYNC_001), the
+  member-assignment guards (PERM_002/PERM_003), and the desktop PKCE flow end to
+  end - the exchanged code yields a working Bearer session that revoke kills.
+- **Inventory (44 → 86):** properties, networks, circuits, and devices under
   `tests/NodeScope.ContractTests/Inventory/`. Each test grabs an isolated org via
   `fixture.ProvisionOrgAsync()` (fresh org + fresh OWNER, `org.OwnerCookie` /
   `org.OwnerBearer`). Device placement needs a chartered site, so
@@ -194,7 +273,14 @@ adapter, not at the wire level (Decision 4).
   conflict shared across all four, and the module-specific invariants: the
   property-nesting rules, the one-network-per-org limit, the summary/detail
   `homePublicIp` split, cursor vs offset pagination, and the device placement rule.
-- **Monitoring machine-auth + reads + SNMP (56):** the agents/agent-ingest/ingest surface under
+  The close-out sweep added spatial placement (SPATIAL_001/002 with explicit-null
+  clears), fiber-run and connection CRUD (the (source,target,type) uniqueness
+  triple), the charter list/guards (PROP_006/PROP_008), the PostGIS-backed map bbox
+  reads, the clients read, the BCF read/patch/import/export surface with the
+  cross-org bcfzip round-trip, the building-model reads and byte-exact file
+  downloads, the IFC network export, and the full onboarding wizard walk with its
+  ONBOARD_002 completion gate.
+- **Monitoring machine-auth + reads + SNMP + bandwidth (60):** the agents/agent-ingest/ingest surface under
   `tests/NodeScope.ContractTests/Monitoring/`, covering both custom-header credential
   families (`x-agent-token` / `x-ingest-token`) end to end. `Monitoring/MonitoringScaffold.cs`
   mints the credentials the way an operator and collector would - an owner issues an
@@ -219,7 +305,10 @@ adapter, not at the wire level (Decision 4).
   grant), and the resolution contract proven through the agent devices list: the community
   decrypts back to the created plaintext, a device-level credential overrides the network's
   per field while the profile falls back, and clearing the device pair restores the network
-  default.
+  default. Bandwidth closes the module: the public unthrottled echo pair, byte-exact.
+- **Assistant (3):** the AI HTTP surface in the degraded mode the target runs in - the
+  usage counters with their limits, the auth gate, and the GEN_002 conversation-delete
+  envelope (the only reachable one while the provider never persists conversations).
 - **Realtime adapter (47):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
@@ -262,5 +351,5 @@ adapter, not at the wire level (Decision 4).
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
 
-That provisioning harness remains the prerequisite for the rest of the
-Inventory/Monitoring endpoints, which each need an isolated org.
+With the tracker closed, the suite's next job is its real one: run unchanged
+against the C# host as each module lands, and stay green.

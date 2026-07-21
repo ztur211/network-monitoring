@@ -3,6 +3,20 @@ using System.Text;
 
 namespace NodeScope.ContractTests.Fixtures;
 
+/// <summary>A response captured as raw bytes, for non-JSON bodies (the bandwidth
+/// payload, file downloads).</summary>
+/// <param name="Status">The HTTP status.</param>
+/// <param name="Body">The body bytes, verbatim.</param>
+/// <param name="Headers">Response + content headers, first value each, keyed case-insensitively.</param>
+public sealed record RawResponse(
+    HttpStatusCode Status,
+    IReadOnlyList<byte> Body,
+    IReadOnlyDictionary<string, string> Headers)
+{
+    /// <summary>A single response header value, or null if absent.</summary>
+    public string? Header(string name) => Headers.TryGetValue(name, out var value) ? value : null;
+}
+
 /// <summary>
 /// A thin black-box HTTP client for the API under test. It knows the wire - the
 /// standard JSON envelope, cookie/bearer/header auth - and nothing about either
@@ -34,6 +48,36 @@ public sealed class ApiClient
         SendAsync(HttpMethod.Delete, path, null, auth, cancellationToken);
 
     /// <summary>
+    /// GETs a response as raw bytes - for the endpoints whose body is not JSON
+    /// (the bandwidth payload, file downloads), where reading via a string would
+    /// mangle the bytes and hide the true length.
+    /// </summary>
+    public async Task<RawResponse> GetRawAsync(
+        string path,
+        Auth? auth = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(path.TrimStart('/'), UriKind.Relative));
+        ApplyAuth(request, auth);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var header in response.Headers)
+        {
+            headers[header.Key] = string.Join(",", header.Value);
+        }
+
+        foreach (var header in response.Content.Headers)
+        {
+            headers[header.Key] = string.Join(",", header.Value);
+        }
+
+        return new RawResponse(response.StatusCode, body, headers);
+    }
+
+    /// <summary>
     /// POSTs raw bytes as the request body - the shape of the building-model version
     /// upload, which streams the file straight off the request rather than multipart.
     /// </summary>
@@ -47,6 +91,35 @@ public sealed class ApiClient
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path.TrimStart('/'), UriKind.Relative));
         request.Content = new ByteArrayContent(body);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        ApplyAuth(request, auth);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? cookies.ToArray()
+            : [];
+
+        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, setCookies, text);
+    }
+
+    /// <summary>
+    /// POSTs a single file as multipart/form-data - the shape of the BCF import,
+    /// which reads an uploaded file field rather than the raw body.
+    /// </summary>
+    public async Task<ApiResponse> PostMultipartAsync(
+        string path,
+        string fieldName,
+        string fileName,
+        byte[] content,
+        Auth? auth = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path.TrimStart('/'), UriKind.Relative));
+        using var form = new MultipartFormDataContent();
+        using var file = new ByteArrayContent(content);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        form.Add(file, fieldName, fileName);
+        request.Content = form;
         ApplyAuth(request, auth);
 
         using var response = await _http.SendAsync(request, cancellationToken);
@@ -105,7 +178,9 @@ public sealed class ApiClient
         {
             foreach (var (name, value) in auth.Headers)
             {
-                request.Headers.Add(name, value);
+                // Without validation: typed headers like User-Agent would otherwise be
+                // format-checked, and the tests want the value on the wire verbatim.
+                request.Headers.TryAddWithoutValidation(name, value);
             }
         }
     }

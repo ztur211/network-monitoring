@@ -107,4 +107,49 @@ internal static class InventoryScaffold
     public static string RequireId(JsonElement data) =>
         data.GetProperty("id").GetString()
         ?? throw new InvalidOperationException("response data carried no id");
+
+    /// <summary>
+    /// The smallest byte sequence the model upload accepts: the <c>ISO-10303-21;</c>
+    /// magic prefix is the entire validation, so this is a structurally-empty IFC.
+    /// </summary>
+    public static byte[] MinimalIfcBytes() =>
+        System.Text.Encoding.UTF8.GetBytes("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n");
+
+    /// <summary>A SITE with a BUILDING under it - the arrange for model/BCF/export tests.</summary>
+    /// <param name="SiteId">The top-level SITE.</param>
+    /// <param name="BuildingId">A BUILDING nested under the site.</param>
+    internal sealed record SiteWithBuilding(string SiteId, string BuildingId);
+
+    /// <summary>Creates a SITE with a BUILDING under it.</summary>
+    public static async Task<SiteWithBuilding> CreateBuildingAsync(
+        ApiClient api,
+        Auth auth,
+        CancellationToken cancellationToken = default)
+    {
+        var site = await CreatePropertyAsync(api, auth, cancellationToken: cancellationToken);
+        var siteId = RequireId(site);
+        var building = await CreatePropertyAsync(api, auth, "BUILDING", parentId: siteId, cancellationToken: cancellationToken);
+        return new SiteWithBuilding(siteId, RequireId(building));
+    }
+
+    /// <summary>
+    /// Uploads a model version (raw-body POST, auto-activating) and returns its
+    /// <c>data</c> element.
+    /// </summary>
+    public static async Task<JsonElement> UploadModelVersionAsync(
+        ApiClient api,
+        Auth auth,
+        string buildingId,
+        string fileName = "model.ifc",
+        byte[]? bytes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await api.PostRawAsync(
+            $"v1/buildings/{buildingId}/model/versions?fileName={Uri.EscapeDataString(fileName)}",
+            bytes ?? MinimalIfcBytes(),
+            auth: auth,
+            cancellationToken: cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return response.Data;
+    }
 }
