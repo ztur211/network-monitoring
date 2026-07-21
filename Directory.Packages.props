@@ -44,6 +44,17 @@
       tests/NodeScope.ContractTests/Fixtures/SuperAdminGrant.cs.
     -->
     <PackageVersion Include="Npgsql" Version="10.0.3" />
+
+    <!--
+      SocketIOClient backs the RealtimeClient adapter's socket.io implementation
+      (Decision 4): the suite asserts websocket-event PARITY on semantics behind
+      one client interface, socket.io against the Node target now and SignalR
+      against the C# host later. A hand-tested protocol client would risk false
+      REDs in a parity suite, so the battle-tested client speaks the wire. This
+      dependency is scoped to the socket.io era and removed at the SignalR port.
+      See tests/NodeScope.ContractTests/Fixtures/RealtimeClient.cs.
+    -->
+    <PackageVersion Include="SocketIOClient" Version="4.0.4" />
   </ItemGroup>
 
 </Project>

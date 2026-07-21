@@ -26,6 +26,13 @@
       database in general - every other arrange path goes over HTTP.
     -->
     <PackageReference Include="Npgsql" />
+
+    <!--
+      SocketIOClient backs the RealtimeClient adapter (Fixtures/RealtimeClient.cs) -
+      the socket.io implementation of the transport-agnostic IRealtimeClient the
+      websocket parity tests assert behind. Removed at the SignalR port.
+    -->
+    <PackageReference Include="SocketIOClient" />
   </ItemGroup>
 
   <ItemGroup>
