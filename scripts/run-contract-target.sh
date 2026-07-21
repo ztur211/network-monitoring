@@ -35,5 +35,9 @@ export AI_BASE_URL="${AI_BASE_URL:-http://localhost:11434/v1}"
 # Fast metrics push so the v1:metrics:update contract test observes a cycle in
 # seconds instead of the 30s production default. Cadence only - same code path.
 export REFRESH_INTERVAL_SECONDS="${REFRESH_INTERVAL_SECONDS:-2}"
+# The suite provisions fresh users/orgs per test from one IP, far past the
+# interactive-client rate limits. Lift them for the target only (non-production).
+export THROTTLE_DEFAULT_LIMIT="${THROTTLE_DEFAULT_LIMIT:-100000}"
+export THROTTLE_AUTH_LIMIT="${THROTTLE_AUTH_LIMIT:-100000}"
 
 exec node apps/api/dist/main

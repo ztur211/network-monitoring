@@ -22,10 +22,15 @@ import { SnmpService } from '../snmp/snmp.service';
 // is fragile: retuning `auth` for login UX, or a future broad @SkipThrottle, would
 // silently strip enrollment's protection. Pin it explicitly here (same strict
 // posture as sign-in/sign-up) so the intent is route-local and can't regress.
-// Lax in development so repeated local enrollments don't lock you out.
+// Lax in development so repeated local enrollments don't lock you out, and
+// env-overridable outside production for harnesses (the contract suite) that
+// legitimately enroll far more often than an interactive client.
 const STRICT_ENROLL_THROTTLE = {
   auth: {
-    limit: process.env.NODE_ENV === 'production' ? 5 : 200,
+    limit:
+      process.env.NODE_ENV === 'production'
+        ? 5
+        : parseInt(process.env.THROTTLE_AUTH_LIMIT ?? '200', 10),
     ttl: 15 * 60 * 1000,
   },
 };

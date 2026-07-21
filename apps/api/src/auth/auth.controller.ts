@@ -7,10 +7,15 @@ import { Public } from './decorators/public.decorator';
 
 // Strict per-IP limiter for credential endpoints (sign-in / sign-up / reset):
 // 5 requests / 15 minutes in production to slow brute-force guessing. Lax in
-// development so refreshes don't lock you out.
+// development so refreshes don't lock you out, and env-overridable outside
+// production for harnesses (the contract suite) that legitimately sign up far
+// more users than an interactive client ever would.
 const STRICT_AUTH_THROTTLE = {
   auth: {
-    limit: process.env.NODE_ENV === 'production' ? 5 : 200,
+    limit:
+      process.env.NODE_ENV === 'production'
+        ? 5
+        : parseInt(process.env.THROTTLE_AUTH_LIMIT ?? '200', 10),
     ttl: 15 * 60 * 1000,
   },
 };

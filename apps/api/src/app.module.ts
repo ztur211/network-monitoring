@@ -66,12 +66,20 @@ import { ScopeCacheMiddleware } from './permissions/scope-cache.middleware';
           {
             name: 'default',
             ttl: 60 * 1000,
-            limit: process.env.NODE_ENV === 'production' ? 100 : 2000,
+            // Production limits are fixed; outside production a harness that fires
+            // hundreds of requests per minute (the contract suite) can raise them.
+            limit:
+              process.env.NODE_ENV === 'production'
+                ? 100
+                : parseInt(process.env.THROTTLE_DEFAULT_LIMIT ?? '2000', 10),
           },
           {
             name: 'auth',
             ttl: 15 * 60 * 1000,
-            limit: process.env.NODE_ENV === 'production' ? 5 : 200,
+            limit:
+              process.env.NODE_ENV === 'production'
+                ? 5
+                : parseInt(process.env.THROTTLE_AUTH_LIMIT ?? '200', 10),
           },
         ],
         // Shared Redis storage only when Redis is enabled (multi-node); single-node
