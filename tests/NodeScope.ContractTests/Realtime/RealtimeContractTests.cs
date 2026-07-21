@@ -63,6 +63,86 @@ public class RealtimeContractTests
     }
 
     [Fact]
+    public async Task Owner_socket_receives_circuit_updated_when_a_circuit_is_patched()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        // A device-less circuit governs no site; the scoped emit still reaches the owner
+        // room, which is what an OWNER socket subscribes to.
+        var circuit = await CreateDevicelessCircuitAsync(org.OwnerCookie);
+        var circuitId = InventoryScaffold.RequireId(circuit);
+        var newNotes = $"rt-{Guid.NewGuid():N}";
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        await PatchNotesAsync($"v1/circuits/{circuitId}", circuit.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:circuit:updated",
+            p => p.TryGetProperty("circuitId", out var c) && c.GetString() == circuitId);
+        Assert.Equal(newNotes, evt.GetProperty("circuit").GetProperty("notes").GetString());
+        Assert.True(evt.TryGetProperty("changes", out _));
+        Assert.True(evt.TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_circuit_deleted_when_a_circuit_is_deleted()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var circuit = await CreateDevicelessCircuitAsync(org.OwnerCookie);
+        var circuitId = InventoryScaffold.RequireId(circuit);
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var deleted = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, deleted.Status);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:circuit:deleted",
+            p => p.TryGetProperty("circuitId", out var c) && c.GetString() == circuitId);
+        Assert.Equal(circuitId, evt.GetProperty("circuitId").GetString());
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_fiber_run_updated_when_a_fiber_run_is_patched()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var run = await CreateFiberRunAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var fiberRunId = InventoryScaffold.RequireId(run);
+        var newNotes = $"rt-{Guid.NewGuid():N}";
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        await PatchNotesAsync($"v1/fiber-runs/{fiberRunId}", run.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:fiber-run:updated",
+            p => p.TryGetProperty("fiberRunId", out var f) && f.GetString() == fiberRunId);
+        Assert.Equal(newNotes, evt.GetProperty("fiberRun").GetProperty("notes").GetString());
+        Assert.True(evt.TryGetProperty("changes", out _));
+        Assert.True(evt.TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_fiber_run_deleted_when_a_fiber_run_is_deleted()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var run = await CreateFiberRunAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var fiberRunId = InventoryScaffold.RequireId(run);
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var deleted = await _api.DeleteAsync($"v1/fiber-runs/{fiberRunId}", org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, deleted.Status);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:fiber-run:deleted",
+            p => p.TryGetProperty("fiberRunId", out var f) && f.GetString() == fiberRunId);
+        Assert.Equal(fiberRunId, evt.GetProperty("fiberRunId").GetString());
+    }
+
+    [Fact]
     public async Task Owner_socket_receives_network_updated_when_a_network_is_created()
     {
         // The org has no network yet; creating the first one fans out to the owner room
@@ -161,5 +241,49 @@ public class RealtimeContractTests
             },
             auth);
         Assert.Equal(HttpStatusCode.OK, patch.Status);
+    }
+
+    /// <summary>Patches the <c>notes</c> field of any versioned resource at <paramref name="path"/>.</summary>
+    private async Task PatchNotesAsync(string path, int baseVersion, string newNotes, Auth auth)
+    {
+        var patch = await _api.PatchAsync(
+            path,
+            new
+            {
+                baseVersion,
+                changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = newNotes } },
+            },
+            auth);
+        Assert.Equal(HttpStatusCode.OK, patch.Status);
+    }
+
+    private async Task<JsonElement> CreateDevicelessCircuitAsync(Auth auth)
+    {
+        var response = await _api.PostAsync(
+            "v1/circuits",
+            new { ispName = "Acme Fiber", serviceType = "DIA" },
+            auth);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return response.Data;
+    }
+
+    private async Task<JsonElement> CreateFiberRunAsync(Auth auth, string networkId, string siteId)
+    {
+        // A fiber run links two distinct devices; both sit on the chartered site so their
+        // governing-site resolution and the emit's scope both land in the owner room.
+        var start = await InventoryScaffold.CreateDeviceAsync(_api, auth, networkId, siteId);
+        var end = await InventoryScaffold.CreateDeviceAsync(_api, auth, networkId, siteId);
+
+        var response = await _api.PostAsync(
+            "v1/fiber-runs",
+            new
+            {
+                name = $"run-{Guid.NewGuid():N}",
+                startDeviceId = InventoryScaffold.RequireId(start),
+                endDeviceId = InventoryScaffold.RequireId(end),
+            },
+            auth);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return response.Data;
     }
 }
