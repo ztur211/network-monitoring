@@ -143,6 +143,46 @@ public class RealtimeContractTests
     }
 
     [Fact]
+    public async Task Owner_socket_receives_connection_updated_when_a_connection_is_patched()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var connection = await CreateConnectionAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var connectionId = InventoryScaffold.RequireId(connection);
+        var newNotes = $"rt-{Guid.NewGuid():N}";
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        await PatchNotesAsync($"v1/device-connections/{connectionId}", connection.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:connection:updated",
+            p => p.TryGetProperty("connectionId", out var c) && c.GetString() == connectionId);
+        Assert.Equal(newNotes, evt.GetProperty("connection").GetProperty("notes").GetString());
+        Assert.True(evt.TryGetProperty("changes", out _));
+        Assert.True(evt.TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task Owner_socket_receives_connection_deleted_when_a_connection_is_deleted()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var connection = await CreateConnectionAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var connectionId = InventoryScaffold.RequireId(connection);
+
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+
+        var deleted = await _api.DeleteAsync($"v1/device-connections/{connectionId}", org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, deleted.Status);
+
+        var evt = await socket.WaitForEventAsync(
+            "v1:connection:deleted",
+            p => p.TryGetProperty("connectionId", out var c) && c.GetString() == connectionId);
+        Assert.Equal(connectionId, evt.GetProperty("connectionId").GetString());
+    }
+
+    [Fact]
     public async Task Owner_socket_receives_network_updated_when_a_network_is_created()
     {
         // The org has no network yet; creating the first one fans out to the owner room
@@ -281,6 +321,26 @@ public class RealtimeContractTests
                 name = $"run-{Guid.NewGuid():N}",
                 startDeviceId = InventoryScaffold.RequireId(start),
                 endDeviceId = InventoryScaffold.RequireId(end),
+            },
+            auth);
+        Assert.Equal(HttpStatusCode.Created, response.Status);
+        return response.Data;
+    }
+
+    private async Task<JsonElement> CreateConnectionAsync(Auth auth, string networkId, string siteId)
+    {
+        // Like a fiber run, a connection links two distinct devices; both sit on the chartered
+        // site so the emit's scope (the source + target sites) lands in the owner room.
+        var source = await InventoryScaffold.CreateDeviceAsync(_api, auth, networkId, siteId);
+        var target = await InventoryScaffold.CreateDeviceAsync(_api, auth, networkId, siteId);
+
+        var response = await _api.PostAsync(
+            "v1/device-connections",
+            new
+            {
+                sourceDeviceId = InventoryScaffold.RequireId(source),
+                targetDeviceId = InventoryScaffold.RequireId(target),
+                connectionType = "ETHERNET",
             },
             auth);
         Assert.Equal(HttpStatusCode.Created, response.Status);

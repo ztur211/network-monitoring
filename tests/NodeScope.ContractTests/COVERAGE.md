@@ -62,7 +62,8 @@ controller, so the tracker doubles as the port work-list.
 - [x] circuits.controller (5): CRUD under `/api/v1/circuits`
       (cursor page `items/nextCursor/total`, device link + unknown-device `DEVICE_001`, `CIRCUIT_001`, `SYNC_001`)
 - [ ] fiber-runs.controller (5): CRUD under `/api/v1/fiber-runs`
-- [ ] connections.controller (4): CRUD under `/api/v1/device-connections`
+- [~] connections.controller (4): CRUD under `/api/v1/device-connections`
+      (updated + deleted realtime events covered under `Realtime/`; HTTP CRUD envelopes still open)
 - [x] properties.controller (5): CRUD under `/api/v1/properties`
       (nesting `PROP_002`, sibling-name `PROP_003`, not-empty delete `PROP_004`, `PROP_001`, `SYNC_001`)
 - [ ] map.controller (3): `/api/v1/map/{devices,fiber-runs,circuits}`
@@ -110,8 +111,7 @@ adapter, not at the wire level (Decision 4).
       connect, buffered consume-once `WaitForEventAsync`, ping/pong, unauth rejection,
       **cross-org scope isolation**, and the onHome readiness barrier - `Realtime/RealtimeScaffold.cs`)
 - [~] Device / circuit / fiber-run / connection / network mutation events
-      (device, circuit, and fiber-run updated + deleted, network updated on create;
-      connection open)
+      (device, circuit, fiber-run, and connection updated + deleted, network updated on create)
 - [~] Property / building-model / bcf events  (property created; building-model/bcf open)
 - [ ] Org / member / invitation / join-request / team / assignment events
 - [~] AI streaming (token/complete), onboarding turn, metrics, ping/pong, access-changed
@@ -119,7 +119,7 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 107 tests green.
+**Done so far:** 109 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -149,12 +149,12 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (11):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (13):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, both fan-out modes (the
-  scoped device/circuit/fiber-run updated + deleted events and the owner-room network event),
-  a property-created event, the ping/pong round-trip, an unauthenticated socket being
-  disconnected, and - the load-bearing one - a device mutation in org A never reaching org B's
+  scoped device/circuit/fiber-run/connection updated + deleted events and the owner-room
+  network event), a property-created event, the ping/pong round-trip, an unauthenticated
+  socket being disconnected, and - the load-bearing one - a device mutation in org A never reaching org B's
   socket while B still receives its own. The connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
