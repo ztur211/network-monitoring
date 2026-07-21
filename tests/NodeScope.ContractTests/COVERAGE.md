@@ -63,7 +63,8 @@ controller, so the tracker doubles as the port work-list.
 - [x] networks.controller (6): CRUD + `:id/set-home-ip`
       (one-per-org `NETWORK_001`, summary hides `homePublicIp` / detail reveals it, `NETWORK_002`, `SYNC_001`)
 - [~] network-property.controller (3): `/api/v1/networks/:networkId/properties`
-      (POST add exercised as the device-placement scaffold; explicit list/DELETE-charter contract still open)
+      (POST add envelope `{id, networkId, propertyId}` + DELETE remove exercised by `Realtime/`;
+      GET list + the coverage/containment error paths still open)
 - [x] circuits.controller (5): CRUD under `/api/v1/circuits`
       (cursor page `items/nextCursor/total`, device link + unknown-device `DEVICE_001`, `CIRCUIT_001`, `SYNC_001`)
 - [ ] fiber-runs.controller (5): CRUD under `/api/v1/fiber-runs`
@@ -116,8 +117,12 @@ adapter, not at the wire level (Decision 4).
       connect, buffered consume-once `WaitForEventAsync`, ping/pong, unauth rejection,
       **cross-org scope isolation**, and the onHome readiness barrier - `Realtime/RealtimeScaffold.cs`)
 - [~] Device / circuit / fiber-run / connection / network mutation events
-      (device, circuit, fiber-run, and connection updated + deleted, network updated on create)
-- [~] Property / building-model / bcf events  (property created; building-model/bcf open)
+      (device, circuit, fiber-run, and connection updated + deleted, network updated on
+      create, charter added + removed - added carries the charter id, removed only the pair)
+- [~] Property / building-model / bcf events
+      (property created + updated + deleted, and the moved-vs-updated split: a reparent
+      emits property:moved INSTEAD of updated, asserted with a negative window;
+      building-model/bcf open)
 - [~] Org / member / invitation / join-request / team / assignment events
       (member added + updated + removed to the org room, including the second member:added
       emit path via join-request approval; invitation created + revoked + accepted, with the
@@ -129,7 +134,7 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 119 tests green.
+**Done so far:** 124 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -159,7 +164,7 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (23):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (28):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
@@ -171,7 +176,10 @@ adapter, not at the wire level (Decision 4).
   created (normalized email) / revoked / accepted, joinRequest created (id cross-checked against the
   owner's pending list, since the submit response is bodiless) / decided for both verdicts, approval
   emitting member:added over its second emit path and denial asserted member-less in a negative
-  window. The connect/emit race is closed deterministically by a readiness barrier
+  window. And the property tree (`Realtime/PropertyRealtimeTests.cs`): property updated on
+  rename, deleted, the moved-vs-updated split on reparent (moved fires, updated must not),
+  and the network charter added (with charter id) / removed (pair only) events. The
+  connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
