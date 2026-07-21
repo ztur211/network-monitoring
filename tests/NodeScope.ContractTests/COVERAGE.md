@@ -49,8 +49,11 @@ controller, so the tracker doubles as the port work-list.
 
 **permissions / teams / member-assignments** (1+8+3)
 - [ ] permissions.controller: GET `/api/v1/access/me`
-- [ ] teams.controller: 8 endpoints under `/api/v1/teams`
-- [ ] member-assignments.controller: GET `/api/v1/members/:memberId/access`, POST/DELETE properties
+- [~] teams.controller: 8 endpoints under `/api/v1/teams`
+      (create/rename/delete/member add + remove/property assign + unassign happy paths
+      exercised by `Realtime/`; GET list + `TEAM_002`/`SYNC_001`/role-gate envelopes still open)
+- [~] member-assignments.controller: GET `/api/v1/members/:memberId/access`, POST/DELETE properties
+      (POST grant + DELETE revoke exercised by `Realtime/`; GET access + `PERM_002`/`PERM_003` still open)
 
 **desktop-auth.controller** (3)
 - [ ] GET `/api/v1/desktop-auth/authorize` · POST `/token` · POST `/revoke`
@@ -128,13 +131,19 @@ adapter, not at the wire level (Decision 4).
       emit path via join-request approval; invitation created + revoked + accepted, with the
       created event carrying the normalized email; joinRequest created + decided for both
       verdicts, denial asserted member-less; org rename asserted realtime-silent -
-      `v1:org:updated` is in the catalogue but unemitted; team/assignment open)
+      `v1:org:updated` is in the catalogue but unemitted; the full team lifecycle
+      (created owner-only via the empty scope list, updated, deleted, member added +
+      removed, property assigned + unassigned) and the direct member-site grant +
+      revoke; the team/assignment family is pinned timestamp-less - it bypasses the
+      conflict-service wrapper that stamps entity events)
 - [~] AI streaming (token/complete), onboarding turn, metrics, ping/pong, access-changed
-      (ping/pong + the onHome per-connection event covered; the rest open)
+      (ping/pong + the onHome per-connection event covered; access-changed proven to target
+      the affected USER's room - the granted member's socket hears it, with `{organizationId}` -
+      on both the direct-grant and team-membership paths; AI/onboarding/metrics open)
 
 ---
 
-**Done so far:** 124 tests green.
+**Done so far:** 135 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -164,7 +173,7 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (28):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (39):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
@@ -178,8 +187,14 @@ adapter, not at the wire level (Decision 4).
   emitting member:added over its second emit path and denial asserted member-less in a negative
   window. And the property tree (`Realtime/PropertyRealtimeTests.cs`): property updated on
   rename, deleted, the moved-vs-updated split on reparent (moved fires, updated must not),
-  and the network charter added (with charter id) / removed (pair only) events. The
-  connect/emit race is closed deterministically by a readiness barrier
+  and the network charter added (with charter id) / removed (pair only) events. And the
+  permissions family (`Realtime/{TeamRealtimeTests,MemberAccessRealtimeTests}.cs`): the
+  team lifecycle (created reaching the owner room through an empty scope list, renamed via
+  its flat versioned body, deleted, member added + removed speaking org-member ids, site
+  assigned + unassigned), the direct member-site grant + revoke, and access:changed proven
+  to target the affected USER's room on both the grant and team-membership paths - with the
+  whole family pinned timestamp-less, since it bypasses the conflict-service wrapper that
+  stamps entity events. The connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
