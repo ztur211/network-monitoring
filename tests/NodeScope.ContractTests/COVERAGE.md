@@ -36,10 +36,15 @@ controller, so the tracker doubles as the port work-list.
 - [x] guard chain: unauth `AUTH_002`, authed non-super-admin `ORG_007`
 
 **invitations / join-requests / members** (2+3+1+3+2)
-- [ ] invitations.controller: POST/GET/DELETE `/api/v1/organizations/me/invitations`
-- [ ] invitation-accept.controller: POST `/api/v1/invitations/accept`
-- [ ] join-request-submit.controller: POST `/api/v1/join-requests`
-- [ ] join-requests.controller: GET + approve/deny under `/api/v1/organizations/me/join-requests`
+- [~] invitations.controller: POST/GET/DELETE `/api/v1/organizations/me/invitations`
+      (POST + DELETE happy paths exercised by `Realtime/` and `OrgProvisioning.AddMemberAsync`;
+      GET list + the error envelopes `ORG_009`/`PERM_003` still open)
+- [~] invitation-accept.controller: POST `/api/v1/invitations/accept`
+      (happy path exercised; `ORG_009`/`ORG_010`/`ORG_011` envelopes still open)
+- [~] join-request-submit.controller: POST `/api/v1/join-requests`
+      (domain-matched happy path exercised by `Realtime/`; `ORG_011`/`ORG_014`/`ORG_015` still open)
+- [~] join-requests.controller: GET + approve/deny under `/api/v1/organizations/me/join-requests`
+      (pending list + approve + deny exercised by `Realtime/`; status filter + `ORG_012` still open)
 - [ ] members.controller: PATCH/DELETE `/api/v1/organizations/me/members/:userId`
 
 **permissions / teams / member-assignments** (1+8+3)
@@ -114,14 +119,17 @@ adapter, not at the wire level (Decision 4).
       (device, circuit, fiber-run, and connection updated + deleted, network updated on create)
 - [~] Property / building-model / bcf events  (property created; building-model/bcf open)
 - [~] Org / member / invitation / join-request / team / assignment events
-      (member added + updated + removed to the org room; org rename asserted realtime-silent -
-      `v1:org:updated` is in the catalogue but unemitted; invitation/join-request/team/assignment open)
+      (member added + updated + removed to the org room, including the second member:added
+      emit path via join-request approval; invitation created + revoked + accepted, with the
+      created event carrying the normalized email; joinRequest created + decided for both
+      verdicts, denial asserted member-less; org rename asserted realtime-silent -
+      `v1:org:updated` is in the catalogue but unemitted; team/assignment open)
 - [~] AI streaming (token/complete), onboarding turn, metrics, ping/pong, access-changed
       (ping/pong + the onHome per-connection event covered; the rest open)
 
 ---
 
-**Done so far:** 113 tests green.
+**Done so far:** 119 tests green.
 
 - **Identity (24):** org-free and seeded-owner read/mutation paths, both auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
@@ -151,14 +159,19 @@ adapter, not at the wire level (Decision 4).
   write is observable through device-status. Role gating reuses a new
   `OrgProvisioning.AddMemberAsync` (invite + accept over HTTP) to get a genuine non-owner
   member, the case `ORG_003` exists to reject.
-- **Realtime adapter (17):** the transport-agnostic `IRealtimeClient` and its socket.io
+- **Realtime adapter (23):** the transport-agnostic `IRealtimeClient` and its socket.io
   implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
   to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
   network event, and the org-room member added/updated/removed events), a property-created
   event, the org rename asserted realtime-silent, the ping/pong round-trip, an unauthenticated
   socket being disconnected, and - the load-bearing one - a device mutation in org A never reaching org B's
-  socket while B still receives its own. The connect/emit race is closed deterministically by a readiness barrier
+  socket while B still receives its own. On top of that, the org-accession lifecycle
+  (`Realtime/OrgInvitationRealtimeTests.cs`, `Realtime/OrgJoinRequestRealtimeTests.cs`): invitation
+  created (normalized email) / revoked / accepted, joinRequest created (id cross-checked against the
+  owner's pending list, since the submit response is bodiless) / decided for both verdicts, approval
+  emitting member:added over its second emit path and denial asserted member-less in a negative
+  window. The connect/emit race is closed deterministically by a readiness barrier
   (`Realtime/RealtimeScaffold.cs`): the gateway emits `v1:network:onHome:changed` only after
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
