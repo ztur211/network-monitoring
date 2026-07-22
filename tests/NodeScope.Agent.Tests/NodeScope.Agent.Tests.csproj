@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the agent, ported one-for-one from the Node agent's vitest
+    suites (buffer, snmp-collector, cli, runtime, api-client, config,
+    device-sync-cache, poller, enroll) so the behavioural contract carries
+    across the rewrite. The SharpSnmpLib session adapter is deliberately NOT
+    unit-tested - the collector is tested via a fake session, and the adapter
+    is proven against a real net-snmp daemon (Decision 12 spike + gear tests).
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/NodeScope.Agent/NodeScope.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

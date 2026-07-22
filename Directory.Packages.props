@@ -32,6 +32,14 @@
       poorly. Testcontainers gets pinned when the first module-level integration
       test lands.
     -->
+    <!--
+      SNMP for the agent (Decision 12, resolved 2026-07-21). Verified under
+      NativeAOT + full trimming against net-snmp 5.9.4: v2c GET/BulkWalk and v3
+      authPriv (SHA-256/AES) all pass from an AOT binary with the assembly
+      rooted via TrimmerRootAssembly. Known gap: no SHA-224 auth provider.
+    -->
+    <PackageVersion Include="Lextm.SharpSnmpLib" Version="12.5.7" />
+
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />

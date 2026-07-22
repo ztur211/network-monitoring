@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The monitoring agent: a NativeAOT single-file binary (sequencing step 3,
+    Decision 12). Replaces apps/agent + packages/probe (Node SEA, ~100 MB) with
+    a ~3 MB native executable. References Contracts only - the agent is a
+    standalone deliverable and must never grow a dependency on server code.
+
+    Publish with:
+      dotnet publish src/NodeScope.Agent -c Release -r linux-x64
+    On a box without clang, add -p:CppCompilerAndLinker=gcc (verified to link
+    correctly; the dev box has no clang and sudo cannot install one).
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      SharpSnmpLib marks its messaging APIs RequiresUnreferencedCode. The spike
+      (2026-07-21) proved our exact call paths work fully trimmed, but rooting
+      the assembly removes the entire risk class - including paths the spike
+      did not exercise - for ~400 KB. The IL2026 suppressions in
+      SharpSnmpSession.cs cite this root.
+    -->
+    <TrimmerRootAssembly Include="SharpSnmpLib" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lextm.SharpSnmpLib" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NodeScope.Agent.Tests" />
+  </ItemGroup>
+
+</Project>

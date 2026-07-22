@@ -28,6 +28,12 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/NodeScope.Api/NodeScope.Api.csproj" />
+    <!--
+      The agent is not reachable from the Api reference graph, so it is pulled in
+      explicitly - its assembly must land in the test output for the inheritance
+      rule and AgentBoundaryRules to inspect it.
+    -->
+    <ProjectReference Include="../../src/NodeScope.Agent/NodeScope.Agent.csproj" />
   </ItemGroup>
 
 </Project>

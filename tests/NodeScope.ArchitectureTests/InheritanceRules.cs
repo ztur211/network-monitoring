@@ -29,6 +29,7 @@ public class InheritanceRules
         "Microsoft.EntityFrameworkCore.Migrations.Migration",       // tooling-generated
         "Microsoft.AspNetCore.SignalR.Hub",                         // realtime hubs
         "Microsoft.AspNetCore.Authentication.AuthenticationHandler`1", // the session handler (Decision 7)
+        "System.Text.Json.Serialization.JsonSerializerContext",        // source-generated JSON (AOT agent); the generator requires it
     };
 
     [Fact]
