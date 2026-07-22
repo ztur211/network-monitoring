@@ -73,6 +73,49 @@ public class AgentConfigTests
     }
 
     [Fact]
+    public void Auto_update_defaults_on_with_an_hourly_interval_and_derived_url()
+    {
+        var config = AgentConfigLoader.Load(WriteConfig("{}"), Env());
+        Assert.True(config.AutoUpdate);
+        Assert.Equal(3_600_000, config.UpdateIntervalMs);
+        Assert.Null(config.UpdateUrl);
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("false")]
+    [InlineData("0")]
+    public void Auto_update_env_opt_out_forms_all_disable(string value)
+    {
+        var config = AgentConfigLoader.Load(WriteConfig("{}"), Env(("NODESCOPE_AGENT_AUTO_UPDATE", value)));
+        Assert.False(config.AutoUpdate);
+    }
+
+    [Fact]
+    public void Auto_update_env_on_overrides_file_off()
+    {
+        var config = AgentConfigLoader.Load(
+            WriteConfig("""{"autoUpdate":false}"""), Env(("NODESCOPE_AGENT_AUTO_UPDATE", "on")));
+        Assert.True(config.AutoUpdate);
+    }
+
+    [Fact]
+    public void Reads_auto_update_off_from_config_file()
+    {
+        var config = AgentConfigLoader.Load(WriteConfig("""{"autoUpdate":false}"""), Env());
+        Assert.False(config.AutoUpdate);
+    }
+
+    [Fact]
+    public void Update_url_env_overrides_file()
+    {
+        var config = AgentConfigLoader.Load(
+            WriteConfig("""{"updateUrl":"http://file/agent/manifest.json"}"""),
+            Env(("NODESCOPE_AGENT_UPDATE_URL", "http://env/agent/manifest.json")));
+        Assert.Equal("http://env/agent/manifest.json", config.UpdateUrl);
+    }
+
+    [Fact]
     public void Env_api_url_overrides_file_set_api_url()
     {
         var path = WriteConfig("""{"apiUrl":"http://file-host/api"}""");

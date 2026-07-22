@@ -23,4 +23,6 @@ internal sealed record Envelope<T>
 [JsonSerializable(typeof(Envelope<IReadOnlyList<AgentDeviceDto>>))]
 [JsonSerializable(typeof(Credentials))]
 [JsonSerializable(typeof(AgentConfigFile))]
+[JsonSerializable(typeof(AgentHeartbeatRequest))]
+[JsonSerializable(typeof(UpdateManifest))]
 internal sealed partial class AgentJsonContext : JsonSerializerContext;

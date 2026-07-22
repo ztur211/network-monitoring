@@ -17,6 +17,13 @@ internal sealed record AgentConfig
     public required bool IcmpEnabled { get; init; }
 
     public required int TimeoutMs { get; init; }
+
+    public required bool AutoUpdate { get; init; }
+
+    public required int UpdateIntervalMs { get; init; }
+
+    /// <summary>Explicit manifest URL; when null the appliance origin is derived from <see cref="ApiUrl"/>.</summary>
+    public required string? UpdateUrl { get; init; }
 }
 
 /// <summary>The optional JSON config file's shape - every field falls back to a default.</summary>
@@ -35,6 +42,12 @@ internal sealed record AgentConfigFile
     public bool? IcmpEnabled { get; init; }
 
     public int? TimeoutMs { get; init; }
+
+    public bool? AutoUpdate { get; init; }
+
+    public int? UpdateIntervalMs { get; init; }
+
+    public string? UpdateUrl { get; init; }
 }
 
 /// <summary>
@@ -68,6 +81,11 @@ internal static class AgentConfigLoader
                 ? icmp != "false"
                 : file.IcmpEnabled ?? true,
             TimeoutMs = Num(env.GetValueOrDefault("NODESCOPE_AGENT_TIMEOUT_MS"), file.TimeoutMs ?? 2_000),
+            AutoUpdate = env.GetValueOrDefault("NODESCOPE_AGENT_AUTO_UPDATE") is { } auto
+                ? auto is not ("off" or "false" or "0")
+                : file.AutoUpdate ?? true,
+            UpdateIntervalMs = Num(env.GetValueOrDefault("NODESCOPE_AGENT_UPDATE_INTERVAL_MS"), file.UpdateIntervalMs ?? 3_600_000),
+            UpdateUrl = env.GetValueOrDefault("NODESCOPE_AGENT_UPDATE_URL") ?? file.UpdateUrl,
         };
     }
 

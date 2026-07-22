@@ -42,4 +42,8 @@ RUN npm run build --workspace=apps/web   # expo export --platform web -> apps/we
 FROM caddy:2-alpine AS runtime
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /srv/web
+# Agent distribution payload (Decision 13): binaries + manifest + installers
+# staged by scripts/agent-release/build.sh; served by Caddy at /agent/*.
+# An unstaged (empty) directory just means the update manifest 404s - harmless.
+COPY deploy/agent-dist/ /srv/agent/
 EXPOSE 80

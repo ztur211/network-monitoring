@@ -41,7 +41,7 @@ public class AgentApiClientTests
         Content = new StringContent(payload, Encoding.UTF8, "application/json"),
     });
 
-    private static AgentApiClient Client(HttpClient http) => new(http, "http://h/api", "tok");
+    private static AgentApiClient Client(HttpClient http) => new(http, "http://h/api", "tok", "1.2.3");
 
     [Fact]
     public async Task SyncDevices_gets_with_the_agent_token()
@@ -123,6 +123,18 @@ public class AgentApiClientTests
 
         var (_, body) = Assert.Single(handler.Calls);
         Assert.DoesNotContain("latencyMs", Encoding.UTF8.GetString(body), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Heartbeat_posts_the_running_version()
+    {
+        using var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        using var http = new HttpClient(handler);
+        await Client(http).HeartbeatAsync(CancellationToken.None);
+
+        var (request, body) = Assert.Single(handler.Calls);
+        Assert.Equal("http://h/api/v1/monitoring/agent/heartbeat", request.RequestUri!.ToString());
+        Assert.Equal("""{"version":"1.2.3"}""", Encoding.UTF8.GetString(body));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ import {
   FlatList,
 } from 'react-native';
 import type { AgentDto } from '@nodescope/shared';
+import { resolveApiBaseUrl } from '../lib/api-base';
 
 export interface AgentsClient {
   listAgents(): Promise<AgentDto[]>;
@@ -115,12 +116,20 @@ export function AgentsSettings({ client }: Props) {
 
         {enrollCode && (
           <View className="mt-3 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-3">
-            <Text className="text-xs text-gray-500 dark:text-gray-400 mb-1">Run on agent host:</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              Run on the agent host (installs, verifies, and enrolls):
+            </Text>
             <Text
               selectable
               className="text-sm font-mono text-gray-900 dark:text-white"
             >
-              {`nodescope-agent enroll --code ${enrollCode}`}
+              {`curl -fsSL ${resolveApiBaseUrl()}/agent/install.sh | sudo bash -s -- --server ${resolveApiBaseUrl()} --code ${enrollCode}`}
+            </Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Already installed? Just enroll:{' '}
+              <Text selectable className="font-mono">
+                {`nodescope-agent enroll --code ${enrollCode}`}
+              </Text>
             </Text>
           </View>
         )}

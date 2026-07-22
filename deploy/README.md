@@ -274,40 +274,44 @@ without requiring an open browser tab.
 
 ### Installing on a managed host
 
-Each OS has a one-command installer in `apps/agent/scripts/`. Obtain the one-time
-enrollment code from the web app under **Settings → Agents → Generate Code**, then:
+The appliance serves its own agents (migration Decision 13): binaries, installers, and
+an update manifest are baked into the web image at `/srv/agent` and served by Caddy at
+`/agent/*`. Stage them with `scripts/agent-release/build.sh` before building the image.
+
+Obtain the one-time enrollment code from the web app under **Settings → Agents →
+Generate Code** (the dialog shows this exact command), then on the target host:
 
 **Linux (systemd)**
 ```bash
-sudo ./install-linux.sh --url https://<your-origin>/api --code <code>
+curl -fsSL http://<server>/agent/install.sh | sudo bash -s -- --server http://<server> --code <code>
 ```
 
-**macOS (launchd)**
-```bash
-sudo ./install-macos.sh --url https://<your-origin>/api --code <code>
-```
-
-**Windows (PowerShell — service/Task Scheduler)**
+**Windows (elevated PowerShell — startup task)**
 ```powershell
-.\install-windows.ps1 -Url https://<your-origin>/api -Code <code>
+iwr http://<server>/agent/install.ps1 -OutFile install.ps1
+.\install.ps1 -Server http://<server> -Code <code>
 ```
 
-All three scripts:
-1. Install the agent binary (from `dist/` or from `--binary-url <url>` for CI
-   deployments where the binary is fetched from the Spaces bucket).
-2. Run `nodescope-agent enroll --code <code> --url <api-url>` to exchange the code
+Both installers:
+1. Download the platform binary from the appliance, then verify its sha256 **and** its
+   ECDSA publisher signature against the pinned NodeScope key before installing.
+2. Run `nodescope-agent enroll --code <code> --url <server>/api` to exchange the code
    for a per-agent token (sent via the `x-agent-token` header on each request).
-3. Register and start the OS service so the agent restarts automatically.
+   Re-running without `--code` upgrades the binary and keeps the enrollment.
+3. Register and start the OS service. The Linux unit uses `Restart=always` (and the
+   Windows runner loops) because self-update exits 0 after swapping the binary.
 
-Once enrolled, the agent appears in the **Agents** management list in the web app and
-begins pushing device status within one probe interval (default 30 s).
+Once enrolled, the agent appears in the **Agents** management list, begins pushing
+device status within one probe interval (default 30 s), and thereafter updates itself:
+it polls `/agent/manifest.json` on its own server hourly, verifies any newer binary
+against the pinned publisher key, swaps in place, and restarts. Opt out per host with
+`NODESCOPE_AGENT_AUTO_UPDATE=off`; the previous binary is kept next to the new one as
+`nodescope-agent.old` for manual rollback.
 
-Release binaries are published to the DigitalOcean Spaces bucket by the CI workflow;
-pass `--binary-url <spaces-url>` to the installer to download from there instead of
-copying a local `dist/` binary.
+The legacy Node-agent installers in `apps/agent/scripts/` and the DigitalOcean Spaces
+publishing path are superseded by the above and leave with the Node code.
 
-See `apps/agent/README.md` for full CLI reference, configuration options, and build
-instructions.
+See `apps/agent/README.md` for full CLI reference and configuration options.
 
 ---
 

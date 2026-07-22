@@ -36,7 +36,7 @@ internal static class Daemon
             return 1;
         }
 
-        IAgentApiClient client = new AgentApiClient(http, config.ApiUrl, credentials.Token);
+        IAgentApiClient client = new AgentApiClient(http, config.ApiUrl, credentials.Token, AgentVersion.Value);
         // The device list changes rarely and each sync forces a server-side SNMP-credential
         // decrypt, so fetch it on the slower sync cadence rather than every probe cycle.
         client = new CachedSyncApiClient(client, config.SyncIntervalMs);
@@ -58,6 +58,20 @@ internal static class Daemon
             context.Cancel = true;
             shutdown.Cancel();
         });
+
+        // Self-update runs beside the probe loop and, once a verified new binary is swapped in,
+        // cancels shutdown so the daemon exits cleanly for the service manager to restart.
+        Task<bool>? selfUpdate = null;
+        if (config.AutoUpdate && Environment.ProcessPath is { } executable)
+        {
+            var manifestUri = config.UpdateUrl is { } custom
+                ? new Uri(custom, UriKind.Absolute)
+                : SelfUpdater.DeriveManifestUri(config.ApiUrl);
+            var updater = new SelfUpdater(http, manifestUri, AgentVersion.Value, executable);
+#pragma warning disable CA2025 // The task is awaited below before http/shutdown leave scope; the analyzer cannot see through the probe loop.
+            selfUpdate = updater.RunLoopAsync(TimeSpan.FromMilliseconds(config.UpdateIntervalMs), shutdown);
+#pragma warning restore CA2025
+        }
 
         var interval = TimeSpan.FromMilliseconds(config.ProbeIntervalMs);
         using var timer = new PeriodicTimer(interval);
@@ -115,6 +129,13 @@ internal static class Daemon
         catch (Exception)
 #pragma warning restore CA1031
         {
+        }
+
+        if (selfUpdate is not null)
+        {
+            // Resolves immediately: either the updater cancelled shutdown itself after swapping
+            // the binary, or the cancelled token has already unblocked its delay.
+            await selfUpdate;
         }
 
         return 0;

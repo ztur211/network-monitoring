@@ -20,6 +20,11 @@ PROGRESS.md
 # Local runtime artifacts (e.g. a Redis server started in-repo drops its dump here)
 *.rdb
 
+# Agent release staging - built + signed by scripts/agent-release/build.sh,
+# copied into the web image by deploy/Dockerfile.web. Never committed.
+deploy/agent-dist/*
+!deploy/agent-dist/.gitkeep
+
 # Dependencies
 node_modules/
 

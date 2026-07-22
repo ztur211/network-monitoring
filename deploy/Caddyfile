@@ -20,6 +20,15 @@
 		reverse_proxy {$API_UPSTREAM:api:3000}
 	}
 
+	# Agent distribution (Decision 13): binaries, manifest, and installers baked
+	# into this image at /srv/agent, staged by scripts/agent-release/build.sh.
+	# A dedicated handle so a missing file 404s - the agent's update check must
+	# see 404, never the SPA's index.html fallback.
+	handle /agent/* {
+		root * /srv
+		file_server
+	}
+
 	# Web SPA: serve the static export; unknown paths fall back to index.html so
 	# expo-router can handle client-side routing.
 	handle {

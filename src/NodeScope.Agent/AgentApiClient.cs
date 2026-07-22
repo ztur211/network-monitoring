@@ -48,7 +48,7 @@ internal interface IAgentApiClient
 /// timeout; with the default completion option it bounds the whole exchange including body
 /// consumption, matching the Node agent's single wall-clock deadline.
 /// </summary>
-internal sealed class AgentApiClient(HttpClient http, string apiUrl, string token) : IAgentApiClient
+internal sealed class AgentApiClient(HttpClient http, string apiUrl, string token, string version) : IAgentApiClient
 {
     /// <summary>Gzip ingest bodies at/above this size; smaller payloads aren't worth the ~20-byte overhead.</summary>
     internal const int IngestGzipMinBytes = 1024;
@@ -80,7 +80,11 @@ internal sealed class AgentApiClient(HttpClient http, string apiUrl, string toke
     public async Task HeartbeatAsync(CancellationToken cancellationToken)
     {
         using var request = NewRequest(HttpMethod.Post, "/v1/monitoring/agent/heartbeat");
-        request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+        // Carries the running version so self-updates are visible fleet-wide. The Node API
+        // handler binds no body (ValidationPipe never sees it); the C# API persists it.
+        var body = JsonSerializer.Serialize(
+            new AgentHeartbeatRequest { Version = version }, AgentJsonContext.Default.AgentHeartbeatRequest);
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         using var response = await http.SendAsync(request, cancellationToken);
         EnsureSuccess(response, "POST", "/v1/monitoring/agent/heartbeat");
     }

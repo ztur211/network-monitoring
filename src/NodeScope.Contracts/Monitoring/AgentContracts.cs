@@ -60,6 +60,16 @@ public sealed record AgentEnrollRequest
     public required string Version { get; init; }
 }
 
+/// <summary>
+/// Heartbeat body. The Node API binds no body on this endpoint and ignores the field; the C#
+/// API persists it so <c>Agent.version</c> tracks in-place self-updates instead of going stale
+/// after the enroll-time write (Decision 13).
+/// </summary>
+public sealed record AgentHeartbeatRequest
+{
+    public required string Version { get; init; }
+}
+
 public sealed record AgentEnrollResponse
 {
     public required string AgentId { get; init; }

@@ -1,0 +1,20 @@
+[Unit]
+Description=NodeScope Agent - network monitoring daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nodescope-agent
+# "always", not "on-failure": self-update (Decision 13) swaps the binary on disk
+# and exits 0 precisely so this restart brings up the new version.
+Restart=always
+RestartSec=10s
+# Credentials are written to /etc/nodescope-agent/credentials.json during enroll
+# Override API URL if needed: Environment=NODESCOPE_AGENT_API_URL=https://your-server/api
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nodescope-agent
+
+[Install]
+WantedBy=multi-user.target
