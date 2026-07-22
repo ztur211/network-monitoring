@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
 using Lextm.SharpSnmpLib;
 using Lextm.SharpSnmpLib.Messaging;
 using Lextm.SharpSnmpLib.Security;
@@ -158,7 +159,8 @@ internal sealed class SharpSnmpSession : ISnmpSession
             .ToUpperInvariant();
         return level switch
         {
-            "AUTHPRIV" or "AUTHPRIVACY" => BuildPrivacyProvider(target.PrivProtocol, target.PrivKey ?? string.Empty, auth),
+            "AUTHPRIV" or "AUTHPRIVACY" => BuildPrivacyProvider(
+                target.PrivProtocol, target.PrivKey ?? string.Empty, auth, target.AuthProtocol),
             "AUTHNOPRIV" or "AUTHNOPRIVACY" => new DefaultPrivacyProvider(auth),
             _ => DefaultPrivacyProvider.DefaultPair,
         };
@@ -184,7 +186,8 @@ internal sealed class SharpSnmpSession : ISnmpSession
         };
     }
 
-    private static IPrivacyProvider BuildPrivacyProvider(string? protocol, string key, IAuthenticationProvider auth)
+    private static IPrivacyProvider BuildPrivacyProvider(
+        string? protocol, string key, IAuthenticationProvider auth, string? authProtocol)
     {
         var phrase = new OctetString(key);
         return (protocol ?? string.Empty).ToUpperInvariant() switch
@@ -194,10 +197,30 @@ internal sealed class SharpSnmpSession : ISnmpSession
 #pragma warning restore CS0618
             "AES" or "AES128" => new AESPrivacyProvider(phrase, auth),
             "AES192" => new AES192PrivacyProvider(phrase, auth),
-            "AES256" or "AES256B" or "AES256R" => new AES256PrivacyProvider(phrase, auth),
+            // Not the library's AES256 provider: its short-key extension is wrong for
+            // MD5 auth (see Aes256PrivacyProvider). The API only ever sends "AES256";
+            // it means the Reeder/Cisco extension, which is what real gear speaks. The
+            // B/R spellings are net-snmp's explicit variant names, honoured as such.
+            "AES256" or "AES256R" => new Aes256PrivacyProvider(
+                phrase, auth, Aes256KeyExtension.Reeder, AuthHashName(authProtocol)),
+            "AES256B" => new Aes256PrivacyProvider(
+                phrase, auth, Aes256KeyExtension.Blumenthal, AuthHashName(authProtocol)),
             _ => new DefaultPrivacyProvider(auth),
         };
     }
+
+    private static HashAlgorithmName AuthHashName(string? protocol) =>
+        (protocol ?? string.Empty).ToUpperInvariant() switch
+        {
+            "MD5" => HashAlgorithmName.MD5,
+            "SHA" => HashAlgorithmName.SHA1,
+            "SHA256" => HashAlgorithmName.SHA256,
+            "SHA384" => HashAlgorithmName.SHA384,
+            "SHA512" => HashAlgorithmName.SHA512,
+            // Unreachable with privacy in play: an unknown auth protocol yields
+            // DefaultAuthenticationProvider, which Aes256PrivacyProvider rejects.
+            _ => HashAlgorithmName.SHA1,
+        };
 
     private static double? ToNumber(ISnmpData data) => data switch
     {

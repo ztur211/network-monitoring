@@ -79,14 +79,34 @@ stage "$PROJECT/bin/Release/net10.0/linux-x64/publish/NodeScope.Agent" nodescope
 ENTRIES="$(manifest_entry linux-x64 nodescope-agent-linux-x64)"
 
 # NativeAOT must link on Windows for win-x64; use the Windows host's SDK when
-# this is WSL and dotnet.exe is on the interop PATH.
-if command -v dotnet.exe > /dev/null 2>&1 && dotnet.exe --list-sdks > /dev/null 2>&1; then
+# this is WSL and dotnet.exe is reachable. The interop PATH often omits the
+# Windows dirs (appendWindowsPath=false), so probe the default install too.
+DOTNET_EXE=""
+if command -v dotnet.exe > /dev/null 2>&1; then
+  DOTNET_EXE="dotnet.exe"
+elif [[ -x "/mnt/c/Program Files/dotnet/dotnet.exe" ]]; then
+  DOTNET_EXE="/mnt/c/Program Files/dotnet/dotnet.exe"
+fi
+
+if [[ -n "$DOTNET_EXE" ]] && "$DOTNET_EXE" --list-sdks > /dev/null 2>&1; then
   echo "==> Publishing win-x64 via the Windows host's dotnet.exe"
-  dotnet.exe publish "$PROJECT" -c Release -r win-x64 -p:Version="$VERSION" > /dev/null
-  stage "$PROJECT/bin/Release/net10.0/win-x64/publish/NodeScope.Agent.exe" nodescope-agent-win-x64.exe
-  ENTRIES="$ENTRIES,$(manifest_entry win-x64 nodescope-agent-win-x64.exe)"
+  # The Windows build gets its own artifacts tree on NTFS. Sharing the repo's
+  # obj/ between the two OSes corrupts both builds (missing ref assemblies,
+  # NuGet assets flip-flopping between path flavours), and AOT intermediates
+  # over the 9P bridge are slow.
+  WIN_LOCALAPPDATA="$(/mnt/c/Windows/System32/cmd.exe /c 'echo %LOCALAPPDATA%' 2> /dev/null | tr -d '\r')"
+  if [[ -z "$WIN_LOCALAPPDATA" || "$WIN_LOCALAPPDATA" == *%* ]]; then
+    echo "==> Skipping win-x64: could not resolve the Windows LOCALAPPDATA" >&2
+  else
+    WIN_ARTIFACTS="$WIN_LOCALAPPDATA\\NodeScope\\agent-build"
+    "$DOTNET_EXE" publish "$(wslpath -w "$PROJECT")" -c Release -r win-x64 \
+      -p:Version="$VERSION" --artifacts-path "$WIN_ARTIFACTS" > /dev/null
+    stage "$(wslpath "$WIN_ARTIFACTS")/publish/NodeScope.Agent/release_win-x64/NodeScope.Agent.exe" \
+      nodescope-agent-win-x64.exe
+    ENTRIES="$ENTRIES,$(manifest_entry win-x64 nodescope-agent-win-x64.exe)"
+  fi
 else
-  echo "==> Skipping win-x64: no working dotnet.exe on the interop PATH" >&2
+  echo "==> Skipping win-x64: no working dotnet.exe found" >&2
 fi
 
 printf '{"version":"%s","binaries":{%s}}\n' "$VERSION" "$ENTRIES" > "$DIST/manifest.json"
