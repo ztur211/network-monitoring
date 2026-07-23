@@ -5,6 +5,7 @@
 // this file composes them. Business logic does not live here.
 
 using NodeScope.Api;
+using NodeScope.Modules.Assistant.Infrastructure;
 using NodeScope.Modules.Identity.Infrastructure;
 using NodeScope.Modules.Inventory.Infrastructure;
 using NodeScope.Modules.Monitoring.Infrastructure;
@@ -36,6 +37,7 @@ builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddMonitoringModule(builder.Configuration);
 builder.Services.AddRealtimeModule();
+builder.Services.AddAssistantModule(builder.Configuration);
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
 // every route this host does not serve natively is forwarded to the Node API, so the
@@ -87,6 +89,7 @@ app.MapBandwidthEndpoints();
 app.MapInventoryEndpoints();
 app.MapMonitoringEndpoints();
 app.MapRealtimeEndpoints();
+app.MapAssistantEndpoints();
 
 if (!string.IsNullOrEmpty(proxyTarget))
 {

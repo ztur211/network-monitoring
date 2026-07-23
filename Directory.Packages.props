@@ -52,6 +52,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
 
     <!--
       Object storage (Decision 10): S3-compatible blobs for IFC building models and BCF
