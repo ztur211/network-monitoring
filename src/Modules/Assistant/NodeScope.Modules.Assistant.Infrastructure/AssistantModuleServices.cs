@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NodeScope.Modules.Assistant.Application;
+using NodeScope.Platform.Abstractions;
 
 namespace NodeScope.Modules.Assistant.Infrastructure;
 
@@ -20,6 +21,7 @@ public static class AssistantModuleServices
         services.AddSingleton<IAiUsageCounters, MemoryAiUsageCounters>();
         services.AddSingleton<IAiConversationStore, MemoryAiConversationStore>();
         services.AddScoped<AiService>();
+        services.AddScoped<IAssistantResponder, AssistantResponder>();
 
         return services;
     }

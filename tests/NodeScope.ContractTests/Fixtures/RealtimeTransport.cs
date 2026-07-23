@@ -44,8 +44,13 @@ public static class RealtimeTransport
     public static string ClientMethod(string eventName) => eventName switch
     {
         "v1:ping" => "Ping",
+        "v1:metrics:submit" => "MetricsSubmit",
+        "v1:ai:message" => "AiMessage",
         _ => throw new NotSupportedException($"No hub method is mapped for '{eventName}'."),
     };
+
+    /// <summary>True when the hub method takes the emitted payload as its argument.</summary>
+    public static bool MethodTakesPayload(string eventName) => eventName is not "v1:ping";
 
     /// <summary>A client for the configured transport, unconnected.</summary>
     public static IRealtimeClient Create() =>

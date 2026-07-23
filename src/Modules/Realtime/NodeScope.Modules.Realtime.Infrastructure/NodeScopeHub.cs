@@ -23,17 +23,23 @@ public sealed class NodeScopeHub : Hub
     private readonly IPermissionScopeService _permissions;
     private readonly IHomeNetworkProbe _homeNetwork;
     private readonly ConnectionRegistry _connections;
+    private readonly IUserMetricsService _metrics;
+    private readonly IAssistantResponder _assistant;
 
     public NodeScopeHub(
         IOrgMembershipResolver members,
         IPermissionScopeService permissions,
         IHomeNetworkProbe homeNetwork,
-        ConnectionRegistry connections)
+        ConnectionRegistry connections,
+        IUserMetricsService metrics,
+        IAssistantResponder assistant)
     {
         _members = members;
         _permissions = permissions;
         _homeNetwork = homeNetwork;
         _connections = connections;
+        _metrics = metrics;
+        _assistant = assistant;
     }
 
     public override async Task OnConnectedAsync()
@@ -85,6 +91,74 @@ public sealed class NodeScopeHub : Hub
         Clients.Caller.SendAsync(WsEvents.Pong, (object?)null, Context.ConnectionAborted);
 
     /// <summary>
+    /// Records a browser-collector reading. The reading is stored, not echoed: the scheduled
+    /// push is what returns it, so every one of the user's clients sees the same value.
+    /// </summary>
+    public async Task MetricsSubmit(MetricsSubmission submission)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var member = userId is null
+            ? null
+            : await _members.ForUserAsync(userId, Context.ConnectionAborted);
+        if (userId is null || member is null)
+        {
+            // Metrics belong to an organization, so a user without one has nowhere to put them.
+            return;
+        }
+
+        await _metrics.RecordAsync(
+            member.OrganizationId,
+            userId,
+            new MetricsSample(
+                submission.BandwidthDown,
+                submission.BandwidthUp,
+                submission.Latency,
+                submission.ConnectionQuality),
+            Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// Asks the assistant, streaming the answer back as it arrives. The answer goes to the
+    /// user's group rather than this connection, so their other clients follow along.
+    /// </summary>
+    public async Task AiMessage(AssistantMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var content = message.Content?.Trim();
+        if (userId is null || string.IsNullOrEmpty(content) || content.Length > 2000)
+        {
+            return;
+        }
+
+        var group = Clients.Group(RealtimeGroups.User(userId));
+        var answer = await _assistant.AnswerAsync(
+            userId,
+            message.ConversationId,
+            content,
+            async (token, conversationId) => await group.SendAsync(
+                WsEvents.AiToken,
+                new { token, conversationId },
+                Context.ConnectionAborted),
+            Context.ConnectionAborted);
+
+        await group.SendAsync(
+            WsEvents.AiComplete,
+            new
+            {
+                content = answer.Content,
+                conversationId = answer.ConversationId,
+                tokensUsed = answer.TokensUsed,
+                monthlyBudgetRemaining = answer.MonthlyBudgetRemaining,
+                usageWarning = answer.UsageWarning,
+                providerStatus = answer.ProviderStatus,
+                timestamp = IsoTimestamp.Now(),
+            },
+            Context.ConnectionAborted);
+    }
+
+    /// <summary>
     /// Subscribes the connection to the groups mirroring its permission scope, so a scoped
     /// event addresses groups instead of filtering every connection in the org. An OWNER joins
     /// the owner group; a scoped member joins one group per assigned root; a member with no
@@ -126,3 +200,13 @@ public static class RealtimeGroups
 
     public static string Scope(string rootPropertyId) => $"scope:{rootPropertyId}";
 }
+
+/// <summary>Payload of the client's <c>v1:metrics:submit</c>.</summary>
+public sealed record MetricsSubmission(
+    double? BandwidthDown,
+    double? BandwidthUp,
+    double? Latency,
+    string? ConnectionQuality);
+
+/// <summary>Payload of the client's <c>v1:ai:message</c>.</summary>
+public sealed record AssistantMessage(string? Content, string? ConversationId);

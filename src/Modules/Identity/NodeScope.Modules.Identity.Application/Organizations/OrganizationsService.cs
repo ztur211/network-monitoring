@@ -115,7 +115,7 @@ public sealed class OrganizationsService
         await _realtime.PushToOrgAsync(
             actor.OrganizationId,
             WsEvents.OrgMemberUpdated,
-            new { userId = targetUserId, role = nextRole },
+            new { userId = targetUserId, role = nextRole, timestamp = IsoTimestamp.Now() },
             cancellationToken);
     }
 
@@ -143,7 +143,7 @@ public sealed class OrganizationsService
         await _realtime.PushToOrgAsync(
             actor.OrganizationId,
             WsEvents.OrgMemberRemoved,
-            new { userId = targetUserId },
+            new { userId = targetUserId, timestamp = IsoTimestamp.Now() },
             cancellationToken);
         await _realtime.EvictOrgMemberAsync(actor.OrganizationId, targetUserId, cancellationToken);
     }

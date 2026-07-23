@@ -46,6 +46,7 @@ public static class InventoryModuleServices
         services.AddScoped<IBuildingModelRepository, BuildingModelRepository>();
         services.AddScoped<IBcfRepository, BcfRepository>();
         services.AddScoped<IHomeNetworkProbe, HomeNetworkProbe>();
+        services.AddScoped<IUserMetricsService, UserMetricsService>();
         services.AddScoped<INetworkPropertyRepository, NetworkPropertyRepository>();
         services.AddScoped<INetworkRepository, NetworkRepository>();
         services.AddScoped<ICircuitRepository, CircuitRepository>();

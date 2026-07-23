@@ -32,6 +32,7 @@ public class InheritanceRules
         "Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions", // AddScheme<TOptions,> constrains to this class
         "System.Text.Json.Serialization.JsonSerializerContext",        // source-generated JSON (AOT agent); the generator requires it
         "System.Text.Json.Serialization.JsonConverter`1",              // custom wire formats (JS-style dates); STJ has no composition seam
+        "System.IO.Stream",                                            // streaming decorators; the pipeline takes a Stream, not an interface
     };
 
     [Fact]
@@ -51,7 +52,7 @@ public class InheritanceRules
                 // A NodeScope type inheriting another NodeScope type is the reuse-inheritance
                 // this rule exists to stop, so it is never allowlisted - only framework bases are.
                 var baseName = Normalize(type.BaseType);
-                if (AllowedBaseTypes.Contains(baseName))
+                if (AllowedBaseTypes.Contains(baseName) || IsClosedUnionCase(type))
                 {
                     continue;
                 }
@@ -67,6 +68,36 @@ public class InheritanceRules
             + "unavoidable, add it to AllowedBaseTypes with a comment saying why.\n  "
             + string.Join("\n  ", violations));
     }
+
+    /// <summary>
+    /// A case of a closed union: an abstract record base that declares no state and no
+    /// behaviour of its own, with sealed cases beneath it. That is a data shape, not the reuse
+    /// inheritance Decision 6 rules out - nothing is inherited, because there is nothing there.
+    /// A base that grows a member stops qualifying and the rule fires again, which is the point.
+    /// </summary>
+    private static bool IsClosedUnionCase(Type type)
+    {
+        var baseType = type.BaseType!;
+        if (!type.IsSealed || !baseType.IsAbstract || !IsRecord(baseType))
+        {
+            return false;
+        }
+
+        const BindingFlags Declared =
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+        return baseType.GetFields(Declared).Length == 0
+            && baseType.GetProperties(Declared).All(property => property.Name == "EqualityContract")
+            && baseType.GetMethods(Declared).All(IsRecordMember);
+    }
+
+    /// <summary>A record has the compiler-generated clone method; nothing else does.</summary>
+    private static bool IsRecord(Type type) =>
+        type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance) is not null;
+
+    /// <summary>The members the record compiler always emits, which carry no author intent.</summary>
+    private static bool IsRecordMember(MethodInfo method) =>
+        method.Name is "<Clone>$" or "get_EqualityContract" or "Equals" or "GetHashCode" or "ToString"
+            or "PrintMembers" or "op_Equality" or "op_Inequality" or "Deconstruct";
 
     private static string Normalize(Type type) =>
         type.IsGenericType ? type.GetGenericTypeDefinition().FullName! : type.FullName!;

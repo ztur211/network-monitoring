@@ -123,6 +123,12 @@ public sealed class SignalRRealtimeClient : IRealtimeClient
         }
 
         var method = RealtimeTransport.ClientMethod(eventName);
+        if (RealtimeTransport.MethodTakesPayload(eventName))
+        {
+            await _hub.InvokeAsync(method, data);
+            return;
+        }
+
         await _hub.InvokeAsync(method);
     }
 

@@ -22,6 +22,7 @@ public static class RealtimeModuleServices
         // Registered after the platform's no-op, so this wins: the last registration of a
         // service is the one resolved.
         services.AddSingleton<IRealtimeService, SignalRRealtimeService>();
+        services.AddHostedService<MetricsPushService>();
 
         return services;
     }

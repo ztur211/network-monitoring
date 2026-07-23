@@ -49,3 +49,64 @@ public interface IRealtimeService
     /// </summary>
     public Task EvictOrgMemberAsync(string organizationId, string userId, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// The browser collector's readings. Realtime accepts them over the hub; Inventory owns the
+/// table, so it records them and answers for the latest.
+/// </summary>
+public interface IUserMetricsService
+{
+    public Task RecordAsync(
+        string organizationId,
+        string userId,
+        MetricsSample sample,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The most recent reading per user across every organization, for the scheduled push.
+    /// Only readings inside <paramref name="within"/> count: this feeds a LIVE display, and a
+    /// reading hours old is not live.
+    /// </summary>
+    public Task<IReadOnlyList<UserMetricsSnapshot>> LatestPerUserAsync(
+        TimeSpan within,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>One submitted reading. Every field is optional - the collector reports what it has.</summary>
+public sealed record MetricsSample(
+    double? BandwidthDown,
+    double? BandwidthUp,
+    double? Latency,
+    string? ConnectionQuality);
+
+/// <summary>A user's latest reading and when it arrived.</summary>
+public sealed record UserMetricsSnapshot(string UserId, MetricsSample Sample, DateTime Timestamp);
+
+/// <summary>
+/// The assistant's streaming answer. Realtime owns the transport; Assistant owns what is said,
+/// including the fixed reply that keeps the feature usable when the provider is unreachable.
+/// </summary>
+public interface IAssistantResponder
+{
+    /// <summary>
+    /// Answers <paramref name="message"/>, invoking <paramref name="onToken"/> with each chunk
+    /// and the conversation it belongs to, then returning the completed exchange. The
+    /// conversation id reaches the caller through the callback because a new conversation gets
+    /// its id here, and the stream must carry it before the answer finishes.
+    /// </summary>
+    public Task<AssistantAnswer> AnswerAsync(
+        string userId,
+        string? conversationId,
+        string message,
+        Func<string, string, Task> onToken,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>A finished assistant exchange, matching what was streamed.</summary>
+public sealed record AssistantAnswer(
+    string ConversationId,
+    string Content,
+    string ProviderStatus,
+    int TokensUsed,
+    string? UsageWarning,
+    int MonthlyBudgetRemaining);

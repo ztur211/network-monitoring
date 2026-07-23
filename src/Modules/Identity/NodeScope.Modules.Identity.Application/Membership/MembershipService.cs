@@ -123,7 +123,7 @@ public sealed class MembershipService
         await _realtime.PushToOrgAsync(
             actor.OrganizationId,
             WsEvents.OrgInvitationCreated,
-            new { id = invitation.Id, email },
+            new { id = invitation.Id, email, timestamp = IsoTimestamp.Now() },
             cancellationToken);
         return new CreatedInvitationDto(invitation.ToDto(), token, $"{_frontendUrl}/invite/{token}");
     }
@@ -151,7 +151,7 @@ public sealed class MembershipService
         await _realtime.PushToOrgAsync(
             actor.OrganizationId,
             WsEvents.OrgInvitationRevoked,
-            new { id = invitationId },
+            new { id = invitationId, timestamp = IsoTimestamp.Now() },
             cancellationToken);
     }
 
@@ -187,12 +187,12 @@ public sealed class MembershipService
         await _realtime.PushToOrgAsync(
             invitation.OrganizationId,
             WsEvents.OrgMemberAdded,
-            new { userId, role = invitation.Role },
+            new { userId, role = invitation.Role, timestamp = IsoTimestamp.Now() },
             cancellationToken);
         await _realtime.PushToOrgAsync(
             invitation.OrganizationId,
             WsEvents.OrgInvitationAccepted,
-            new { id = invitation.Id, userId },
+            new { id = invitation.Id, userId, timestamp = IsoTimestamp.Now() },
             cancellationToken);
     }
 
@@ -223,7 +223,7 @@ public sealed class MembershipService
         await _realtime.PushToOrgAsync(
             organizationId,
             WsEvents.OrgJoinRequestCreated,
-            new { id = request.Id, userId },
+            new { id = request.Id, userId, timestamp = IsoTimestamp.Now() },
             cancellationToken);
     }
 
@@ -266,7 +266,7 @@ public sealed class MembershipService
             await _realtime.PushToOrgAsync(
                 actor.OrganizationId,
                 WsEvents.OrgMemberAdded,
-                new { userId = request.UserId, role = OrgRoleNames.Member },
+                new { userId = request.UserId, role = OrgRoleNames.Member, timestamp = IsoTimestamp.Now() },
                 cancellationToken);
         }
 
@@ -275,7 +275,7 @@ public sealed class MembershipService
         await _realtime.PushToOrgAsync(
             actor.OrganizationId,
             WsEvents.OrgJoinRequestDecided,
-            new { id = joinRequestId, approved = approve },
+            new { id = joinRequestId, approved = approve, timestamp = IsoTimestamp.Now() },
             cancellationToken);
     }
 

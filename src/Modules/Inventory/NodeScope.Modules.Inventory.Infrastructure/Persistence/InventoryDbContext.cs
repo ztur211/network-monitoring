@@ -368,6 +368,8 @@ internal sealed class DeviceMetricRow
 
     public string UserId { get; set; } = null!;
 
+    public string SourceType { get; set; } = null!;
+
     public double? BandwidthDown { get; set; }
 
     public double? BandwidthUp { get; set; }
