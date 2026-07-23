@@ -29,6 +29,8 @@ internal sealed class IdentityDbContext : DbContext
 
     public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
 
+    public DbSet<TeamRow> Teams => Set<TeamRow>();
+
     public DbSet<TeamMemberRow> TeamMembers => Set<TeamMemberRow>();
 
     public DbSet<TeamPropertyRow> TeamProperties => Set<TeamPropertyRow>();
@@ -66,6 +68,12 @@ internal sealed class IdentityDbContext : DbContext
         {
             entity.ToTable("DeviceMetric");
             entity.HasKey(row => new { row.Id, row.Time });
+        });
+
+        modelBuilder.Entity<TeamRow>(entity =>
+        {
+            entity.ToTable("Team");
+            entity.HasKey(row => row.Id);
         });
 
         modelBuilder.Entity<TeamMemberRow>(entity =>
@@ -172,8 +180,35 @@ internal sealed class DeviceMetricRow
     public DateTime Time { get; set; }
 }
 
+/// <summary>
+/// An association row the idempotent writers share: they all answer "does this pair already
+/// exist" with the row's id, so the repository can hand it back after a unique violation.
+/// </summary>
+internal interface IAssociationRow
+{
+    public string Id { get; }
+}
+
+/// <summary>A <c>Team</c> row. The creator is who an ADMIN must be to manage its structure.</summary>
+internal sealed class TeamRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string Name { get; set; } = null!;
+
+    public string? CreatorMemberId { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
 /// <summary>A row of <c>TeamMember</c> (member's team memberships, for effective roots).</summary>
-internal sealed class TeamMemberRow
+internal sealed class TeamMemberRow : IAssociationRow
 {
     public string Id { get; set; } = null!;
 
@@ -185,7 +220,7 @@ internal sealed class TeamMemberRow
 }
 
 /// <summary>A row of <c>TeamProperty</c> (team site assignments).</summary>
-internal sealed class TeamPropertyRow
+internal sealed class TeamPropertyRow : IAssociationRow
 {
     public string Id { get; set; } = null!;
 
@@ -197,7 +232,7 @@ internal sealed class TeamPropertyRow
 }
 
 /// <summary>A row of <c>MemberProperty</c> (direct member site assignments).</summary>
-internal sealed class MemberPropertyRow
+internal sealed class MemberPropertyRow : IAssociationRow
 {
     public string Id { get; set; } = null!;
 

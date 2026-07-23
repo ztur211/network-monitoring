@@ -10,6 +10,7 @@ using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Data;
 using Microsoft.AspNetCore.Routing;
 using NodeScope.Modules.Identity.Application.Organizations;
+using NodeScope.Modules.Identity.Application.Permissions;
 using NodeScope.Modules.Identity.Application.Users;
 using NodeScope.Modules.Identity.Infrastructure.Endpoints;
 
@@ -42,7 +43,9 @@ public static class IdentityModuleServices
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
         services.AddScoped<UsersService>();
+        services.AddScoped<IPermissionsRepository, PermissionsRepository>();
         services.AddScoped<OrganizationsService>();
+        services.AddScoped<PermissionsService>();
 
         services
             .AddAuthentication(SessionAuthenticationDefaults.SchemeName)
@@ -58,6 +61,7 @@ public static class IdentityModuleServices
         ArgumentNullException.ThrowIfNull(app);
         UsersEndpoints.Map(app);
         OrganizationsEndpoints.Map(app);
+        PermissionsEndpoints.Map(app);
         return app;
     }
 }
