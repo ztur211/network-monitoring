@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Audit;
@@ -33,6 +34,9 @@ public static class PlatformServices
 
         services.AddScoped<AuditContext>();
         services.AddScoped<IAuditService, AuditService>();
+
+        // Replaced by the Realtime module's implementation when it lands (TryAdd loses).
+        services.TryAddSingleton<IRealtimeService, NoopRealtimeService>();
 
         services.AddScoped<OrgContextHolder>();
         services.AddScoped<IOrgContextAccessor>(sp => sp.GetRequiredService<OrgContextHolder>());

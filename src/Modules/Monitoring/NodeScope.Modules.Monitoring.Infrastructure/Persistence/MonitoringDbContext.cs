@@ -25,6 +25,10 @@ internal sealed class MonitoringDbContext : DbContext
 
     public DbSet<DeviceSliceRow> Devices => Set<DeviceSliceRow>();
 
+    public DbSet<DeviceStatusRow> DeviceStatuses => Set<DeviceStatusRow>();
+
+    public DbSet<MonitoringIngestTokenRow> IngestTokens => Set<MonitoringIngestTokenRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AgentRow>(entity =>
@@ -44,6 +48,20 @@ internal sealed class MonitoringDbContext : DbContext
         {
             entity.ToTable("Device");
             entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<DeviceStatusRow>(entity =>
+        {
+            entity.ToTable("DeviceStatus");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => row.DeviceId).IsUnique();
+        });
+
+        modelBuilder.Entity<MonitoringIngestTokenRow>(entity =>
+        {
+            entity.ToTable("MonitoringIngestToken");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => row.OrganizationId).IsUnique();
         });
 
         modelBuilder.ApplyNodeScopeColumnConventions();
@@ -104,4 +122,44 @@ internal sealed class DeviceSliceRow
     public string Name { get; set; } = null!;
 
     public string? IpAddress { get; set; }
+
+    public string PropertyId { get; set; } = null!;
+}
+
+/// <summary>A <c>DeviceStatus</c> row (one per device; the current-state table).</summary>
+internal sealed class DeviceStatusRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string DeviceId { get; set; } = null!;
+
+    public DeviceStatusState State { get; set; }
+
+    public double? LatencyMs { get; set; }
+
+    public int ConsecutiveFails { get; set; }
+
+    public DateTime? LastCheckAt { get; set; }
+
+    public DateTime? LastOkAt { get; set; }
+
+    public DateTime? LastChangeAt { get; set; }
+
+    public string? Source { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>The one-per-org <c>MonitoringIngestToken</c> row (hash only).</summary>
+internal sealed class MonitoringIngestTokenRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string TokenHash { get; set; } = null!;
+
+    public DateTime UpdatedAt { get; set; }
 }

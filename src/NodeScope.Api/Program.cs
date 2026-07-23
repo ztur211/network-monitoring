@@ -18,11 +18,20 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     // like a JS Date in JSON.stringify (UTC, millisecond precision, Z suffix).
     options.SerializerOptions.Converters.Add(new JsDateTimeConverter()));
 
+// Body-binding failures (unparseable JSON, wrong item types) must reach the exception
+// middleware and come back as the GEN_001 envelope; the framework's silent empty 400
+// (the non-Development default) is not part of the contract.
+builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options =>
+    options.ThrowOnBadRequest = true);
+
 builder.Services.AddHealthChecks();
+
+// The agent gzips large ingest batches; body-parser inflated them transparently in Node.
+builder.Services.AddRequestDecompression();
 
 builder.Services.AddNodeScopePlatform(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
-builder.Services.AddMonitoringModule();
+builder.Services.AddMonitoringModule(builder.Configuration);
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
 // every route this host does not serve natively is forwarded to the Node API, so the
@@ -60,6 +69,8 @@ if (!string.IsNullOrEmpty(proxyTarget))
 var app = builder.Build();
 
 app.UseMiddleware<ApiExceptionMiddleware>();
+app.UseJsonBodyLimit();
+app.UseRequestDecompression();
 app.UseAuditContext();
 app.UseAuthentication();
 app.UseAuthorization();
