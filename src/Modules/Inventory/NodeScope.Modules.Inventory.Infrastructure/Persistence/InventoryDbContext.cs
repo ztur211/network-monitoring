@@ -7,7 +7,7 @@ namespace NodeScope.Modules.Inventory.Infrastructure.Persistence;
 /// <summary>
 /// Inventory's slice of the existing schema (Decision 5). Rows the module owns are mapped
 /// fully; tables it only counts against or reads a column from (<c>Organization</c>,
-/// <c>BuildingModel</c>, <c>TeamProperty</c>, <c>MemberProperty</c>) are mapped as narrow
+/// <c>TeamProperty</c>, <c>MemberProperty</c>) are mapped as narrow
 /// slices, mirroring how the Node repositories read them through Prisma without owning them.
 /// <c>Device.location</c> (PostGIS) stays unmapped: a database trigger derives it from
 /// lat/lng, so nothing here writes it.
@@ -35,7 +35,9 @@ internal sealed class InventoryDbContext : DbContext
 
     public DbSet<DeviceConnectionRow> DeviceConnections => Set<DeviceConnectionRow>();
 
-    public DbSet<BuildingModelSliceRow> BuildingModels => Set<BuildingModelSliceRow>();
+    public DbSet<BuildingModelRow> BuildingModels => Set<BuildingModelRow>();
+
+    public DbSet<BuildingModelVersionRow> BuildingModelVersions => Set<BuildingModelVersionRow>();
 
     public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
 
@@ -95,9 +97,15 @@ internal sealed class InventoryDbContext : DbContext
             entity.HasKey(row => row.Id);
         });
 
-        modelBuilder.Entity<BuildingModelSliceRow>(entity =>
+        modelBuilder.Entity<BuildingModelRow>(entity =>
         {
             entity.ToTable("BuildingModel");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<BuildingModelVersionRow>(entity =>
+        {
+            entity.ToTable("BuildingModelVersion");
             entity.HasKey(row => row.Id);
         });
 
@@ -259,14 +267,50 @@ internal sealed class OrganizationSliceRow
     public string? NamingTemplate { get; set; }
 }
 
-/// <summary>The existence slice of <c>BuildingModel</c> (delete guard <c>MODEL_008</c>).</summary>
-internal sealed class BuildingModelSliceRow
+/// <summary>A <c>BuildingModel</c> row - one per BUILDING, pointing at its active version.</summary>
+internal sealed class BuildingModelRow
 {
     public string Id { get; set; } = null!;
 
     public string OrganizationId { get; set; } = null!;
 
     public string PropertyId { get; set; } = null!;
+
+    public string Name { get; set; } = null!;
+
+    public string? ActiveVersionId { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>An immutable <c>BuildingModelVersion</c> row; the blob itself lives at StorageKey.</summary>
+internal sealed class BuildingModelVersionRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string BuildingModelId { get; set; } = null!;
+
+    public int VersionNumber { get; set; }
+
+    public string StorageKey { get; set; } = null!;
+
+    public string FileName { get; set; } = null!;
+
+    public string ContentHash { get; set; } = null!;
+
+    public int SizeBytes { get; set; }
+
+    public string? Units { get; set; }
+
+    public string? UploadedByMemberId { get; set; }
+
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>

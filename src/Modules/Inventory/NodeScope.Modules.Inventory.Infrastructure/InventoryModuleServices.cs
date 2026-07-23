@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodeScope.Modules.Inventory.Application.BuildingModels;
 using NodeScope.Modules.Inventory.Application.Clients;
 using NodeScope.Modules.Inventory.Application.Devices;
+using NodeScope.Modules.Inventory.Application.Export;
 using NodeScope.Modules.Inventory.Application.Links;
 using NodeScope.Modules.Inventory.Application.Map;
 using NodeScope.Modules.Inventory.Application.Networks;
@@ -70,6 +71,8 @@ public static class InventoryModuleServices
         services.AddScoped<MapService>();
         services.AddScoped<ClientsService>();
         services.AddScoped<OnboardingService>();
+        services.AddScoped<BuildingModelsService>();
+        services.AddScoped<IfcExportService>();
 
         return services;
     }
@@ -88,6 +91,7 @@ public static class InventoryModuleServices
         MapEndpoints.Map(app);
         ClientsEndpoints.Map(app);
         OnboardingEndpoints.Map(app);
+        BuildingModelsEndpoints.Map(app);
         return app;
     }
 }

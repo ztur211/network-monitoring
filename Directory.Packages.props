@@ -53,6 +53,15 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
 
+    <!--
+      Object storage (Decision 10): S3-compatible blobs for IFC building models and BCF
+      archives, MinIO on the appliance. The AWS SDK is the only maintained S3 client for
+      .NET; AWSSDK.S3 pulls in AWSSDK.Core alone.
+    -->
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.101.4" />
+    <!-- Pinned explicitly: the version AWSSDK.S3 resolves transitively carries GHSA-9cvc-h2w8-phrp. -->
+    <PackageVersion Include="AWSSDK.Core" Version="4.0.100.8" />
+
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />

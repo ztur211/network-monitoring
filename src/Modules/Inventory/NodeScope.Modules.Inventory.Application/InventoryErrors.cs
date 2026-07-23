@@ -27,6 +27,19 @@ public static class InventoryErrors
     /// <summary>409 <c>PROP_008</c>: charter removal would leave placed devices uncovered.</summary>
     public static ApiException CharterInUse() => new("PROP_008", "CHARTER_IN_USE", 409);
 
+    /// <summary>404 <c>MODEL_001</c>: no model on this building (or the building is invisible).</summary>
+    public static ApiException BuildingModelNotFound() => new("MODEL_001", "BUILDING_MODEL_NOT_FOUND", 404);
+
+    /// <summary>422 <c>MODEL_002</c>: models attach to BUILDINGs only.</summary>
+    public static ApiException PropertyNotBuilding() => new("MODEL_002", "PROPERTY_NOT_BUILDING", 422);
+
+    /// <summary>404 <c>MODEL_004</c>: version unknown or belonging to another model.</summary>
+    public static ApiException ModelVersionNotFound() => new("MODEL_004", "MODEL_VERSION_NOT_FOUND", 404);
+
+    /// <summary>409 <c>MODEL_005</c>: the active version cannot be deleted.</summary>
+    public static ApiException CannotDeleteActiveVersion() =>
+        new("MODEL_005", "CANNOT_DELETE_ACTIVE_VERSION", 409);
+
     /// <summary>409 <c>MODEL_008</c>: a BUILDING carrying a model cannot be deleted.</summary>
     public static ApiException BuildingHasModel() => new("MODEL_008", "BUILDING_HAS_MODEL", 409);
 
