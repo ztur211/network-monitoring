@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NodeScope.Contracts.Monitoring;
 
 /// <summary>One OID poll entry in an SNMP target descriptor (decrypted, agent-ready).</summary>
@@ -18,18 +20,25 @@ public sealed record SnmpTargetDto
     /// <summary>"V2C" or "V3".</summary>
     public required string Version { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Community { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SecurityName { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SecurityLevel { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? AuthProtocol { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? AuthKey { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivProtocol { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivKey { get; init; }
 
     public required IReadOnlyList<SnmpOidEntry> Oids { get; init; }
@@ -46,6 +55,7 @@ public sealed record AgentDeviceDto
     public required string IpAddress { get; init; }
 
     /// <summary>SNMP target descriptor - present only when an effective credential is resolved.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SnmpTargetDto? Snmp { get; init; }
 }
 

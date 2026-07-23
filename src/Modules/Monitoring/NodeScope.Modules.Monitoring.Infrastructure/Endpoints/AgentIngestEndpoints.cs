@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using NodeScope.Modules.Monitoring.Application.Agents;
+using NodeScope.Modules.Monitoring.Application.Snmp;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Http;
 
@@ -42,11 +43,12 @@ internal static class AgentIngestEndpoints
     private static async Task<IResult> DevicesAsync(
         HttpContext http,
         IAgentRepository repo,
+        SnmpService snmp,
         CancellationToken cancellationToken)
     {
         var agent = AgentAuth.CurrentAgent(http);
         var devices = await repo.ListOrgDevicesWithIpAsync(agent.OrganizationId, cancellationToken);
-        return ApiEnvelope.Ok(devices.Select(d => new { id = d.Id, name = d.Name, ipAddress = d.IpAddress }));
+        return ApiEnvelope.Ok(await snmp.AttachTargetsAsync(agent.OrganizationId, devices, cancellationToken));
     }
 
     /// <summary>
