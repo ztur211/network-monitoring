@@ -2,10 +2,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NodeScope.Modules.Identity.Infrastructure.Auth;
+using NodeScope.Modules.Identity.Domain;
 using NodeScope.Modules.Identity.Infrastructure.Persistence;
 using NodeScope.Modules.Identity.Infrastructure.Scope;
 using NodeScope.Platform;
 using NodeScope.Platform.Abstractions;
+using NodeScope.Platform.Data;
+using Microsoft.AspNetCore.Routing;
+using NodeScope.Modules.Identity.Application.Organizations;
+using NodeScope.Modules.Identity.Application.Users;
+using NodeScope.Modules.Identity.Infrastructure.Endpoints;
 
 namespace NodeScope.Modules.Identity.Infrastructure;
 
@@ -26,9 +32,17 @@ public static class IdentityModuleServices
             ?? throw new InvalidOperationException("BETTER_AUTH_SECRET is required (sessions are HMAC-signed)");
 
         services.AddDbContext<IdentityDbContext>((provider, options) =>
-            options.UseNpgsql(provider.GetRequiredService<DatabaseConnectionString>().Value));
+            options.UseNpgsql(
+                provider.GetRequiredService<DatabaseConnectionString>().Value,
+                npgsql => npgsql
+                    .MapEnum<AccountTier>("AccountTier", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
+                    .MapEnum<OrgRole>("OrgRole", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
         services.AddScoped<IPermissionScopeService, PermissionScopeService>();
         services.AddScoped<IOrgMembershipResolver, OrgMembershipResolver>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+        services.AddScoped<UsersService>();
+        services.AddScoped<OrganizationsService>();
 
         services
             .AddAuthentication(SessionAuthenticationDefaults.SchemeName)
@@ -37,5 +51,13 @@ public static class IdentityModuleServices
                 options => options.Secret = secret);
 
         return services;
+    }
+
+    public static IEndpointRouteBuilder MapIdentityEndpoints(this IEndpointRouteBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        UsersEndpoints.Map(app);
+        OrganizationsEndpoints.Map(app);
+        return app;
     }
 }

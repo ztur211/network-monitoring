@@ -71,13 +71,6 @@ public interface IOnboardingCompletionStore
     public Task MarkCompleteAsync(string userId, CancellationToken cancellationToken);
 }
 
-/// <summary>Address lookup for the wizard's address step.</summary>
-public interface IGeocoder
-{
-    /// <summary>Coordinates for the address, or null when the lookup fails or finds nothing.</summary>
-    public Task<(double Latitude, double Longitude)?> GeocodeAsync(string address, CancellationToken cancellationToken);
-}
-
 /// <summary>The onboarding wizard (Node's <c>OnboardingService</c>).</summary>
 public sealed class OnboardingService
 {

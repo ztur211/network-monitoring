@@ -90,6 +90,7 @@ app.MapInventoryEndpoints();
 app.MapMonitoringEndpoints();
 app.MapRealtimeEndpoints();
 app.MapAssistantEndpoints();
+app.MapIdentityEndpoints();
 
 if (!string.IsNullOrEmpty(proxyTarget))
 {

@@ -3,16 +3,16 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using NodeScope.Modules.Inventory.Application.Onboarding;
+using NodeScope.Platform.Abstractions;
 
-namespace NodeScope.Modules.Inventory.Infrastructure.Onboarding;
+namespace NodeScope.Platform.Geocoding;
 
 /// <summary>
 /// Address lookup against OpenStreetMap's Nominatim. Failures return null rather than throwing:
 /// a missing coordinate must not break the wizard. The one-request-per-1.1s gate is Nominatim's
 /// published usage policy, not a performance tweak.
 /// </summary>
-internal sealed partial class NominatimGeocoder : IGeocoder
+public sealed partial class NominatimGeocoder : IGeocoder
 {
     private static readonly TimeSpan MinInterval = TimeSpan.FromMilliseconds(1100);
 
@@ -26,6 +26,8 @@ internal sealed partial class NominatimGeocoder : IGeocoder
 
     public NominatimGeocoder(HttpClient http, IConfiguration configuration, ILogger<NominatimGeocoder> logger)
     {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(configuration);
         _http = http;
         _logger = logger;
         _http.BaseAddress ??= new Uri("https://nominatim.openstreetmap.org/");
@@ -35,9 +37,7 @@ internal sealed partial class NominatimGeocoder : IGeocoder
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
     }
 
-    public async Task<(double Latitude, double Longitude)?> GeocodeAsync(
-        string address,
-        CancellationToken cancellationToken)
+    public async Task<GeocodedAddress?> GeocodeAsync(string address, CancellationToken cancellationToken)
     {
         await ThrottleAsync(cancellationToken);
         var query = $"search?q={Uri.EscapeDataString(address)}&format=json&limit=1";
@@ -52,7 +52,7 @@ internal sealed partial class NominatimGeocoder : IGeocoder
                 return null;
             }
 
-            return (latitude, longitude);
+            return new GeocodedAddress(latitude, longitude, first.DisplayName);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or NotSupportedException)
         {
@@ -82,7 +82,8 @@ internal sealed partial class NominatimGeocoder : IGeocoder
 
     private sealed record NominatimResult(
         [property: JsonPropertyName("lat")] string Lat,
-        [property: JsonPropertyName("lon")] string Lon);
+        [property: JsonPropertyName("lon")] string Lon,
+        [property: JsonPropertyName("display_name")] string? DisplayName);
 
     private static partial class Log
     {

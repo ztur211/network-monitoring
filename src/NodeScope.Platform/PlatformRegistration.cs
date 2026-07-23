@@ -10,6 +10,7 @@ using Npgsql;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Audit;
 using NodeScope.Platform.Data;
+using NodeScope.Platform.Geocoding;
 using NodeScope.Platform.Http;
 using NodeScope.Platform.Storage;
 
@@ -66,6 +67,7 @@ public static class PlatformRegistration
             return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
         });
         services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+        services.AddHttpClient<IGeocoder, NominatimGeocoder>();
 
         services.AddScoped<OrgContextHolder>();
         services.AddScoped<IOrgContextAccessor>(sp => sp.GetRequiredService<OrgContextHolder>());

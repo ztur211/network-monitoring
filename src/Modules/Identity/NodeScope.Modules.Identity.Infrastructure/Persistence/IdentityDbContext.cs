@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NodeScope.Modules.Identity.Domain;
 using NodeScope.Platform.Data;
 
 namespace NodeScope.Modules.Identity.Infrastructure.Persistence;
@@ -21,6 +23,12 @@ internal sealed class IdentityDbContext : DbContext
 
     public DbSet<UserRow> Users => Set<UserRow>();
 
+    public DbSet<OrganizationRow> Organizations => Set<OrganizationRow>();
+
+    public DbSet<OrganizationMemberRow> OrganizationMembers => Set<OrganizationMemberRow>();
+
+    public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
+
     public DbSet<TeamMemberRow> TeamMembers => Set<TeamMemberRow>();
 
     public DbSet<TeamPropertyRow> TeamProperties => Set<TeamPropertyRow>();
@@ -40,6 +48,24 @@ internal sealed class IdentityDbContext : DbContext
         {
             entity.ToTable("User");
             entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<OrganizationRow>(entity =>
+        {
+            entity.ToTable("Organization");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<OrganizationMemberRow>(entity =>
+        {
+            entity.ToTable("OrganizationMember");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<DeviceMetricRow>(entity =>
+        {
+            entity.ToTable("DeviceMetric");
+            entity.HasKey(row => new { row.Id, row.Time });
         });
 
         modelBuilder.Entity<TeamMemberRow>(entity =>
@@ -76,7 +102,7 @@ internal sealed class SessionRow
     public DateTime ExpiresAt { get; set; }
 }
 
-/// <summary>The authentication-relevant slice of <c>User</c>.</summary>
+/// <summary>A <c>User</c> row: the authentication slice plus the profile the module serves.</summary>
 internal sealed class UserRow
 {
     public string Id { get; set; } = null!;
@@ -84,6 +110,66 @@ internal sealed class UserRow
     public string Email { get; set; } = null!;
 
     public bool IsSuperAdmin { get; set; }
+
+    public string? Name { get; set; }
+
+    public AccountTier Tier { get; set; }
+
+    public double? HomeLatitude { get; set; }
+
+    public double? HomeLongitude { get; set; }
+
+    public JsonDocument? MapPreferences { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>An <c>Organization</c> row, naming policy included.</summary>
+internal sealed class OrganizationRow
+{
+    public string Id { get; set; } = null!;
+
+    public string Name { get; set; } = null!;
+
+    public string? NamingPattern { get; set; }
+
+    public int? NamingMaxLen { get; set; }
+
+    public string? NamingTemplate { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>An <c>OrganizationMember</c> row.</summary>
+internal sealed class OrganizationMemberRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
+
+    public OrgRole Role { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>The reporting slice of the <c>DeviceMetric</c> hypertable (data-source liveness).</summary>
+internal sealed class DeviceMetricRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
+
+    public DateTime Time { get; set; }
 }
 
 /// <summary>A row of <c>TeamMember</c> (member's team memberships, for effective roots).</summary>

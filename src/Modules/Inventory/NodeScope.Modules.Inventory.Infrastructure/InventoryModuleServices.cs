@@ -56,7 +56,6 @@ public static class InventoryModuleServices
         services.AddMemoryCache();
         services.AddScoped<IOnboardingStateStore, MemoryOnboardingStateStore>();
         services.AddScoped<IOnboardingCompletionStore, OnboardingCompletionStore>();
-        services.AddHttpClient<IGeocoder, NominatimGeocoder>();
         // The Assistant module registers a provider-driven narrator later in composition, which
         // wins; this canned copy is what serves until then and whenever the provider is down.
         services.TryAddScoped<IOnboardingNarrator, FallbackOnboardingNarrator>();
