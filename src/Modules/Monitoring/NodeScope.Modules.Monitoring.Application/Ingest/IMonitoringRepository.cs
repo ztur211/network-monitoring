@@ -77,4 +77,43 @@ public interface IMonitoringRepository
     public Task InsertMetricsAsync(IReadOnlyList<MetricRow> rows, CancellationToken cancellationToken);
 
     public Task InsertStatusEventsAsync(IReadOnlyList<StatusEventRow> rows, CancellationToken cancellationToken);
+
+    /// <summary>One owned device (id + property), or null when unknown/foreign.</summary>
+    public Task<OwnedDevice?> FindOwnedDeviceAsync(
+        string organizationId,
+        string deviceId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Ids of the org's devices sitting on any of <paramref name="propertyIds"/>, newest first.</summary>
+    public Task<IReadOnlyList<string>> ListDeviceIdsUnderPropertiesAsync(
+        string organizationId,
+        IReadOnlyCollection<string> propertyIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>Distinct metric names for a device since <paramref name="sinceUtc"/>, sorted.</summary>
+    public Task<IReadOnlyList<string>> MetricNamesAsync(
+        string organizationId,
+        string deviceId,
+        DateTime sinceUtc,
+        CancellationToken cancellationToken);
+
+    /// <summary>Recent status transitions, newest first, capped at <paramref name="limit"/>.</summary>
+    public Task<IReadOnlyList<Reads.StatusEventDto>> RecentStatusEventsAsync(
+        string organizationId,
+        string deviceId,
+        int limit,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bucketed averages; served from the 5-min continuous aggregate when the window is
+    /// grid-aligned (falling back to raw if the aggregate is absent), from raw otherwise.
+    /// </summary>
+    public Task<IReadOnlyList<Reads.MetricPointDto>> QueryMetricAsync(
+        string organizationId,
+        string deviceId,
+        string metric,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string bucket,
+        CancellationToken cancellationToken);
 }

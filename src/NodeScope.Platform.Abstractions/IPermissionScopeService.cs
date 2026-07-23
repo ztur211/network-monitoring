@@ -19,6 +19,16 @@ public interface IPermissionScopeService
     public Task<bool> IsInScopeAsync(OrgMemberContext member, string propertyId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The property and every descendant (org-scoped, cycle-guarded) - the shared downward
+    /// walk every subtree consumer uses (building device sets, scope expansion). An unknown
+    /// or foreign root yields an empty list.
+    /// </summary>
+    public Task<IReadOnlyList<string>> SubtreePropertyIdsAsync(
+        string organizationId,
+        string rootPropertyId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gate for configuring a device under <paramref name="governingSitePropertyId"/>:
     /// OWNER passes, MEMBER throws <c>ORG_003</c>, ADMIN throws <c>PERM_001</c> when the site
     /// is outside their scope.

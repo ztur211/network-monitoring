@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NodeScope.Modules.Monitoring.Application.Agents;
 using NodeScope.Modules.Monitoring.Application.Ingest;
+using NodeScope.Modules.Monitoring.Application.Reads;
 using NodeScope.Modules.Monitoring.Domain;
 using NodeScope.Modules.Monitoring.Infrastructure.Endpoints;
 using NodeScope.Modules.Monitoring.Infrastructure.Persistence;
@@ -49,6 +50,8 @@ public static class MonitoringModuleServices
         services.AddScoped<IIngestTokenRepository, IngestTokenRepository>();
         services.AddScoped<IngestTokenService>();
         services.AddScoped<IngestService>();
+        services.AddScoped<MonitoringReadService>();
+        services.AddHostedService<MonitoringCaggInitializer>();
 
         return services;
     }
@@ -59,6 +62,7 @@ public static class MonitoringModuleServices
         AgentsEndpoints.Map(app);
         AgentIngestEndpoints.Map(app);
         IngestEndpoints.Map(app);
+        MonitoringReadEndpoints.Map(app);
         return app;
     }
 }

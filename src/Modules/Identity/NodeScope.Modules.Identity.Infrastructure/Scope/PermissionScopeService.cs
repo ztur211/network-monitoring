@@ -141,7 +141,7 @@ internal sealed partial class PermissionScopeService : IPermissionScopeService
             .ToListAsync(cancellationToken);
 
     /// <summary>The property and every descendant (org-scoped), with the cycle guard.</summary>
-    private async Task<List<string>> SubtreePropertyIdsAsync(
+    public async Task<IReadOnlyList<string>> SubtreePropertyIdsAsync(
         string organizationId,
         string rootId,
         CancellationToken cancellationToken)

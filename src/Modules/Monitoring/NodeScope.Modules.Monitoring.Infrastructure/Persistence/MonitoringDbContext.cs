@@ -124,6 +124,8 @@ internal sealed class DeviceSliceRow
     public string? IpAddress { get; set; }
 
     public string PropertyId { get; set; } = null!;
+
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>A <c>DeviceStatus</c> row (one per device; the current-state table).</summary>

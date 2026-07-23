@@ -176,6 +176,123 @@ internal sealed class MonitoringRepository : IMonitoringRepository
             cancellationToken);
     }
 
+    public async Task<OwnedDevice?> FindOwnedDeviceAsync(
+        string organizationId,
+        string deviceId,
+        CancellationToken cancellationToken) =>
+        await _db.Devices.AsNoTracking()
+            .Where(d => d.Id == deviceId && d.OrganizationId == organizationId)
+            .Select(d => new OwnedDevice(d.Id, d.PropertyId))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> ListDeviceIdsUnderPropertiesAsync(
+        string organizationId,
+        IReadOnlyCollection<string> propertyIds,
+        CancellationToken cancellationToken) =>
+        await _db.Devices.AsNoTracking()
+            .Where(d => d.OrganizationId == organizationId && propertyIds.Contains(d.PropertyId))
+            .OrderByDescending(d => d.CreatedAt)
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<string>> MetricNamesAsync(
+        string organizationId,
+        string deviceId,
+        DateTime sinceUtc,
+        CancellationToken cancellationToken) =>
+        await _db.Database
+            .SqlQuery<string>(
+                $"""
+                SELECT DISTINCT "metric" AS "Value" FROM "MonitoringMetric"
+                WHERE "organizationId" = {organizationId} AND "deviceId" = {deviceId}
+                  AND "time" >= {new NpgsqlParameter(null, NpgsqlDbType.TimestampTz) { Value = Utc(sinceUtc) }}
+                ORDER BY "metric"
+                """)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Application.Reads.StatusEventDto>> RecentStatusEventsAsync(
+        string organizationId,
+        string deviceId,
+        int limit,
+        CancellationToken cancellationToken) =>
+        [.. (await _db.Database
+            .SqlQuery<StatusEventQueryRow>(
+                $"""
+                SELECT "time" AS "Time", "state" AS "State", "source" AS "Source"
+                FROM "DeviceStatusEvent"
+                WHERE "organizationId" = {organizationId} AND "deviceId" = {deviceId}
+                ORDER BY "time" DESC LIMIT {limit}
+                """)
+            .ToListAsync(cancellationToken))
+            .Select(r => new Application.Reads.StatusEventDto(Utc(r.Time), r.State, r.Source))];
+
+    public async Task<IReadOnlyList<Application.Reads.MetricPointDto>> QueryMetricAsync(
+        string organizationId,
+        string deviceId,
+        string metric,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string bucket,
+        CancellationToken cancellationToken)
+    {
+        if (MetricBuckets.IsCaggEligible(fromUtc, toUtc, bucket))
+        {
+            try
+            {
+                return await QueryMetricSqlAsync(
+                    organizationId, deviceId, metric, fromUtc, toUtc, bucket, fromCagg: true, cancellationToken);
+            }
+            catch (PostgresException)
+            {
+                // Aggregate absent or unreadable: for a grid-aligned window raw and cagg are
+                // identical by construction, so the fallback cannot change the chart.
+            }
+        }
+
+        return await QueryMetricSqlAsync(
+            organizationId, deviceId, metric, fromUtc, toUtc, bucket, fromCagg: false, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<Application.Reads.MetricPointDto>> QueryMetricSqlAsync(
+        string organizationId,
+        string deviceId,
+        string metric,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string bucket,
+        bool fromCagg,
+        CancellationToken cancellationToken)
+    {
+        var from = new NpgsqlParameter(null, NpgsqlDbType.TimestampTz) { Value = Utc(fromUtc) };
+        var to = new NpgsqlParameter(null, NpgsqlDbType.TimestampTz) { Value = Utc(toUtc) };
+
+        var query = fromCagg
+            ? _db.Database.SqlQuery<MetricPointQueryRow>(
+                $"""
+                SELECT time_bucket({bucket}::interval, "bucket") AS "Bucket",
+                       (sum("sum_value")::float / NULLIF(sum("sample_count"), 0)) AS "Avg"
+                FROM "MonitoringMetric_5m"
+                WHERE "organizationId" = {organizationId} AND "deviceId" = {deviceId} AND "metric" = {metric}
+                  AND "bucket" >= {from} AND "bucket" <= {to}
+                GROUP BY 1 ORDER BY 1
+                """)
+            : _db.Database.SqlQuery<MetricPointQueryRow>(
+                $"""
+                SELECT time_bucket({bucket}::interval, "time") AS "Bucket", avg("value")::float AS "Avg"
+                FROM "MonitoringMetric"
+                WHERE "organizationId" = {organizationId} AND "deviceId" = {deviceId} AND "metric" = {metric}
+                  AND "time" >= {from} AND "time" <= {to}
+                GROUP BY 1 ORDER BY 1
+                """);
+
+        return [.. (await query.ToListAsync(cancellationToken))
+            .Select(r => new Application.Reads.MetricPointDto(Utc(r.Bucket), r.Avg))];
+    }
+
+    private sealed record StatusEventQueryRow(DateTime Time, string State, string? Source);
+
+    private sealed record MetricPointQueryRow(DateTime Bucket, double Avg);
+
     private static NpgsqlParameter TextArray(string name, IEnumerable<string> values) =>
         new(name, NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = values.ToArray() };
 

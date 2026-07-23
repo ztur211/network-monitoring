@@ -71,7 +71,10 @@ public class InheritanceRules
     private static string Normalize(Type type) =>
         type.IsGenericType ? type.GetGenericTypeDefinition().FullName! : type.FullName!;
 
+    // FullName (not Name) so that types NESTED inside a generated type are also filtered:
+    // [GeneratedRegex] emits <RegexGenerator_g>...+RunnerFactory+Runner, where only the
+    // outermost name carries the '<' marker.
     private static bool IsCompilerGenerated(Type type) =>
         type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), inherit: false)
-        || type.Name.Contains('<', StringComparison.Ordinal);
+        || type.FullName?.Contains('<', StringComparison.Ordinal) == true;
 }
