@@ -28,8 +28,14 @@ public static class ApiErrors
     /// <summary>403 <c>ORG_002 NOT_AN_ORG_MEMBER</c>: authenticated but org context required and absent.</summary>
     public static ApiException NotAnOrgMember() => new("ORG_002", "NOT_AN_ORG_MEMBER", 403);
 
-    /// <summary>403 <c>ORG_003 INSUFFICIENT_ORG_ROLE</c>: org member without a required role.</summary>
+    /// <summary>403 <c>ORG_003 INSUFFICIENT_ORG_ROLE</c>: org member without a required role (role guard).</summary>
     public static ApiException InsufficientOrgRole() => new("ORG_003", "INSUFFICIENT_ORG_ROLE", 403);
+
+    /// <summary>
+    /// 403 <c>ORG_003 FORBIDDEN_ROLE</c>: same code, different message - the wording the Node
+    /// permissions service used when a MEMBER hit an F3-gated operation.
+    /// </summary>
+    public static ApiException ForbiddenRole() => new("ORG_003", "FORBIDDEN_ROLE", 403);
 
     /// <summary>403 <c>PERM_001 OUTSIDE_ASSIGNED_SCOPE</c>: ADMIN acting outside their assigned sites.</summary>
     public static ApiException OutsideAssignedScope() => new("PERM_001", "OUTSIDE_ASSIGNED_SCOPE", 403);

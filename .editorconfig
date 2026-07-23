@@ -41,6 +41,11 @@ max_line_length = 120
 # without needing anyone to remember it.
 dotnet_diagnostic.CA1852.severity = error
 
+# CA1812 ("internal class apparently never instantiated") is off: in a DI-composed app the
+# container, EF materialization, and SqlQuery row binding instantiate nearly every internal
+# type reflectively, so the rule flags the codebase's dominant, correct pattern.
+dotnet_diagnostic.CA1812.severity = none
+
 # --- Async and lifetime correctness ----------------------------------------
 # Weighted heavily on purpose. The migration doc is explicit that a compiled
 # language does NOT fix the async-lifetime bugs this project has fought (prober

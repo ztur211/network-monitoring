@@ -29,6 +29,7 @@ public class InheritanceRules
         "Microsoft.EntityFrameworkCore.Migrations.Migration",       // tooling-generated
         "Microsoft.AspNetCore.SignalR.Hub",                         // realtime hubs
         "Microsoft.AspNetCore.Authentication.AuthenticationHandler`1", // the session handler (Decision 7)
+        "Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions", // AddScheme<TOptions,> constrains to this class
         "System.Text.Json.Serialization.JsonSerializerContext",        // source-generated JSON (AOT agent); the generator requires it
         "System.Text.Json.Serialization.JsonConverter`1",              // custom wire formats (JS-style dates); STJ has no composition seam
     };

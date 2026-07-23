@@ -5,6 +5,9 @@
 // this file composes them. Business logic does not live here.
 
 using NodeScope.Api;
+using NodeScope.Modules.Identity.Infrastructure;
+using NodeScope.Modules.Monitoring.Infrastructure;
+using NodeScope.Platform;
 using NodeScope.Platform.Http;
 using Yarp.ReverseProxy.Configuration;
 
@@ -16,6 +19,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsDateTimeConverter()));
 
 builder.Services.AddHealthChecks();
+
+builder.Services.AddNodeScopePlatform(builder.Configuration);
+builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddMonitoringModule();
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
 // every route this host does not serve natively is forwarded to the Node API, so the
@@ -53,12 +60,16 @@ if (!string.IsNullOrEmpty(proxyTarget))
 var app = builder.Build();
 
 app.UseMiddleware<ApiExceptionMiddleware>();
+app.UseAuditContext();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // This host's own liveness probe. The product's /api/health stays with the module that
 // owns the readiness checks and is proxied until that lands.
 app.MapHealthChecks("/health");
 
 app.MapBandwidthEndpoints();
+app.MapMonitoringEndpoints();
 
 if (!string.IsNullOrEmpty(proxyTarget))
 {
