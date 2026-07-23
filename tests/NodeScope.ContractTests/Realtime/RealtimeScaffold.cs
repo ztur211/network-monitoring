@@ -21,7 +21,7 @@ internal static class RealtimeScaffold
     /// </summary>
     public static async Task<IRealtimeClient> ConnectReadyAsync(Auth auth, CancellationToken cancellationToken = default)
     {
-        var client = new SocketIoRealtimeClient(new Uri(TestConfig.BaseUrl));
+        var client = RealtimeTransport.Create();
         await client.ConnectAsync(auth, cancellationToken);
         await client.WaitForEventAsync(ReadyEvent);
         return client;

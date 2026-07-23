@@ -337,7 +337,7 @@ public class RealtimeContractTests
     [Fact]
     public async Task Unauthenticated_socket_is_rejected()
     {
-        await using var socket = new SocketIoRealtimeClient(new Uri(TestConfig.BaseUrl));
+        await using var socket = RealtimeTransport.Create();
 
         // The transport connects, then the gateway resolves no session and disconnects it.
         await socket.ConnectAsync(auth: null);

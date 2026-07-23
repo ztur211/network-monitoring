@@ -44,6 +44,8 @@ internal sealed class InventoryDbContext : DbContext
 
     public DbSet<UserSliceRow> Users => Set<UserSliceRow>();
 
+    public DbSet<OrganizationMemberSliceRow> OrganizationMembers => Set<OrganizationMemberSliceRow>();
+
     public DbSet<BcfTopicRow> BcfTopics => Set<BcfTopicRow>();
 
     public DbSet<BcfCommentRow> BcfComments => Set<BcfCommentRow>();
@@ -127,6 +129,12 @@ internal sealed class InventoryDbContext : DbContext
         modelBuilder.Entity<UserSliceRow>(entity =>
         {
             entity.ToTable("User");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<OrganizationMemberSliceRow>(entity =>
+        {
+            entity.ToTable("OrganizationMember");
             entity.HasKey(row => row.Id);
         });
 
@@ -369,6 +377,16 @@ internal sealed class DeviceMetricRow
     public string? ConnectionQuality { get; set; }
 
     public DateTime Time { get; set; }
+}
+
+/// <summary>The membership slice of <c>OrganizationMember</c>: which org a user belongs to.</summary>
+internal sealed class OrganizationMemberSliceRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
 }
 
 /// <summary>The onboarding slice of <c>User</c> - the wizard's durable completion marker.</summary>

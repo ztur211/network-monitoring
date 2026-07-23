@@ -133,6 +133,7 @@ public sealed class IngestService
                     state = DeviceStatusStateLabel.Of(derived.State),
                     latencyMs = check.LatencyMs,
                     at = DateTime.UtcNow,
+                    timestamp = IsoTimestamp.Now(),
                 }));
             }
         }

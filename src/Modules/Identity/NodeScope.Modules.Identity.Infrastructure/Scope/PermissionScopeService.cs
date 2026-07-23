@@ -115,7 +115,7 @@ internal sealed partial class PermissionScopeService : IPermissionScopeService
             return cached;
         }
 
-        var roots = await EffectiveRootPropertyIdsAsync(member, cancellationToken);
+        var roots = await RootsAsync(member, cancellationToken);
         var scope = new HashSet<string>(StringComparer.Ordinal);
         foreach (var root in roots)
         {
@@ -127,8 +127,19 @@ internal sealed partial class PermissionScopeService : IPermissionScopeService
         return result;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>?> EffectiveRootPropertyIdsAsync(
+        OrgMemberContext member,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Role == OrgRoleNames.Owner
+            ? null
+            : await RootsAsync(member, cancellationToken);
+    }
+
     /// <summary>Union of team-assignment roots (via membership) and direct member roots, deduped.</summary>
-    private async Task<List<string>> EffectiveRootPropertyIdsAsync(
+    private async Task<List<string>> RootsAsync(
         OrgMemberContext member,
         CancellationToken cancellationToken) =>
         await _db.TeamProperties
@@ -168,6 +179,36 @@ internal sealed partial class PermissionScopeService : IPermissionScopeService
         }
 
         return rows.Select(row => row.Id).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> AncestorPropertyIdsAsync(
+        string organizationId,
+        string propertyId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _db.Database
+            .SqlQuery<WalkRow>(
+                $"""
+                WITH RECURSIVE chain AS (
+                  SELECT "id", "parentId", 0 AS depth FROM "Property"
+                    WHERE "id" = {propertyId} AND "organizationId" = {organizationId}
+                  UNION ALL
+                  SELECT p."id", p."parentId", c.depth + 1 FROM "Property" p
+                    JOIN chain c ON p."id" = c."parentId" AND p."organizationId" = {organizationId}
+                ) CYCLE "id" SET "isCycle" USING "cyclePath"
+                SELECT "id" AS "Id", "isCycle" AS "IsCycle" FROM chain ORDER BY depth ASC
+                """)
+            .ToListAsync(cancellationToken);
+
+        var repeated = rows.Where(row => row.IsCycle).Select(row => row.Id).ToList();
+        if (repeated.Count > 0)
+        {
+            Log.PropertyTreeCycle(_logger, organizationId, propertyId, string.Join(",", repeated));
+            throw new ApiException("PROP_006", "PROPERTY_TREE_CYCLE", 500);
+        }
+
+        return [.. rows.Select(row => row.Id)];
     }
 
     private sealed record WalkRow(string Id, bool IsCycle);

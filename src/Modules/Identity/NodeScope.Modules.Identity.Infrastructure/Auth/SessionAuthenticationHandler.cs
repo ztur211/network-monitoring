@@ -41,6 +41,7 @@ public sealed class SessionAuthenticationOptions : AuthenticationSchemeOptions
 internal sealed class SessionAuthenticationHandler : AuthenticationHandler<SessionAuthenticationOptions>
 {
     private readonly IdentityDbContext _db;
+    private readonly IOrgMembershipResolver _members;
     private readonly OrgContextHolder _orgContext;
     private readonly AuditContext _auditContext;
 
@@ -49,11 +50,13 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
         ILoggerFactory logger,
         UrlEncoder encoder,
         IdentityDbContext db,
+        IOrgMembershipResolver members,
         OrgContextHolder orgContext,
         AuditContext auditContext)
         : base(options, logger, encoder)
     {
         _db = db;
+        _members = members;
         _orgContext = orgContext;
         _auditContext = auditContext;
     }
@@ -77,7 +80,7 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
         }
 
         _auditContext.UserId = userId;
-        _orgContext.OrgMember = await ResolveOrgMemberAsync(userId);
+        _orgContext.OrgMember = await _members.ForUserAsync(userId, Context.RequestAborted);
 
         var identity = new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, userId)],
@@ -109,22 +112,4 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
             Context.RequestAborted);
     }
 
-    private async Task<OrgMemberContext?> ResolveOrgMemberAsync(string userId)
-    {
-        // role::text sidesteps the Postgres enum until the full Identity model (with proper
-        // enum mapping) lands alongside the module's endpoints.
-        var member = await _db.Database
-            .SqlQuery<OrgMemberQueryRow>(
-                $"""
-                SELECT "id" AS "MemberId", "organizationId" AS "OrganizationId", "role"::text AS "Role"
-                FROM "OrganizationMember"
-                WHERE "userId" = {userId}
-                """)
-            .FirstOrDefaultAsync(Context.RequestAborted);
-        return member is null
-            ? null
-            : new OrgMemberContext(member.MemberId, member.OrganizationId, member.Role);
-    }
-
-    private sealed record OrgMemberQueryRow(string MemberId, string OrganizationId, string Role);
 }

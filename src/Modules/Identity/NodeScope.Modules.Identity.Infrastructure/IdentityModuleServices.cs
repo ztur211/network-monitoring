@@ -28,6 +28,7 @@ public static class IdentityModuleServices
         services.AddDbContext<IdentityDbContext>((provider, options) =>
             options.UseNpgsql(provider.GetRequiredService<DatabaseConnectionString>().Value));
         services.AddScoped<IPermissionScopeService, PermissionScopeService>();
+        services.AddScoped<IOrgMembershipResolver, OrgMembershipResolver>();
 
         services
             .AddAuthentication(SessionAuthenticationDefaults.SchemeName)

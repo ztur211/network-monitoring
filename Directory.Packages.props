@@ -85,6 +85,13 @@
       See tests/NodeScope.ContractTests/Fixtures/RealtimeClient.cs.
     -->
     <PackageVersion Include="SocketIOClient" Version="4.0.4" />
+
+    <!--
+      The SignalR client is the other half of the realtime parity adapter: the same tests
+      run over socket.io against Node and over SignalR against the C# host, so both clients
+      coexist until the Node target is deleted.
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
   </ItemGroup>
 
 </Project>

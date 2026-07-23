@@ -29,6 +29,25 @@ public interface IPermissionScopeService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The property and every ancestor up to the root (org-scoped, cycle-guarded). Realtime
+    /// fan-out needs it: a subscriber assigned to a site must receive events about anything
+    /// beneath it, so an event addresses the whole ancestor chain of its governing site.
+    /// </summary>
+    public Task<IReadOnlyList<string>> AncestorPropertyIdsAsync(
+        string organizationId,
+        string propertyId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The member's assigned roots, un-expanded: null for an OWNER (unscoped), an empty list
+    /// for a member with no grants. This is what a live subscriber's scope subscriptions
+    /// mirror, so the fan-out can address rooms instead of filtering every socket per event.
+    /// </summary>
+    public Task<IReadOnlyList<string>?> EffectiveRootPropertyIdsAsync(
+        OrgMemberContext member,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gate for configuring a device under <paramref name="governingSitePropertyId"/>:
     /// OWNER passes, MEMBER throws <c>ORG_003</c>, ADMIN throws <c>PERM_001</c> when the site
     /// is outside their scope.

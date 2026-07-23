@@ -8,6 +8,7 @@ using NodeScope.Api;
 using NodeScope.Modules.Identity.Infrastructure;
 using NodeScope.Modules.Inventory.Infrastructure;
 using NodeScope.Modules.Monitoring.Infrastructure;
+using NodeScope.Modules.Realtime.Infrastructure;
 using NodeScope.Platform;
 using NodeScope.Platform.Http;
 using Yarp.ReverseProxy.Configuration;
@@ -34,6 +35,7 @@ builder.Services.AddNodeScopePlatform(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddMonitoringModule(builder.Configuration);
+builder.Services.AddRealtimeModule();
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
 // every route this host does not serve natively is forwarded to the Node API, so the
@@ -84,6 +86,7 @@ app.MapHealthChecks("/health");
 app.MapBandwidthEndpoints();
 app.MapInventoryEndpoints();
 app.MapMonitoringEndpoints();
+app.MapRealtimeEndpoints();
 
 if (!string.IsNullOrEmpty(proxyTarget))
 {
