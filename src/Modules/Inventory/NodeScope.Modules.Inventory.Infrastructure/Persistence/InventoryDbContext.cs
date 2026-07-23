@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NodeScope.Modules.Inventory.Domain;
 using NodeScope.Platform.Data;
@@ -42,6 +43,14 @@ internal sealed class InventoryDbContext : DbContext
     public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
 
     public DbSet<UserSliceRow> Users => Set<UserSliceRow>();
+
+    public DbSet<BcfTopicRow> BcfTopics => Set<BcfTopicRow>();
+
+    public DbSet<BcfCommentRow> BcfComments => Set<BcfCommentRow>();
+
+    public DbSet<BcfViewpointRow> BcfViewpoints => Set<BcfViewpointRow>();
+
+    public DbSet<BcfTopicDeviceRow> BcfTopicDevices => Set<BcfTopicDeviceRow>();
 
     public DbSet<TeamPropertySliceRow> TeamProperties => Set<TeamPropertySliceRow>();
 
@@ -118,6 +127,31 @@ internal sealed class InventoryDbContext : DbContext
         modelBuilder.Entity<UserSliceRow>(entity =>
         {
             entity.ToTable("User");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<BcfTopicRow>(entity =>
+        {
+            entity.ToTable("BcfTopic");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => new { row.OrganizationId, row.Guid }).IsUnique();
+        });
+
+        modelBuilder.Entity<BcfCommentRow>(entity =>
+        {
+            entity.ToTable("BcfComment");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<BcfViewpointRow>(entity =>
+        {
+            entity.ToTable("BcfViewpoint");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<BcfTopicDeviceRow>(entity =>
+        {
+            entity.ToTable("BcfTopicDevice");
             entity.HasKey(row => row.Id);
         });
 
@@ -443,4 +477,98 @@ internal sealed class DeviceConnectionRow
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>A <c>BcfTopic</c> row - one BIM coordination issue on a building.</summary>
+internal sealed class BcfTopicRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string PropertyId { get; set; } = null!;
+
+    public string Guid { get; set; } = null!;
+
+    public string Title { get; set; } = null!;
+
+    public string? TopicType { get; set; }
+
+    public string? TopicStatus { get; set; }
+
+    public string? Priority { get; set; }
+
+    public string[] Labels { get; set; } = [];
+
+    public string CreationAuthor { get; set; } = null!;
+
+    public DateTime CreationDate { get; set; }
+
+    public string? ModifiedAuthor { get; set; }
+
+    public DateTime? ModifiedDate { get; set; }
+
+    public string? AssignedTo { get; set; }
+
+    public DateTime? DueDate { get; set; }
+
+    public string? Description { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>A <c>BcfComment</c> row.</summary>
+internal sealed class BcfCommentRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string TopicId { get; set; } = null!;
+
+    public string Guid { get; set; } = null!;
+
+    public string Comment { get; set; } = null!;
+
+    public string Author { get; set; } = null!;
+
+    public DateTime Date { get; set; }
+
+    public string? ViewpointGuid { get; set; }
+}
+
+/// <summary>A <c>BcfViewpoint</c> row; camera/components/clippingPlanes are jsonb.</summary>
+internal sealed class BcfViewpointRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string TopicId { get; set; } = null!;
+
+    public string Guid { get; set; } = null!;
+
+    public JsonDocument Camera { get; set; } = null!;
+
+    public JsonDocument Components { get; set; } = null!;
+
+    public JsonDocument ClippingPlanes { get; set; } = null!;
+
+    public string? SnapshotKey { get; set; }
+
+    public bool IsPrimary { get; set; }
+}
+
+/// <summary>A <c>BcfTopicDevice</c> link row (topic to the devices its viewpoints select).</summary>
+internal sealed class BcfTopicDeviceRow
+{
+    public string Id { get; set; } = null!;
+
+    public string TopicId { get; set; } = null!;
+
+    public string DeviceId { get; set; } = null!;
 }

@@ -27,6 +27,18 @@ public static class InventoryErrors
     /// <summary>409 <c>PROP_008</c>: charter removal would leave placed devices uncovered.</summary>
     public static ApiException CharterInUse() => new("PROP_008", "CHARTER_IN_USE", 409);
 
+    /// <summary>422 <c>BCF_002</c>: a primary viewpoint without a valid PNG snapshot.</summary>
+    public static ApiException MissingSnapshotPng() => new("BCF_002", "MISSING_SNAPSHOT_PNG", 422);
+
+    /// <summary>422 <c>BCF_002</c>: a supplied snapshot that is not a PNG.</summary>
+    public static ApiException InvalidSnapshot() => new("BCF_002", "INVALID_SNAPSHOT", 422);
+
+    /// <summary>404 <c>BCF_004</c>: topic unknown or belonging to another org.</summary>
+    public static ApiException BcfTopicNotFound() => new("BCF_004", "TOPIC_NOT_FOUND", 404);
+
+    /// <summary>409 <c>BCF_005</c>: stale <c>baseVersion</c> on a topic patch.</summary>
+    public static ApiException BcfTopicConflict() => new("BCF_005", "TOPIC_VERSION_CONFLICT", 409);
+
     /// <summary>404 <c>MODEL_001</c>: no model on this building (or the building is invisible).</summary>
     public static ApiException BuildingModelNotFound() => new("MODEL_001", "BUILDING_MODEL_NOT_FOUND", 404);
 

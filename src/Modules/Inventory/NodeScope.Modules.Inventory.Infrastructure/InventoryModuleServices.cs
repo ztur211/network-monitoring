@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using NodeScope.Modules.Inventory.Application.Bcf;
 using NodeScope.Modules.Inventory.Application.BuildingModels;
 using NodeScope.Modules.Inventory.Application.Clients;
 using NodeScope.Modules.Inventory.Application.Devices;
@@ -43,6 +44,7 @@ public static class InventoryModuleServices
         services.AddScoped<IDeviceRepository, DeviceRepository>();
         services.AddScoped<IOrgNamingPolicyReader, OrgNamingPolicyReader>();
         services.AddScoped<IBuildingModelRepository, BuildingModelRepository>();
+        services.AddScoped<IBcfRepository, BcfRepository>();
         services.AddScoped<INetworkPropertyRepository, NetworkPropertyRepository>();
         services.AddScoped<INetworkRepository, NetworkRepository>();
         services.AddScoped<ICircuitRepository, CircuitRepository>();
@@ -73,6 +75,10 @@ public static class InventoryModuleServices
         services.AddScoped<OnboardingService>();
         services.AddScoped<BuildingModelsService>();
         services.AddScoped<IfcExportService>();
+        services.AddScoped<BcfAccess>();
+        services.AddScoped<BcfDeviceLinks>();
+        services.AddScoped<BcfService>();
+        services.AddScoped<BcfArchiveService>();
 
         return services;
     }
@@ -92,6 +98,7 @@ public static class InventoryModuleServices
         ClientsEndpoints.Map(app);
         OnboardingEndpoints.Map(app);
         BuildingModelsEndpoints.Map(app);
+        BcfEndpoints.Map(app);
         return app;
     }
 }
