@@ -56,6 +56,10 @@ public static class InventoryErrors
     /// <summary>404 <c>NETWORK_002</c>: network unknown, foreign, or out of scope.</summary>
     public static ApiException NetworkNotFound() => new("NETWORK_002", "NETWORK_NOT_FOUND", 404);
 
+    /// <summary>409 <c>ONBOARD_002</c>: the wizard already finished for this user.</summary>
+    public static ApiException OnboardingAlreadyComplete() =>
+        new("ONBOARD_002", "ONBOARDING_ALREADY_COMPLETE", 409);
+
     /// <summary>404 <c>CIRCUIT_001</c>: circuit unknown, foreign, or out of scope.</summary>
     public static ApiException CircuitNotFound() => new("CIRCUIT_001", "CIRCUIT_NOT_FOUND", 404);
 

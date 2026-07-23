@@ -213,7 +213,7 @@ internal sealed class DeviceRepository : IDeviceRepository
         return scope is null ? query : query.Where(d => scope.Contains(d.PropertyId));
     }
 
-    private static DeviceRecord ToRecord(DeviceRow row) => new(
+    internal static DeviceRecord ToRecord(DeviceRow row) => new(
         row.Id, row.OrganizationId, row.UserId, row.NetworkId, row.PropertyId, row.RoleCode, row.Name,
         row.Category, row.Latitude, row.Longitude, row.Floor, row.FloorLabel, row.X, row.Y, row.Z,
         row.IfcGlobalId, row.IpAddress, row.MacAddress, row.Notes, row.Version, row.CreatedAt, row.UpdatedAt);

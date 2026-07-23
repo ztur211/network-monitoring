@@ -37,6 +37,10 @@ internal sealed class InventoryDbContext : DbContext
 
     public DbSet<BuildingModelSliceRow> BuildingModels => Set<BuildingModelSliceRow>();
 
+    public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
+
+    public DbSet<UserSliceRow> Users => Set<UserSliceRow>();
+
     public DbSet<TeamPropertySliceRow> TeamProperties => Set<TeamPropertySliceRow>();
 
     public DbSet<MemberPropertySliceRow> MemberProperties => Set<MemberPropertySliceRow>();
@@ -94,6 +98,18 @@ internal sealed class InventoryDbContext : DbContext
         modelBuilder.Entity<BuildingModelSliceRow>(entity =>
         {
             entity.ToTable("BuildingModel");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<DeviceMetricRow>(entity =>
+        {
+            entity.ToTable("DeviceMetric");
+            entity.HasKey(row => new { row.Id, row.Time });
+        });
+
+        modelBuilder.Entity<UserSliceRow>(entity =>
+        {
+            entity.ToTable("User");
             entity.HasKey(row => row.Id);
         });
 
@@ -251,6 +267,38 @@ internal sealed class BuildingModelSliceRow
     public string OrganizationId { get; set; } = null!;
 
     public string PropertyId { get; set; } = null!;
+}
+
+/// <summary>
+/// The browser-collector reading slice of the <c>DeviceMetric</c> hypertable. Read-only here;
+/// ingest belongs to the collector path. The composite key mirrors the hypertable's
+/// <c>(id, time)</c> primary key, which Timescale requires to include the partitioning column.
+/// </summary>
+internal sealed class DeviceMetricRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
+
+    public double? BandwidthDown { get; set; }
+
+    public double? BandwidthUp { get; set; }
+
+    public double? Latency { get; set; }
+
+    public string? ConnectionQuality { get; set; }
+
+    public DateTime Time { get; set; }
+}
+
+/// <summary>The onboarding slice of <c>User</c> - the wizard's durable completion marker.</summary>
+internal sealed class UserSliceRow
+{
+    public string Id { get; set; } = null!;
+
+    public DateTime? OnboardingCompletedAt { get; set; }
 }
 
 /// <summary>The existence slice of <c>TeamProperty</c> (delete guard <c>PERM_005</c>).</summary>

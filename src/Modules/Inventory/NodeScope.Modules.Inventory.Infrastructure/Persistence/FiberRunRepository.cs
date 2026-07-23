@@ -134,7 +134,7 @@ internal sealed class FiberRunRepository : IFiberRunRepository
                 || _db.Devices.Any(d => d.Id == r.EndDeviceId && scope.Contains(d.PropertyId)));
     }
 
-    private static FiberRunRecord ToRecord(FiberRunRow row) => new(
+    internal static FiberRunRecord ToRecord(FiberRunRow row) => new(
         row.Id, row.OrganizationId, row.UserId, row.Name, row.StartDeviceId, row.EndDeviceId, row.CableType,
         row.LengthMeters, row.Notes, row.Version, row.CreatedAt, row.UpdatedAt);
 }

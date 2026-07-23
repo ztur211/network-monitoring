@@ -2,15 +2,21 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodeScope.Modules.Inventory.Application.BuildingModels;
+using NodeScope.Modules.Inventory.Application.Clients;
 using NodeScope.Modules.Inventory.Application.Devices;
 using NodeScope.Modules.Inventory.Application.Links;
+using NodeScope.Modules.Inventory.Application.Map;
 using NodeScope.Modules.Inventory.Application.Networks;
+using NodeScope.Modules.Inventory.Application.Onboarding;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain;
 using NodeScope.Modules.Inventory.Infrastructure.Endpoints;
+using NodeScope.Modules.Inventory.Infrastructure.Onboarding;
 using NodeScope.Modules.Inventory.Infrastructure.Persistence;
 using NodeScope.Platform;
+using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Data;
 
 namespace NodeScope.Modules.Inventory.Infrastructure;
@@ -41,6 +47,15 @@ public static class InventoryModuleServices
         services.AddScoped<ICircuitRepository, CircuitRepository>();
         services.AddScoped<IFiberRunRepository, FiberRunRepository>();
         services.AddScoped<IConnectionRepository, ConnectionRepository>();
+        services.AddScoped<IMapRepository, MapRepository>();
+        services.AddScoped<IUserMetricsRepository, UserMetricsRepository>();
+        services.AddMemoryCache();
+        services.AddScoped<IOnboardingStateStore, MemoryOnboardingStateStore>();
+        services.AddScoped<IOnboardingCompletionStore, OnboardingCompletionStore>();
+        services.AddHttpClient<IGeocoder, NominatimGeocoder>();
+        // The Assistant module registers a provider-driven narrator later in composition, which
+        // wins; this canned copy is what serves until then and whenever the provider is down.
+        services.TryAddScoped<IOnboardingNarrator, FallbackOnboardingNarrator>();
         services.AddScoped<ContainmentService>();
         services.AddScoped<PropertiesService>();
         services.AddScoped<NetworkPropertyService>();
@@ -52,6 +67,9 @@ public static class InventoryModuleServices
         services.AddScoped<CircuitsService>();
         services.AddScoped<FiberRunsService>();
         services.AddScoped<ConnectionsService>();
+        services.AddScoped<MapService>();
+        services.AddScoped<ClientsService>();
+        services.AddScoped<OnboardingService>();
 
         return services;
     }
@@ -67,6 +85,9 @@ public static class InventoryModuleServices
         CircuitsEndpoints.Map(app);
         FiberRunsEndpoints.Map(app);
         ConnectionsEndpoints.Map(app);
+        MapEndpoints.Map(app);
+        ClientsEndpoints.Map(app);
+        OnboardingEndpoints.Map(app);
         return app;
     }
 }

@@ -160,7 +160,7 @@ internal sealed class CircuitRepository : ICircuitRepository
             : query.Where(c => _db.Devices.Any(d => d.Id == c.DeviceId && scope.Contains(d.PropertyId)));
     }
 
-    private static CircuitRecord ToRecord(CircuitRow row) => new(
+    internal static CircuitRecord ToRecord(CircuitRow row) => new(
         row.Id, row.OrganizationId, row.UserId, row.IspName, row.CircuitId, row.ServiceType, row.Bandwidth,
         row.DeviceId, row.Notes, row.Version, row.CreatedAt, row.UpdatedAt);
 }
