@@ -14,4 +14,9 @@
     <ProjectReference Include="../../../NodeScope.Contracts/NodeScope.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Configuration abstractions only: the invite link needs the configured frontend origin. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+  </ItemGroup>
+
 </Project>

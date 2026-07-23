@@ -29,6 +29,12 @@ internal sealed class IdentityDbContext : DbContext
 
     public DbSet<DeviceMetricRow> DeviceMetrics => Set<DeviceMetricRow>();
 
+    public DbSet<OrganizationDomainRow> OrganizationDomains => Set<OrganizationDomainRow>();
+
+    public DbSet<InvitationRow> Invitations => Set<InvitationRow>();
+
+    public DbSet<JoinRequestRow> JoinRequests => Set<JoinRequestRow>();
+
     public DbSet<TeamRow> Teams => Set<TeamRow>();
 
     public DbSet<TeamMemberRow> TeamMembers => Set<TeamMemberRow>();
@@ -68,6 +74,26 @@ internal sealed class IdentityDbContext : DbContext
         {
             entity.ToTable("DeviceMetric");
             entity.HasKey(row => new { row.Id, row.Time });
+        });
+
+        modelBuilder.Entity<OrganizationDomainRow>(entity =>
+        {
+            entity.ToTable("OrganizationDomain");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => row.Domain).IsUnique();
+        });
+
+        modelBuilder.Entity<InvitationRow>(entity =>
+        {
+            entity.ToTable("Invitation");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => row.Token).IsUnique();
+        });
+
+        modelBuilder.Entity<JoinRequestRow>(entity =>
+        {
+            entity.ToTable("JoinRequest");
+            entity.HasKey(row => row.Id);
         });
 
         modelBuilder.Entity<TeamRow>(entity =>
@@ -166,6 +192,8 @@ internal sealed class OrganizationMemberRow
     public OrgRole Role { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>The reporting slice of the <c>DeviceMetric</c> hypertable (data-source liveness).</summary>
@@ -178,6 +206,58 @@ internal sealed class DeviceMetricRow
     public string UserId { get; set; } = null!;
 
     public DateTime Time { get; set; }
+}
+
+/// <summary>An <c>OrganizationDomain</c> row: the email domain that routes join requests here.</summary>
+internal sealed class OrganizationDomainRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string Domain { get; set; } = null!;
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>An <c>Invitation</c> row. The token is the credential, so it is unique and single-use.</summary>
+internal sealed class InvitationRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string Email { get; set; } = null!;
+
+    public OrgRole Role { get; set; }
+
+    public string Token { get; set; } = null!;
+
+    public DateTime ExpiresAt { get; set; }
+
+    public string? InvitedByUserId { get; set; }
+
+    public DateTime? AcceptedAt { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>A <c>JoinRequest</c> row.</summary>
+internal sealed class JoinRequestRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
+
+    public JoinRequestStatus Status { get; set; }
+
+    public string? DecidedByUserId { get; set; }
+
+    public DateTime? DecidedAt { get; set; }
+
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>

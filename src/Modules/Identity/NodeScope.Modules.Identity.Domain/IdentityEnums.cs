@@ -17,6 +17,14 @@ public enum OrgRole
     Member,
 }
 
+/// <summary>The Postgres <c>JoinRequestStatus</c> enum.</summary>
+public enum JoinRequestStatus
+{
+    Pending,
+    Approved,
+    Denied,
+}
+
 /// <summary>Wire-label conversion (the DB labels are the wire values).</summary>
 public static class IdentityLabels
 {
@@ -35,6 +43,22 @@ public static class IdentityLabels
         OrgRole.Admin => "ADMIN",
         OrgRole.Member => "MEMBER",
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
+    public static string Of(JoinRequestStatus value) => value switch
+    {
+        JoinRequestStatus.Pending => "PENDING",
+        JoinRequestStatus.Approved => "APPROVED",
+        JoinRequestStatus.Denied => "DENIED",
+        _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
+    public static JoinRequestStatus? TryParseJoinRequestStatus(string? label) => label switch
+    {
+        "PENDING" => JoinRequestStatus.Pending,
+        "APPROVED" => JoinRequestStatus.Approved,
+        "DENIED" => JoinRequestStatus.Denied,
+        _ => null,
     };
 
     public static OrgRole? TryParseRole(string? label) => label switch

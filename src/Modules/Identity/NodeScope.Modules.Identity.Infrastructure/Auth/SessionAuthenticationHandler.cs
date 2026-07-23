@@ -16,6 +16,9 @@ namespace NodeScope.Modules.Identity.Infrastructure.Auth;
 public static class SessionAuthenticationDefaults
 {
     public const string SchemeName = "Session";
+
+    /// <summary>Claim carrying <c>User.isSuperAdmin</c>, which gates the org-provisioning routes.</summary>
+    public const string SuperAdminClaim = "nodescope:superAdmin";
 }
 
 /// <summary>Options for <see cref="SessionAuthenticationHandler"/>.</summary>
@@ -70,21 +73,28 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
         }
 
         var now = DateTime.UtcNow;
-        var userId = await _db.Sessions
-            .Where(session => session.Token == token && session.ExpiresAt > now)
-            .Select(session => session.UserId)
+        var session = await _db.Sessions
+            .Where(row => row.Token == token && row.ExpiresAt > now)
+            .Join(_db.Users, row => row.UserId, user => user.Id, (_, user) => new { user.Id, user.IsSuperAdmin })
             .FirstOrDefaultAsync(Context.RequestAborted);
-        if (userId is null)
+        if (session is null)
         {
             return AuthenticateResult.NoResult();
         }
 
+        var userId = session.Id;
         _auditContext.UserId = userId;
         _orgContext.OrgMember = await _members.ForUserAsync(userId, Context.RequestAborted);
 
-        var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, userId)],
-            Scheme.Name);
+        // isSuperAdmin rides on the ticket because the admin routes gate on it and nothing
+        // else in the request pipeline would otherwise read the User row.
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId) };
+        if (session.IsSuperAdmin)
+        {
+            claims.Add(new Claim(SessionAuthenticationDefaults.SuperAdminClaim, "true"));
+        }
+
+        var identity = new ClaimsIdentity(claims, Scheme.Name);
         return AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
@@ -102,9 +112,12 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
         var reason = Context.Items.TryGetValue(OrgAuthorization.FailureItemKey, out var value)
             ? value as string
             : null;
-        var (code, message) = reason == OrgAuthorization.InsufficientRole
-            ? (OrgAuthorization.InsufficientRole, "INSUFFICIENT_ORG_ROLE")
-            : (OrgAuthorization.NotAnOrgMember, "NOT_AN_ORG_MEMBER");
+        var (code, message) = reason switch
+        {
+            OrgAuthorization.InsufficientRole => (OrgAuthorization.InsufficientRole, "INSUFFICIENT_ORG_ROLE"),
+            SuperAdminAuthorization.NotSuperAdmin => (SuperAdminAuthorization.NotSuperAdmin, "NOT_A_SUPER_ADMIN"),
+            _ => (OrgAuthorization.NotAnOrgMember, "NOT_AN_ORG_MEMBER"),
+        };
 
         Response.StatusCode = StatusCodes.Status403Forbidden;
         return Response.WriteAsJsonAsync(

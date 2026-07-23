@@ -10,6 +10,7 @@ using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Data;
 using Microsoft.AspNetCore.Routing;
 using NodeScope.Modules.Identity.Application.Organizations;
+using NodeScope.Modules.Identity.Application.Membership;
 using NodeScope.Modules.Identity.Application.Permissions;
 using NodeScope.Modules.Identity.Application.Users;
 using NodeScope.Modules.Identity.Infrastructure.Endpoints;
@@ -37,7 +38,9 @@ public static class IdentityModuleServices
                 provider.GetRequiredService<DatabaseConnectionString>().Value,
                 npgsql => npgsql
                     .MapEnum<AccountTier>("AccountTier", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
-                    .MapEnum<OrgRole>("OrgRole", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
+                    .MapEnum<OrgRole>("OrgRole", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
+                    .MapEnum<JoinRequestStatus>(
+                        "JoinRequestStatus", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
         services.AddScoped<IPermissionScopeService, PermissionScopeService>();
         services.AddScoped<IOrgMembershipResolver, OrgMembershipResolver>();
         services.AddScoped<IUserRepository, UserRepository>();
@@ -45,7 +48,10 @@ public static class IdentityModuleServices
         services.AddScoped<UsersService>();
         services.AddScoped<IPermissionsRepository, PermissionsRepository>();
         services.AddScoped<OrganizationsService>();
+        services.AddScoped<IMembershipRepository, MembershipRepository>();
         services.AddScoped<PermissionsService>();
+        services.AddScoped<MembershipService>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SuperAdminRequirementHandler>();
 
         services
             .AddAuthentication(SessionAuthenticationDefaults.SchemeName)
@@ -62,6 +68,7 @@ public static class IdentityModuleServices
         UsersEndpoints.Map(app);
         OrganizationsEndpoints.Map(app);
         PermissionsEndpoints.Map(app);
+        MembershipEndpoints.Map(app);
         return app;
     }
 }
