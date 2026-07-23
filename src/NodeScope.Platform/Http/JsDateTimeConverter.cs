@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NodeScope.Platform.Abstractions;
 
 namespace NodeScope.Platform.Http;
 

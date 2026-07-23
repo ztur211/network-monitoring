@@ -6,6 +6,7 @@
 
 using NodeScope.Api;
 using NodeScope.Modules.Identity.Infrastructure;
+using NodeScope.Modules.Inventory.Infrastructure;
 using NodeScope.Modules.Monitoring.Infrastructure;
 using NodeScope.Platform;
 using NodeScope.Platform.Http;
@@ -31,6 +32,7 @@ builder.Services.AddRequestDecompression();
 
 builder.Services.AddNodeScopePlatform(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddMonitoringModule(builder.Configuration);
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
@@ -80,6 +82,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 
 app.MapBandwidthEndpoints();
+app.MapInventoryEndpoints();
 app.MapMonitoringEndpoints();
 
 if (!string.IsNullOrEmpty(proxyTarget))

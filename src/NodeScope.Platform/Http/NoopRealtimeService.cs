@@ -15,4 +15,26 @@ internal sealed class NoopRealtimeService : IRealtimeService
         string eventName,
         object payload,
         CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task EmitScopedMultiAsync(
+        string organizationId,
+        IReadOnlyCollection<string> scopePropertyIds,
+        string eventName,
+        object payload,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task PushToOrgAsync(string organizationId, string eventName, object payload, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task PushToUserAsync(string userId, string eventName, object payload, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task NotifyAccessChangedAsync(string organizationId, string userId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task RecomputeOnHomeForUserAsync(string userId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task EvictOrgMemberAsync(string organizationId, string userId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }

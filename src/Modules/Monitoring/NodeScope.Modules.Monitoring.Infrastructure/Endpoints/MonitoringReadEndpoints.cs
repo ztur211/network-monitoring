@@ -30,7 +30,7 @@ internal static class MonitoringReadEndpoints
         MonitoringReadService service,
         CancellationToken cancellationToken)
     {
-        RequireUuid(propertyId);
+        RouteParams.RequireUuid(propertyId);
         return ApiEnvelope.Ok(await service.GetBuildingDeviceStatusAsync(org.OrgMember!, propertyId, cancellationToken));
     }
 
@@ -44,7 +44,7 @@ internal static class MonitoringReadEndpoints
         MonitoringReadService service,
         CancellationToken cancellationToken)
     {
-        RequireUuid(id);
+        RouteParams.RequireUuid(id);
         var errors = new List<string>();
         RequestValidation.RequireNonEmptyString(errors, metric, "metric");
         RequestValidation.MaxLength(errors, metric, "metric", 64);
@@ -70,7 +70,7 @@ internal static class MonitoringReadEndpoints
         MonitoringReadService service,
         CancellationToken cancellationToken)
     {
-        RequireUuid(id);
+        RouteParams.RequireUuid(id);
         return ApiEnvelope.Ok(await service.GetDeviceMetricNamesAsync(org.OrgMember!, id, cancellationToken));
     }
 
@@ -81,17 +81,8 @@ internal static class MonitoringReadEndpoints
         MonitoringReadService service,
         CancellationToken cancellationToken)
     {
-        RequireUuid(id);
+        RouteParams.RequireUuid(id);
         return ApiEnvelope.Ok(await service.GetDeviceStatusEventsAsync(org.OrgMember!, id, limit, cancellationToken));
-    }
-
-    /// <summary>Nest's <c>ParseUUIDPipe</c>: a non-uuid path id is a 400 before anything else.</summary>
-    private static void RequireUuid(string value)
-    {
-        if (!Guid.TryParse(value, out _))
-        {
-            throw ApiErrors.Validation(["Validation failed (uuid is expected)"]);
-        }
     }
 
     private static void ValidateIso(List<string> errors, string? value, string field)

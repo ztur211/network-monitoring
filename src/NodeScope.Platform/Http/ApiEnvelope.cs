@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using NodeScope.Platform.Abstractions;
 
 namespace NodeScope.Platform.Http;
 
@@ -31,21 +31,3 @@ public sealed record ApiErrorBody(
     string Message,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Details);
 
-/// <summary>
-/// Timestamps in JavaScript's <c>Date.prototype.toISOString()</c> shape: UTC, exactly
-/// millisecond precision, <c>Z</c> suffix. Both envelopes and every DTO date field use it,
-/// because that is what every Node response carried.
-/// </summary>
-public static class IsoTimestamp
-{
-    private const string Format = "yyyy-MM-dd'T'HH':'mm':'ss'.'fff'Z'";
-
-    public static string Now() => Of(DateTime.UtcNow);
-
-    /// <summary>Formats <paramref name="value"/>; Unspecified kinds are treated as UTC (DB reads).</summary>
-    public static string Of(DateTime value)
-    {
-        var utc = value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : value;
-        return utc.ToString(Format, CultureInfo.InvariantCulture);
-    }
-}
