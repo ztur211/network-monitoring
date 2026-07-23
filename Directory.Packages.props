@@ -40,6 +40,19 @@
     -->
     <PackageVersion Include="Lextm.SharpSnmpLib" Version="12.5.7" />
 
+    <!--
+      API port (sequencing step 4). EF Core + Npgsql per Decision 5; the Npgsql
+      provider's own train (10.0.3) lags the EF core packages (10.0.10) - both
+      are the latest stable of their line. YARP backs the transition-only
+      fallback proxy (Decision 21): unported routes forward to the Node API so
+      the contract suite keeps one BASE_URL while modules land one at a time.
+      It is deleted at cutover alongside the Node code.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />

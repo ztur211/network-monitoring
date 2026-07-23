@@ -11,6 +11,10 @@
   -->
 
   <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Modules/Identity/NodeScope.Modules.Identity.Infrastructure/NodeScope.Modules.Identity.Infrastructure.csproj" />
     <ProjectReference Include="../Modules/Inventory/NodeScope.Modules.Inventory.Infrastructure/NodeScope.Modules.Inventory.Infrastructure.csproj" />
     <ProjectReference Include="../Modules/Monitoring/NodeScope.Modules.Monitoring.Infrastructure/NodeScope.Modules.Monitoring.Infrastructure.csproj" />
