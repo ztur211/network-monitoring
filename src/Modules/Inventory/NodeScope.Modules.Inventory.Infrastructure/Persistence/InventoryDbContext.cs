@@ -29,6 +29,12 @@ internal sealed class InventoryDbContext : DbContext
 
     public DbSet<OrganizationSliceRow> Organizations => Set<OrganizationSliceRow>();
 
+    public DbSet<CircuitRow> Circuits => Set<CircuitRow>();
+
+    public DbSet<FiberRunRow> FiberRuns => Set<FiberRunRow>();
+
+    public DbSet<DeviceConnectionRow> DeviceConnections => Set<DeviceConnectionRow>();
+
     public DbSet<BuildingModelSliceRow> BuildingModels => Set<BuildingModelSliceRow>();
 
     public DbSet<TeamPropertySliceRow> TeamProperties => Set<TeamPropertySliceRow>();
@@ -64,6 +70,24 @@ internal sealed class InventoryDbContext : DbContext
         modelBuilder.Entity<OrganizationSliceRow>(entity =>
         {
             entity.ToTable("Organization");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<CircuitRow>(entity =>
+        {
+            entity.ToTable("Circuit");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<FiberRunRow>(entity =>
+        {
+            entity.ToTable("FiberRun");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<DeviceConnectionRow>(entity =>
+        {
+            entity.ToTable("DeviceConnection");
             entity.HasKey(row => row.Id);
         });
 
@@ -247,4 +271,84 @@ internal sealed class MemberPropertySliceRow
     public string OrganizationId { get; set; } = null!;
 
     public string PropertyId { get; set; } = null!;
+}
+
+/// <summary>A <c>Circuit</c> row.</summary>
+internal sealed class CircuitRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string? UserId { get; set; }
+
+    public string IspName { get; set; } = null!;
+
+    public string? CircuitId { get; set; }
+
+    public string ServiceType { get; set; } = null!;
+
+    public double? Bandwidth { get; set; }
+
+    public string? DeviceId { get; set; }
+
+    public string? Notes { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>A <c>FiberRun</c> row.</summary>
+internal sealed class FiberRunRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string? UserId { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public string StartDeviceId { get; set; } = null!;
+
+    public string EndDeviceId { get; set; } = null!;
+
+    public string? CableType { get; set; }
+
+    public double? LengthMeters { get; set; }
+
+    public string? Notes { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>A <c>DeviceConnection</c> row.</summary>
+internal sealed class DeviceConnectionRow
+{
+    public string Id { get; set; } = null!;
+
+    public string OrganizationId { get; set; } = null!;
+
+    public string? UserId { get; set; }
+
+    public string SourceDeviceId { get; set; } = null!;
+
+    public string TargetDeviceId { get; set; } = null!;
+
+    public ConnectionType ConnectionType { get; set; }
+
+    public string? Notes { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
 }

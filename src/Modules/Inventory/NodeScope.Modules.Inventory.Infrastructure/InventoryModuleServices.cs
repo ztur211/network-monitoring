@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NodeScope.Modules.Inventory.Application.BuildingModels;
 using NodeScope.Modules.Inventory.Application.Devices;
+using NodeScope.Modules.Inventory.Application.Links;
 using NodeScope.Modules.Inventory.Application.Networks;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain;
@@ -28,7 +29,8 @@ public static class InventoryModuleServices
                 npgsql => npgsql
                     .MapEnum<PropertyType>("PropertyType", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
                     .MapEnum<DeviceCategory>("DeviceCategory", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
-                    .MapEnum<DeviceMobility>("DeviceMobility", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
+                    .MapEnum<DeviceMobility>("DeviceMobility", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
+                    .MapEnum<ConnectionType>("ConnectionType", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
 
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IDeviceRepository, DeviceRepository>();
@@ -36,6 +38,9 @@ public static class InventoryModuleServices
         services.AddScoped<IBuildingModelRepository, BuildingModelRepository>();
         services.AddScoped<INetworkPropertyRepository, NetworkPropertyRepository>();
         services.AddScoped<INetworkRepository, NetworkRepository>();
+        services.AddScoped<ICircuitRepository, CircuitRepository>();
+        services.AddScoped<IFiberRunRepository, FiberRunRepository>();
+        services.AddScoped<IConnectionRepository, ConnectionRepository>();
         services.AddScoped<ContainmentService>();
         services.AddScoped<PropertiesService>();
         services.AddScoped<NetworkPropertyService>();
@@ -43,6 +48,10 @@ public static class InventoryModuleServices
         services.AddScoped<DevicesService>();
         services.AddScoped<NameSuggestionService>();
         services.AddScoped<SpatialService>();
+        services.AddScoped<LinkEndpoints>();
+        services.AddScoped<CircuitsService>();
+        services.AddScoped<FiberRunsService>();
+        services.AddScoped<ConnectionsService>();
 
         return services;
     }
@@ -55,6 +64,9 @@ public static class InventoryModuleServices
         NetworksEndpoints.Map(app);
         DevicesEndpoints.Map(app);
         SpatialEndpoints.Map(app);
+        CircuitsEndpoints.Map(app);
+        FiberRunsEndpoints.Map(app);
+        ConnectionsEndpoints.Map(app);
         return app;
     }
 }

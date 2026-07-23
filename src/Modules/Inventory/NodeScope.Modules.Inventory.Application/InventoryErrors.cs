@@ -55,4 +55,22 @@ public static class InventoryErrors
 
     /// <summary>404 <c>NETWORK_002</c>: network unknown, foreign, or out of scope.</summary>
     public static ApiException NetworkNotFound() => new("NETWORK_002", "NETWORK_NOT_FOUND", 404);
+
+    /// <summary>404 <c>CIRCUIT_001</c>: circuit unknown, foreign, or out of scope.</summary>
+    public static ApiException CircuitNotFound() => new("CIRCUIT_001", "CIRCUIT_NOT_FOUND", 404);
+
+    /// <summary>404 <c>FIBER_001</c>: fiber run unknown, foreign, or out of scope.</summary>
+    public static ApiException FiberRunNotFound() => new("FIBER_001", "FIBER_RUN_NOT_FOUND", 404);
+
+    /// <summary>422 <c>FIBER_002</c>: both endpoints are the same device.</summary>
+    public static ApiException FiberRunSameDevice() => new("FIBER_002", "FIBER_RUN_SAME_DEVICE", 422);
+
+    /// <summary>404 <c>CONN_001</c>: connection unknown, foreign, or out of scope.</summary>
+    public static ApiException ConnectionNotFound() => new("CONN_001", "CONNECTION_NOT_FOUND", 404);
+
+    /// <summary>422 <c>CONN_002</c>: a device connected to itself.</summary>
+    public static ApiException SelfConnection() => new("CONN_002", "SELF_CONNECTION", 422);
+
+    /// <summary>409 <c>CONN_003</c>: the (source, target, type) triple already exists.</summary>
+    public static ApiException DuplicateConnection() => new("CONN_003", "DUPLICATE_CONNECTION", 409);
 }
