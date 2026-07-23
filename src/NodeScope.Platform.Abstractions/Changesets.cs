@@ -141,4 +141,7 @@ public static class ChangesetValues
 
     public static double? AsDouble(JsonElement value) =>
         IsNullish(value) ? null : value.GetDouble();
+
+    public static int? AsInt32(JsonElement value) =>
+        IsNullish(value) ? null : value.GetInt32();
 }

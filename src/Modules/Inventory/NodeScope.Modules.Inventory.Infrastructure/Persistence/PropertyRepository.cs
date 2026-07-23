@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain;
 using NodeScope.Platform.Abstractions;
+using NodeScope.Platform.Data;
 
 namespace NodeScope.Modules.Inventory.Infrastructure.Persistence;
 
@@ -62,12 +63,7 @@ internal sealed partial class PropertyRepository : IPropertyRepository
         string? excludeId,
         CancellationToken cancellationToken)
     {
-        // Case-insensitive equality via ILIKE with pattern metacharacters escaped,
-        // matching Prisma's `mode: 'insensitive'` equals.
-        var pattern = name
-            .Replace(@"\", @"\\", StringComparison.Ordinal)
-            .Replace("%", @"\%", StringComparison.Ordinal)
-            .Replace("_", @"\_", StringComparison.Ordinal);
+        var pattern = SqlPattern.EscapeLike(name);
         return _db.Properties.AnyAsync(
             p => p.OrganizationId == organizationId
                 && p.ParentId == parentId

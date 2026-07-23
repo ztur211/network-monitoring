@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NodeScope.Modules.Inventory.Application.BuildingModels;
+using NodeScope.Modules.Inventory.Application.Devices;
 using NodeScope.Modules.Inventory.Application.Networks;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain;
@@ -23,16 +25,24 @@ public static class InventoryModuleServices
         services.AddDbContext<InventoryDbContext>((provider, options) =>
             options.UseNpgsql(
                 provider.GetRequiredService<DatabaseConnectionString>().Value,
-                npgsql => npgsql.MapEnum<PropertyType>(
-                    "PropertyType", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
+                npgsql => npgsql
+                    .MapEnum<PropertyType>("PropertyType", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
+                    .MapEnum<DeviceCategory>("DeviceCategory", nameTranslator: ConstantCaseEnumNameTranslator.Instance)
+                    .MapEnum<DeviceMobility>("DeviceMobility", nameTranslator: ConstantCaseEnumNameTranslator.Instance)));
 
         services.AddScoped<IPropertyRepository, PropertyRepository>();
+        services.AddScoped<IDeviceRepository, DeviceRepository>();
+        services.AddScoped<IOrgNamingPolicyReader, OrgNamingPolicyReader>();
+        services.AddScoped<IBuildingModelRepository, BuildingModelRepository>();
         services.AddScoped<INetworkPropertyRepository, NetworkPropertyRepository>();
         services.AddScoped<INetworkRepository, NetworkRepository>();
         services.AddScoped<ContainmentService>();
         services.AddScoped<PropertiesService>();
         services.AddScoped<NetworkPropertyService>();
         services.AddScoped<NetworksService>();
+        services.AddScoped<DevicesService>();
+        services.AddScoped<NameSuggestionService>();
+        services.AddScoped<SpatialService>();
 
         return services;
     }
@@ -43,6 +53,8 @@ public static class InventoryModuleServices
         PropertiesEndpoints.Map(app);
         NetworkPropertyEndpoints.Map(app);
         NetworksEndpoints.Map(app);
+        DevicesEndpoints.Map(app);
+        SpatialEndpoints.Map(app);
         return app;
     }
 }

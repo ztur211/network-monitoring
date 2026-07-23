@@ -33,6 +33,22 @@ public static class InventoryErrors
     /// <summary>409 <c>PERM_005</c>: a property with team/member assignments cannot be deleted.</summary>
     public static ApiException PropertyAssigned() => new("PERM_005", "PROPERTY_ASSIGNED", 409);
 
+    /// <summary>404 <c>ORG_001</c>: the organization row is missing.</summary>
+    public static ApiException OrganizationNotFound() => new("ORG_001", "ORGANIZATION_NOT_FOUND", 404);
+
+    /// <summary>409 <c>ORG_005</c>: device name already used in this org (case-insensitive).</summary>
+    public static ApiException DeviceNameTaken() => new("ORG_005", "DEVICE_NAME_TAKEN", 409);
+
+    /// <summary>404 <c>DEVICE_001</c>: device unknown, foreign, or out of scope.</summary>
+    public static ApiException DeviceNotFound() => new("DEVICE_001", "DEVICE_NOT_FOUND", 404);
+
+    /// <summary>422 <c>SPATIAL_001</c>: the device does not sit under a modeled BUILDING.</summary>
+    public static ApiException DeviceNotInModeledBuilding() =>
+        new("SPATIAL_001", "DEVICE_NOT_IN_MODELED_BUILDING", 422);
+
+    /// <summary>422 <c>SPATIAL_002</c>: a partial x/y/z triple.</summary>
+    public static ApiException IncompletePosition() => new("SPATIAL_002", "INCOMPLETE_POSITION", 422);
+
     /// <summary>409 <c>NETWORK_001</c>: the one-network-per-org limit.</summary>
     public static ApiException NetworkLimitExceeded() =>
         new("NETWORK_001", "NETWORK_LIMIT_EXCEEDED", 409);

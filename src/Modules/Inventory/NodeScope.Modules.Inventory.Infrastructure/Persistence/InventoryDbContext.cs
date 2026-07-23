@@ -6,9 +6,11 @@ namespace NodeScope.Modules.Inventory.Infrastructure.Persistence;
 
 /// <summary>
 /// Inventory's slice of the existing schema (Decision 5). Rows the module owns are mapped
-/// fully; tables it only counts against (<c>BuildingModel</c>, <c>TeamProperty</c>,
-/// <c>MemberProperty</c>) are mapped as narrow slices, mirroring how the Node repositories
-/// read them through Prisma without owning them.
+/// fully; tables it only counts against or reads a column from (<c>Organization</c>,
+/// <c>BuildingModel</c>, <c>TeamProperty</c>, <c>MemberProperty</c>) are mapped as narrow
+/// slices, mirroring how the Node repositories read them through Prisma without owning them.
+/// <c>Device.location</c> (PostGIS) stays unmapped: a database trigger derives it from
+/// lat/lng, so nothing here writes it.
 /// </summary>
 internal sealed class InventoryDbContext : DbContext
 {
@@ -23,7 +25,9 @@ internal sealed class InventoryDbContext : DbContext
 
     public DbSet<NetworkPropertyRow> NetworkProperties => Set<NetworkPropertyRow>();
 
-    public DbSet<DeviceSliceRow> Devices => Set<DeviceSliceRow>();
+    public DbSet<DeviceRow> Devices => Set<DeviceRow>();
+
+    public DbSet<OrganizationSliceRow> Organizations => Set<OrganizationSliceRow>();
 
     public DbSet<BuildingModelSliceRow> BuildingModels => Set<BuildingModelSliceRow>();
 
@@ -51,9 +55,15 @@ internal sealed class InventoryDbContext : DbContext
             entity.HasKey(row => row.Id);
         });
 
-        modelBuilder.Entity<DeviceSliceRow>(entity =>
+        modelBuilder.Entity<DeviceRow>(entity =>
         {
             entity.ToTable("Device");
+            entity.HasKey(row => row.Id);
+        });
+
+        modelBuilder.Entity<OrganizationSliceRow>(entity =>
+        {
+            entity.ToTable("Organization");
             entity.HasKey(row => row.Id);
         });
 
@@ -147,16 +157,66 @@ internal sealed class NetworkPropertyRow
     public DateTime CreatedAt { get; set; }
 }
 
-/// <summary>The placement slice of the <c>Device</c> table containment checks read.</summary>
-internal sealed class DeviceSliceRow
+/// <summary>A <c>Device</c> row (the SNMP assignment FKs stay with Monitoring).</summary>
+internal sealed class DeviceRow
 {
     public string Id { get; set; } = null!;
 
     public string OrganizationId { get; set; } = null!;
 
+    public string? UserId { get; set; }
+
     public string NetworkId { get; set; } = null!;
 
     public string PropertyId { get; set; } = null!;
+
+    public string? RoleCode { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public DeviceCategory Category { get; set; }
+
+    public DeviceMobility Mobility { get; set; }
+
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
+
+    public int? Floor { get; set; }
+
+    public string? FloorLabel { get; set; }
+
+    public double? X { get; set; }
+
+    public double? Y { get; set; }
+
+    public double? Z { get; set; }
+
+    public string? IfcGlobalId { get; set; }
+
+    public string? IpAddress { get; set; }
+
+    public string? MacAddress { get; set; }
+
+    public string? Notes { get; set; }
+
+    public int Version { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>The naming-policy slice of <c>Organization</c>, the only columns Inventory reads.</summary>
+internal sealed class OrganizationSliceRow
+{
+    public string Id { get; set; } = null!;
+
+    public string? NamingPattern { get; set; }
+
+    public int? NamingMaxLen { get; set; }
+
+    public string? NamingTemplate { get; set; }
 }
 
 /// <summary>The existence slice of <c>BuildingModel</c> (delete guard <c>MODEL_008</c>).</summary>
