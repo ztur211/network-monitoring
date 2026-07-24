@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NodeScope.Modules.Monitoring.Application.Agents;
 using NodeScope.Modules.Monitoring.Application.Ingest;
+using NodeScope.Modules.Monitoring.Application.Prober;
 using NodeScope.Modules.Monitoring.Application.Reads;
 using NodeScope.Modules.Monitoring.Application.Snmp;
 using NodeScope.Modules.Monitoring.Domain;
@@ -59,6 +60,10 @@ public static class MonitoringModuleServices
         services.AddScoped<IngestService>();
         services.AddScoped<MonitoringReadService>();
         services.AddHostedService<MonitoringCaggInitializer>();
+
+        // The embedded prober (registered always, no-op unless MONITORING_PROBER_ENABLED=true).
+        services.AddSingleton(ProberOptions.FromEnvironment(key => configuration[key]));
+        services.AddHostedService<Prober.EmbeddedProber>();
 
         // Fails at boot when SECRET_ENCRYPTION_KEY is missing/short, matching the Node
         // CryptoModule (the SNMP surface cannot run without it).

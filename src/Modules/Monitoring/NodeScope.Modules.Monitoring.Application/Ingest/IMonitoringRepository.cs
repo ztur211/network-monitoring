@@ -84,6 +84,16 @@ public interface IMonitoringRepository
         string deviceId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One keyset page of probe targets: every device with an IP address, across ALL orgs
+    /// (the embedded prober's whole selection criterion), ordered by id, strictly after
+    /// <paramref name="afterId"/> (null = first page).
+    /// </summary>
+    public Task<IReadOnlyList<Prober.ProbeTarget>> ListProbeTargetsPageAsync(
+        string? afterId,
+        int take,
+        CancellationToken cancellationToken);
+
     /// <summary>Ids of the org's devices sitting on any of <paramref name="propertyIds"/>, newest first.</summary>
     public Task<IReadOnlyList<string>> ListDeviceIdsUnderPropertiesAsync(
         string organizationId,

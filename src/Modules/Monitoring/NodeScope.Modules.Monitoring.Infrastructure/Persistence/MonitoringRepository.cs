@@ -46,6 +46,26 @@ internal sealed class MonitoringRepository : IMonitoringRepository
             .ToListAsync(cancellationToken))
             .Select(s => ToRecord(s)!)];
 
+    public async Task<IReadOnlyList<NodeScope.Modules.Monitoring.Application.Prober.ProbeTarget>>
+        ListProbeTargetsPageAsync(string? afterId, int take, CancellationToken cancellationToken)
+    {
+        var query = _db.Devices.AsNoTracking().Where(d => d.IpAddress != null);
+        if (afterId is not null)
+        {
+            // Keyset continuation (Node's cursor + skip 1): strictly after the last-seen id.
+#pragma warning disable CA1310 // translated to a SQL text comparison; no .NET culture is involved
+            query = query.Where(d => d.Id.CompareTo(afterId) > 0);
+#pragma warning restore CA1310
+        }
+
+        return await query
+            .OrderBy(d => d.Id)
+            .Take(take)
+            .Select(d => new NodeScope.Modules.Monitoring.Application.Prober.ProbeTarget(
+                d.Id, d.OrganizationId, d.IpAddress!))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task UpsertStatusBatchAsync(
         IReadOnlyList<StatusUpsert> upserts,
         CancellationToken cancellationToken)

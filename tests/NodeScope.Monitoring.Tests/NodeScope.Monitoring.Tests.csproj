@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the Monitoring module's embedded prober, ported one-for-one
+    from the Node specs (prober.service.spec.ts x2): option/port parsing with
+    envInt semantics, keyset paging that never rescans or over-fetches, bounded
+    probe concurrency, per-org batch grouping, and the non-overlapping tick
+    guard. The prober has NO contract-suite coverage (it is a background
+    producer, not an HTTP surface), so these tests are its only automated gate;
+    the end-to-end proof is the seeded-unreachable-fleet run recorded in the
+    decision log.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Modules/Monitoring/NodeScope.Modules.Monitoring.Application/NodeScope.Modules.Monitoring.Application.csproj" />
+  </ItemGroup>
+
+</Project>
