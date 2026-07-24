@@ -3,194 +3,116 @@
   One command to launch the full NodeScope stack + the 3D desktop app on Windows.
 
 .DESCRIPTION
-  PowerShell port of scripts/run-desktop.sh. Automates SETUP.md end-to-end:
-  infra (Postgres/Redis/MinIO via Docker Desktop) -> .env + SECRET_ENCRYPTION_KEY ->
-  migrate -> seed -> load FZK-Haus sample model -> API (:3000) + web (:8081) each in
-  their own window -> Electron 3D viewer. Idempotent: anything already up is skipped.
+  PowerShell twin of scripts/run-desktop.sh (see it for the full story). Since the
+  Decision 11 cutover the backend is the self-hosted APPLIANCE compose (C# API +
+  same-origin web through Caddy at :8080); the Electron viewer points at
+  http://localhost:8080/api and PKCE sign-in opens your default browser.
 
-  Run it from inside the repo. Needs Node >= 20, Docker Desktop (running), and a real
+  Run it from inside the repo. Needs Node 20-22, Docker Desktop (running), and a real
   display + GPU (native Windows). If PowerShell blocks the script, either run
   'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned' once, or launch it with
   'powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop.ps1'.
 
-.PARAMETER Reset        Wipe + re-migrate + re-seed the DB first.
-.PARAMETER NoModel      Skip loading the FZK-Haus sample model.
+.PARAMETER Reset        Wipe the stack's volumes first (fresh DB + blobstore).
+.PARAMETER NoModel      Skip the FZK-Haus sample-model upload.
 .PARAMETER DesktopOnly  Backend already up elsewhere; just open the desktop.
-.PARAMETER BackendOnly  Start infra + API + web, leave them running, no GUI.
-.PARAMETER Stop         Stop the API/web windows this script started.
-
-.EXAMPLE  .\scripts\run-desktop.ps1
-.EXAMPLE  .\scripts\run-desktop.ps1 -Reset
-.EXAMPLE  .\scripts\run-desktop.ps1 -Stop
+.PARAMETER BackendOnly  Bring the appliance up, no GUI.
+.PARAMETER Stop         Stop the appliance stack (volumes kept).
 #>
 [CmdletBinding()]
 param(
-  [switch]$Reset,
-  [switch]$NoModel,
-  [switch]$DesktopOnly,
-  [switch]$BackendOnly,
-  [switch]$Stop
+    [switch]$Reset,
+    [switch]$NoModel,
+    [switch]$DesktopOnly,
+    [switch]$BackendOnly,
+    [switch]$Stop
+)
+$ErrorActionPreference = 'Stop'
+
+$Root = Split-Path -Parent $PSScriptRoot
+Set-Location $Root
+
+$EnvFile = Join-Path $Root 'deploy/.env.desktop-dev'
+$Origin = 'http://localhost:8080'
+$ComposeArgs = @(
+    'compose',
+    '-f', 'deploy/docker-compose.prod.yml',
+    '-f', 'deploy/docker-compose.build.yml',
+    '-f', 'deploy/docker-compose.demo.yml',
+    '--env-file', $EnvFile
 )
 
-# Default ErrorActionPreference (Continue): native tools (git/npm/docker) write to
-# stderr on benign output, and 'Stop' would abort on that. We check $LASTEXITCODE.
+function Log($msg)  { Write-Host ("> " + $msg) -ForegroundColor Cyan }
+function Warn($msg) { Write-Host ("! " + $msg) -ForegroundColor Yellow }
+function Fail($msg) { Write-Host ("x " + $msg) -ForegroundColor Red; exit 1 }
 
-# --- locate repo root (script in scripts/ or repo root) ---
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if     (Test-Path (Join-Path $scriptDir 'package.json'))      { $root = $scriptDir }
-elseif (Test-Path (Join-Path $scriptDir '..\package.json'))   { $root = (Resolve-Path (Join-Path $scriptDir '..')).Path }
-else   { $root = (Get-Location).Path }
-Set-Location $root
-
-$runDir = Join-Path $root '.run'
-New-Item -ItemType Directory -Force -Path $runDir | Out-Null
-$script:startedServices = @()
-
-function Log  ($m) { Write-Host ">> $m" -ForegroundColor Cyan }
-function Warn ($m) { Write-Host "!  $m" -ForegroundColor Yellow }
-function Die  ($m) { Write-Host "X  $m" -ForegroundColor Red; exit 1 }
-
-function Test-Port($p) {
-  try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $p); $c.Close(); return $true }
-  catch { return $false }
-}
-function Wait-Port($p, $name, $timeoutSec = 120) {
-  Log "waiting for $name on :$p ..."
-  $t = 0
-  while (-not (Test-Port $p)) {
-    Start-Sleep -Seconds 1; $t++
-    if ($t -ge $timeoutSec) { Die "$name never came up on :$p (${timeoutSec}s); check its window / $runDir" }
-  }
-  Log "$name up on :$p"
-}
-function Start-ServiceWindow($name, $cmdline) {
-  $p = Start-Process cmd.exe -WorkingDirectory $root -ArgumentList "/k $cmdline" -PassThru
-  Set-Content -Path (Join-Path $runDir "$name.pid") -Value $p.Id
-  $script:startedServices += $name
-  Log "started $name (pid $($p.Id)) in its own window"
-}
-function Stop-Svc($name) {
-  $f = Join-Path $runDir "$name.pid"
-  if (Test-Path $f) {
-    taskkill /PID (Get-Content $f) /T /F 2>$null | Out-Null
-    Remove-Item $f -Force
-    Log "stopped $name"
-  }
+function New-Base64Secret([int]$bytes) {
+    $buffer = [byte[]]::new($bytes)
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
+    [Convert]::ToBase64String($buffer)
 }
 
-# --- -Stop ---
 if ($Stop) {
-  Stop-Svc 'api'; Stop-Svc 'web'
-  Log "infra left running ('docker compose down' to stop it)"
-  exit 0
+    if (-not (Test-Path $EnvFile)) { Fail "no $EnvFile - nothing this script started" }
+    docker @ComposeArgs down
+    exit $LASTEXITCODE
 }
 
-# --- preconditions ---
-foreach ($exe in 'node', 'npm') {
-  if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { Die "$exe not found (need Node >= 20)" }
-}
-$nodeVer = (node -v) -replace '^v', ''
-$nodeMajor = [int]($nodeVer.Split('.')[0])
-if ($nodeMajor -lt 20 -or $nodeMajor -gt 22) {
-  Die "Node $nodeMajor detected - this project needs Node 20-22 (vite 5 / electron-vite 2 don't support 23+). Install Node 22 LTS: https://nodejs.org/en/download  (or nvm-windows)."
-}
-$doInfra = -not $DesktopOnly
-if ($doInfra -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  Die "docker not found (Docker Desktop needed; or use -DesktopOnly)"
-}
+$env:SEED_SAMPLE_MODEL = if ($NoModel) { 'false' } else { 'true' }
 
-# --- deps ---
-if (-not (Test-Path 'node_modules')) {
-  Log "installing dependencies (first run, a few minutes) ..."
-  npm install
-  if ($LASTEXITCODE -ne 0) { Die "npm install failed" }
-}
-
-# --- .env + SECRET_ENCRYPTION_KEY (regenerate UNLESS it base64-decodes to 32 bytes) ---
-# The API requires a 32-byte key (crypto.module.ts). Implemented in PURE PowerShell
-# (no `node -e`): Windows PowerShell mangles the double quotes when passing an inline
-# script to node.exe, which silently wrote an EMPTY key. .NET RNG avoids that entirely.
-if (-not (Test-Path '.env')) { Log "creating .env from .env.example"; Copy-Item '.env.example' '.env' }
-Log "checking SECRET_ENCRYPTION_KEY ..."
-$envLines = @(Get-Content '.env')
-$cur = $envLines | Where-Object { $_ -match '^SECRET_ENCRYPTION_KEY=' } | Select-Object -First 1
-$val = if ($cur) { ($cur -replace '^SECRET_ENCRYPTION_KEY=', '').Trim() } else { '' }
-$valid = $false
-if ($val) { try { $valid = ([Convert]::FromBase64String($val)).Length -eq 32 } catch { $valid = $false } }
-if (-not $valid) {
-  $rngBytes = New-Object byte[] 32
-  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($rngBytes)
-  $key = [Convert]::ToBase64String($rngBytes)
-  if ($cur) { $envLines = $envLines | ForEach-Object { if ($_ -match '^SECRET_ENCRYPTION_KEY=') { "SECRET_ENCRYPTION_KEY=$key" } else { $_ } } }
-  else      { $envLines += "SECRET_ENCRYPTION_KEY=$key" }
-  Set-Content -Path '.env' -Value $envLines
-  Log "generated a new 32-byte SECRET_ENCRYPTION_KEY"
-} else {
-  Log "SECRET_ENCRYPTION_KEY ok"
-}
-
-# --- infra ---
-if ($doInfra) {
-  if ((Test-Port 5432) -and (Test-Port 6379) -and (Test-Port 9000)) {
-    Log "infra already up (5432/6379/9000) - skipping docker compose"
-  } else {
-    Log "starting infra (Postgres/Redis/MinIO) ..."
-    docker compose up -d --wait
-    if ($LASTEXITCODE -ne 0) { Die "docker compose failed - is Docker Desktop running?" }
-  }
-}
-
-# --- database ---
 if (-not $DesktopOnly) {
-  if ($Reset) {
-    Log "resetting DB (drop + migrate + seed) ..."; npm run db:reset
-    if ($LASTEXITCODE -ne 0) { Die "db:reset failed" }
-    $NoModel = $false
-  } else {
-    Log "applying migrations ..."; npm run db:migrate
-    if ($LASTEXITCODE -ne 0) {
-      Warn "db:migrate failed. If this is P3018 / a failed migration on a stale dev DB,"
-      Warn "reset it:   .\scripts\run-desktop.ps1 -Reset      (or: docker compose down -v)"
-      Die "migrate failed - see the hint above"
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail 'docker not found (needed for the appliance; or pass -DesktopOnly)' }
+
+    if (-not (Test-Path $EnvFile)) {
+        Log "generating $EnvFile (localhost appliance secrets) ..."
+        $seedPassword = if ($env:SEED_PASSWORD) { $env:SEED_PASSWORD } else { 'devpassword123' }
+        @(
+            '# Generated by scripts/run-desktop.ps1 for LOCAL DEV - safe to delete; git-ignored.'
+            "PUBLIC_ORIGIN=$Origin"
+            "POSTGRES_PASSWORD=$(New-Base64Secret 24)"
+            "BETTER_AUTH_SECRET=$(New-Base64Secret 48)"
+            "SECRET_ENCRYPTION_KEY=$(New-Base64Secret 32)"
+            "SEED_PASSWORD=$seedPassword"
+        ) | Set-Content -Path $EnvFile -Encoding ascii
     }
-    Log "seeding demo data ..."; npm run db:seed
-    if ($LASTEXITCODE -ne 0) { Warn "db:seed reported an issue (usually: already seeded) - continuing" }
-  }
+
+    if ($Reset) {
+        Log 'resetting the stack (volumes wiped) ...'
+        docker @ComposeArgs down -v
+    }
+
+    Log 'building + starting the appliance (db -> api -> web) - first build takes a while ...'
+    docker @ComposeArgs up -d --build --wait db api web
+    if ($LASTEXITCODE -ne 0) { Fail 'compose up failed' }
+
+    Log 'seeding demo data (org, devices, building model, sample model) ...'
+    docker @ComposeArgs up demo-seed --no-log-prefix
+    if ($LASTEXITCODE -ne 0) { Fail 'demo seed failed' }
+
+    try { Invoke-RestMethod "$Origin/api/health" | Out-Null }
+    catch { Fail "API not healthy at $Origin/api/health" }
+    Log "appliance is up: $Origin (web) - $Origin/api (API)"
 }
 
-# --- API (:3000) ---
-if (-not $DesktopOnly) {
-  if (Test-Port 3000) { Log "API already up on :3000 - skipping" }
-  else { Start-ServiceWindow 'api' 'npm run dev:api'; Wait-Port 3000 'API' 120 }
-}
-
-# --- sample model (so the viewport isn't empty) ---
-if (-not $DesktopOnly -and -not $NoModel) {
-  Log "loading sample building (FZK-Haus) - needs internet on first run ..."
-  npm run load-sample-model
-  if ($LASTEXITCODE -ne 0) { Warn "load-sample-model failed - viewer may be empty (retry: npm run load-sample-model)" }
-}
-
-# --- web (:8081 - required for the desktop's browser PKCE sign-in) ---
-if (-not $DesktopOnly) {
-  if (Test-Port 8081) { Log "web already up on :8081 - skipping" }
-  else { Start-ServiceWindow 'web' 'npm run dev:web'; Wait-Port 8081 'web' 120 }
-}
-
-# --- desktop (foreground GUI) ---
 if (-not $BackendOnly) {
-  Write-Host ""
-  Write-Host "== Sign in: owner@acme.test / devpassword123 ==" -ForegroundColor Green
-  Write-Host "   In the viewer (open Main Building), verify:" -ForegroundColor Green
-  Write-Host "     1) NO-FREEZE  spinner keeps animating through the parse"
-  Write-Host "     2) PICKING    click an element -> Inspector populates"
-  Write-Host "     3) BCF        Issues panel -> a viewpoint restores camera + visibility"
-  Write-Host ""
-  Log "launching desktop (dev:desktop) - close the window to stop everything this script started"
-  npm run dev:desktop
-  # desktop closed -> stop the api/web windows we started
-  foreach ($name in $script:startedServices) { Stop-Svc $name }
-} else {
-  Log "backend up: API http://localhost:3000  -  web http://localhost:8081"
-  Log "stop later:  .\scripts\run-desktop.ps1 -Stop   (infra: docker compose down)"
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'Node.js not found (need 20-22 for the Electron dev shell)' }
+    $nodeMajor = [int]((node -v) -replace '^v(\d+).*', '$1')
+    if ($nodeMajor -lt 20 -or $nodeMajor -gt 22) { Fail "Node $nodeMajor detected - this project needs Node 20-22" }
+    if (-not (Test-Path (Join-Path $Root 'node_modules'))) {
+        Log 'installing dependencies (first run - a few minutes) ...'
+        npm install
+        if ($LASTEXITCODE -ne 0) { Fail 'npm install failed' }
+    }
+
+    $seedEmail = if ($env:SEED_EMAIL) { $env:SEED_EMAIL } else { 'owner@acme.test' }
+    $seedPassword = if ($env:SEED_PASSWORD) { $env:SEED_PASSWORD } else { 'devpassword123' }
+    Write-Host ''
+    Write-Host "-- Server: $Origin/api  -  Sign in: $seedEmail / $seedPassword --" -ForegroundColor Green
+    Write-Host '   Verify in the 3D viewer (open Main Building): no-freeze spinner, element picking, BCF viewpoints.' -ForegroundColor Green
+    Write-Host ''
+    Log 'launching desktop (dev:desktop) - close the window or Ctrl-C when done'
+    npm run dev:desktop
+}
+else {
+    Log "backend is up: $Origin - stop it later with:  .\scripts\run-desktop.ps1 -Stop"
 }

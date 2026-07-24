@@ -295,10 +295,9 @@ against the pinned publisher key, swaps in place, and restarts. Opt out per host
 `NODESCOPE_AGENT_AUTO_UPDATE=off`; the previous binary is kept next to the new one as
 `nodescope-agent.old` for manual rollback.
 
-The legacy Node-agent installers in `apps/agent/scripts/` and the DigitalOcean Spaces
-publishing path are superseded by the above and leave with the Node code.
-
-See `apps/agent/README.md` for full CLI reference and configuration options.
+(The legacy Node agent and its DigitalOcean Spaces publishing path were deleted
+with the Node code at the Decision 11 cutover; the agent is the NativeAOT binary
+built from `src/NodeScope.Agent` and staged by `scripts/agent-release/build.sh`.)
 
 ---
 

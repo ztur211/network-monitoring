@@ -2,7 +2,7 @@
 
 Enterprise platform for documenting and operating physical network infrastructure. Teams map their devices, connections, circuits, and fiber runs on a GIS map **and inside per-building 3D BIM models (IFC)**, with real-time metrics, AI-assisted troubleshooting, agent-based monitoring, multi-floor support, and team/site permissions.
 
-The stack spans a NestJS API, an Expo / React-Native-Web app (GIS + management UI), an Electron desktop client (the 3D BIM viewport), and a cross-platform monitoring agent. See `docs/PRD.md` for full requirements.
+The stack is mid-migration to C#/.NET (see the migration decision log): an ASP.NET Core API (`src/`, EF Core + SignalR, owns the schema), a NativeAOT monitoring agent (`src/NodeScope.Agent`), and - until the native desktop client ships - the transition-era Expo / React-Native-Web app (served same-origin by the appliance) and Electron 3D BIM viewer. See `docs/PRD.md` for full requirements.
 
 ---
 
@@ -32,7 +32,7 @@ Every value has a working local default **except `SECRET_ENCRYPTION_KEY`**, whic
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # or: openssl rand -base64 32
 ```
 
-(`AI_BASE_URL` is only needed for the AI assistant, and must point at a local OpenAI-compatible model server such as Ollama — there is no hosted provider; `BETTER_AUTH_SECRET` and `SEED_PASSWORD` ship with working dev placeholders.) `.env` is read by the backend; the web app reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_MAP_TILE_STYLE_URL`, whose defaults (`http://localhost:3000`, OpenFreeMap) are what `npm run dev:web` expects.
+(`BETTER_AUTH_SECRET` and `SEED_PASSWORD` ship with working dev placeholders.)
 
 ### 3. Start local services
 
@@ -40,58 +40,73 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # 
 docker compose up -d
 ```
 
-Starts PostgreSQL 16 + TimescaleDB + PostGIS (timescaledb-ha image), Redis, and MinIO (S3-compatible object storage for IFC models) on their default ports (5432, 6379, 9000/9001).
+Starts PostgreSQL 16 + TimescaleDB + PostGIS (timescaledb-ha image), Redis, and MinIO on their default ports (5432, 6379, 9000/9001).
 
-### 4. Apply database migrations
-
-```bash
-npm run db:migrate
-```
-
-Applies all migrations to `nodescope_dev` (enables `postgis`, creates the tables, adds the `Device` geometry column + `device_location_sync` trigger, the `ChangeLog` check constraint, and the 3D `BuildingModel` tables). TimescaleDB hypertable conversion and retention run at API startup via `TimescaleModule` — no manual step.
-
-### 5. Seed demo data
+### 4. Run the API (migrates on boot) and seed
 
 ```bash
-npm run db:seed
+DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5432/nodescope_dev \
+STORAGE_ENDPOINT=http://localhost:9000 scripts/run-csharp-host.sh     # API on :5199
+
+# one-shot seed (idempotent; add SEED_SAMPLE_MODEL=true to also upload a real IFC):
+DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5432/nodescope_dev \
+SEED_PASSWORD=devpassword123 dotnet run --project src/NodeScope.Api -- seed
 ```
 
-Creates the **Acme Networks** org, the org owner **`owner@acme.test`** (password = `SEED_PASSWORD`, default `devpassword123`) and super-admin `admin@nodescope.test`, a property tree (HQ → Main Building → floors), 5 devices with connections, and a **placeholder** "Main Building" 3D model.
+The host applies EF migrations before serving (fresh DB → full schema; a
+Node-era DB is baselined). The seed creates the **Acme Networks** org, owner
+**`owner@acme.test`** (password = `SEED_PASSWORD`), super-admin
+`admin@nodescope.test`, a property tree, 5 devices with connections, and a
+"Main Building" 3D model.
 
-### 6. Run the apps
+### 5. Run the product
+
+The browser UI is served **same-origin by the appliance stack** (the API ships
+no CORS since the Decision 11 cutover, so the cross-origin `dev:web` flow is
+retired). To click through the real product locally, use the appliance compose:
 
 ```bash
-npm run dev:api       # http://localhost:3000
-npm run dev:web       # http://localhost:8081
-npm run dev:desktop   # Electron — the 3D BIM viewer
+docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.build.yml \
+  -f deploy/docker-compose.demo.yml --env-file deploy/.env up -d --build
 ```
 
-Sign in as `owner@acme.test` / `devpassword123` (on the web, or via the desktop app's browser-based sign-in — which needs `dev:web` running to serve the login page).
-
-### 7. Load a real 3D model
-
-The seeded model is an empty placeholder, so the 3D viewport opens blank. Load a real building:
+then open `http://localhost:8080`, or start the 3D viewer against it:
 
 ```bash
-npm run load-sample-model
+npm run dev:desktop   # Electron — point it at http://localhost:8080/api
 ```
 
-Downloads a small public sample IFC and uploads + activates it on the Main Building. See **[`SETUP.md`](./SETUP.md)** for the full walkthrough (Windows + Docker, desktop login flow, troubleshooting).
-
-> 💡 You can also import a model **from inside the desktop app** (no CLI): as an OWNER/ADMIN, open a building and use the **"Import an IFC model"** action on the empty state (or **Import IFC model** in the viewport toolbar) to upload + activate an `.ifc` file and reload the viewport in place.
+You can import a real IFC **from inside the desktop app** (no CLI): as an
+OWNER/ADMIN, open a building and use the **"Import an IFC model"** action on the
+empty state (or **Import IFC model** in the viewport toolbar) to upload +
+activate an `.ifc` file and reload the viewport in place. See
+**[`SETUP.md`](./SETUP.md)** for the full walkthrough.
 
 ### Tests
 
+The API is C# (`src/`); its gate is the black-box contract suite plus the unit
+suites (see `tests/NodeScope.ContractTests/README.md` for the full recipe):
+
 ```bash
-npm run test:unit --workspace=apps/api
-docker compose -f docker-compose.test.yml up -d
-npm run test:integration --workspace=apps/api
-npm run test:e2e --workspace=apps/api
+docker compose -f docker-compose.test.yml up -d      # db :5433 / redis :6380 / minio :9100
+scripts/run-csharp-host.sh                           # host on :5199, migrates on boot
+NODESCOPE_BASE_URL=http://127.0.0.1:5199 NODESCOPE_REALTIME_TRANSPORT=signalr \
+  dotnet test tests/NodeScope.ContractTests
+dotnet test tests/NodeScope.ArchitectureTests tests/NodeScope.Platform.Tests \
+  tests/NodeScope.Monitoring.Tests tests/NodeScope.Agent.Tests
 ```
 
 ---
 
 ## Production Deployment — DigitalOcean App Platform
+
+> ⚠️ **Historical (pre-C#-migration).** This paid path and its workflows
+> (`.do/app.yaml`, `.github/workflows/{ci,deploy,deploy-validate}.yml`) describe
+> the Node stack and reference files the Decision 11 cutover deleted; CI has been
+> `workflow_dispatch`-only since Decision 3 and the self-hosted runner is
+> offline. The supported deployment is the self-hosted appliance -
+> **[`deploy/README.md`](./deploy/README.md)**. Reviving cloud CI/CD is its own
+> decision and these workflows get rewritten for the C# stack then.
 
 > **Want a free demo instead?** See **[`deploy/README.md`](./deploy/README.md)** for the self-hosted path — Docker Compose on your own Linux box, no paid cloud. The section below is the paid, managed production reference.
 

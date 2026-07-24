@@ -1,8 +1,13 @@
-// DeviceCategory mirrors the Prisma enum (apps/api/prisma/schema.prisma).
-// Type-only re-export erases at compile time — no Prisma runtime in the web
-// bundle. CLAUDE.md Rule #6 forbids hand-written duplicates of Prisma types.
-import type { DeviceCategory, DeviceMobility } from '@prisma/client';
-export type { DeviceCategory, DeviceMobility };
+// DeviceCategory/DeviceMobility mirror the database enum labels, owned by the
+// C# API since the Decision 11 cutover (src/NodeScope.Migrations). Literal
+// unions here — the Prisma client these were re-exported from left with the
+// Node API; the transition-era web/desktop clients retire with step 5.
+export type DeviceCategory =
+  | 'RAD' | 'ONT' | 'DSLAM' | 'ROUTER' | 'MODEM' | 'FIBER_MEDIA_CONVERTER'
+  | 'FIREWALL' | 'SWITCH' | 'ACCESS_POINT' | 'WIFI_EXTENDER' | 'WIRELESS_BRIDGE'
+  | 'SERVER_RACK' | 'PATCH_PANEL' | 'UPS' | 'COMPUTER' | 'PHONE' | 'TABLET'
+  | 'PRINTER' | 'IOT_DEVICE' | 'CUSTOM';
+export type DeviceMobility = 'HOME_ONLY' | 'ROAMS' | 'UNKNOWN';
 
 export interface DeviceCategoryConfig {
   minZoom: number;

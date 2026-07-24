@@ -1,35 +1,38 @@
 # NodeScope.ContractTests
 
 The black-box parity suite (migration Decision 4). It talks to a running API over
-HTTP at a single `BASE_URL` and references **no** implementation project - so the
-same tests point at the NestJS API today and the C# host as modules land, chosen
-only by the `NODESCOPE_BASE_URL` environment variable (default
-`http://localhost:3000`). Green against Node before the port begins; the permanent
-.NET integration suite afterward.
+HTTP at a single `BASE_URL` and references **no** implementation project. It was
+green against the NestJS API before the port began, gated every module as it
+landed, and since the Decision 11 cutover it is the permanent integration suite
+for the C# host (chosen only by `NODESCOPE_BASE_URL`, default
+`http://localhost:3000`).
 
 See [`COVERAGE.md`](./COVERAGE.md) for the endpoint/event work-list and status.
 
 ## Running it
 
-The suite is only the *client*. Bring up a target first:
+The suite is only the *client*. Bring up the target first:
 
 ```bash
 # 1. test stack: throwaway db (5433), redis (6380), minio (9100)
 docker compose -f docker-compose.test.yml up -d
 
-# 2. schema + one-time seed into the test DB (see "Seeding" below)
+# 2. the C# host on :5199 - it applies EF migrations on boot (a fresh DB gets
+#    the full schema); then the one-time seed (see "Seeding" below)
+scripts/run-csharp-host.sh &
 DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test \
-  npm run db:migrate
-DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test \
-  SEED_PASSWORD=devpassword123 BETTER_AUTH_SECRET=test-secret-minimum-32-characters-long-aaa \
-  npm run db:seed
+  BETTER_AUTH_SECRET=test-secret-minimum-32-characters-long-aaa \
+  SECRET_ENCRYPTION_KEY=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE= \
+  FRONTEND_URL=http://localhost:8081 BETTER_AUTH_URL=http://127.0.0.1:5198 \
+  ASPNETCORE_URLS=http://127.0.0.1:5198 \
+  SEED_PASSWORD=devpassword123 \
+  STORAGE_ENDPOINT=http://localhost:9100 STORAGE_BUCKET=nodescope-test \
+  STORAGE_ACCESS_KEY=minioadmin STORAGE_SECRET_KEY=minioadmin \
+  dotnet run --project src/NodeScope.Api -- seed
 
-# 3. build + run the Node target (env mirrors jest.e2e.setup.ts)
-npm run build --workspace=apps/api
-scripts/run-contract-target.sh &
-
-# 4. run the suite
-dotnet test tests/NodeScope.ContractTests
+# 3. run the suite (realtime is SignalR since the cutover)
+NODESCOPE_BASE_URL=http://127.0.0.1:5199 NODESCOPE_REALTIME_TRANSPORT=signalr \
+  dotnet test tests/NodeScope.ContractTests
 ```
 
 If the target is unreachable the fixture fails once, on start, with a message that
@@ -53,8 +56,9 @@ operator flow. The super-admin is bootstrapped once per run and cached on the
 fixture (`SuperAdminAsync`).
 
 There is exactly **one** thing the API cannot do over HTTP, by deliberate design:
-grant super-admin. `isSuperAdmin` is `input: false` in `better-auth.config.ts`, so
-it is settable only in the database. `Fixtures/SuperAdminGrant.cs` owns that single
+grant super-admin. `isSuperAdmin` was `input: false` in the Node era's Better
+Auth config and the C# auth shim keeps that posture, so it is settable only in
+the database. `Fixtures/SuperAdminGrant.cs` owns that single
 non-HTTP step - a lone parameterized `UPDATE "User" SET "isSuperAdmin" = true` - and
 signs in *afresh* afterward so the session reflects the promotion (Better Auth's
 `cookieCache` otherwise serves the pre-promotion user). It connects with
@@ -62,7 +66,8 @@ signs in *afresh* afterward so the session reflects the promotion (Better Auth's
 contract-test DB, `postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test`)
 - this **must** name the same database the target under test writes to.
 
-The seed (`apps/api/prisma/seed.ts`) creates:
+The seed (`dotnet run --project src/NodeScope.Api -- seed`, the port of the
+Node-era `prisma/seed.ts`) creates:
 
 - `admin@nodescope.test` - super-admin, **no credential** (created via direct
   insert, so it cannot sign in; give it a password out-of-band, or grant

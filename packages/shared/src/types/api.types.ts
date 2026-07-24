@@ -1,9 +1,12 @@
-// Enums are the source-of-truth Prisma generations re-exported as types.
-// Type-only import means the @prisma/client runtime is NOT bundled into the
-// web app — Metro tree-shakes the empty import. CLAUDE.md Rule #6 forbids
-// hand-written types that duplicate Prisma-generated ones, hence this shape.
-import type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus, PropertyType } from '@prisma/client';
-export type { AccountTier, ConnectionType, OrgRole, JoinRequestStatus, PropertyType };
+// These mirror the database enum labels, owned by the C# API since the
+// Decision 11 cutover (src/NodeScope.Migrations). Literal unions here — the
+// Prisma client they were re-exported from left with the Node API; the
+// transition-era web/desktop clients retire with step 5.
+export type AccountTier = 'PERSONAL_FREE' | 'PERSONAL_PAID' | 'MULTI_PROPERTY' | 'ENTERPRISE';
+export type ConnectionType = 'ETHERNET' | 'FIBER' | 'WIFI' | 'LOGICAL';
+export type OrgRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+export type JoinRequestStatus = 'PENDING' | 'APPROVED' | 'DENIED';
+export type PropertyType = 'SITE' | 'BUILDING' | 'FLOOR' | 'AREA';
 
 export interface UserDto {
   id: string;

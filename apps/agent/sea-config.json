@@ -1,5 +1,0 @@
-{
-  "main": "dist/nodescope-agent.cjs",
-  "output": "dist/nodescope-agent.blob",
-  "disableExperimentalSEAWarning": true
-}

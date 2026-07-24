@@ -33,8 +33,9 @@ services:
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}
       SEED_PASSWORD: ${SEED_PASSWORD:-devpassword123}
       # Also upload the real FZK-Haus IFC through the API (needs internet on first run),
-      # so the 3D viewer shows an actual building instead of the placeholder's empty scene.
-      SEED_SAMPLE_MODEL: "true"
+      # so the 3D viewer shows an actual building instead of the placeholder's empty
+      # scene. Override with SEED_SAMPLE_MODEL=false (run-desktop.sh --no-model).
+      SEED_SAMPLE_MODEL: ${SEED_SAMPLE_MODEL:-true}
     volumes:
       - blobstore:/data/storage
     # The seed runs in-process against its own loopback server (same image, `seed` arg):

@@ -1,6 +1,6 @@
-// Onboarding wizard wire types. The state machine lives server-side
-// (apps/api/src/onboarding/onboarding.state-machine.ts) — these are just the
-// shape of the per-turn request/response.
+// Onboarding wizard wire types. The state machine lives server-side (the C#
+// Inventory module's onboarding slice) — these are just the shape of the
+// per-turn request/response.
 
 export type OnboardingStepId =
   | 'welcome'

@@ -6,22 +6,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:desktop": "npm run dev --workspace=apps/desktop",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspaces --if-present",
-    "test:integration": "npm run test:integration --workspaces --if-present",
-    "test:e2e": "npm run test:e2e --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "db:migrate": "prisma migrate deploy --schema=apps/api/prisma/schema.prisma",
-    "db:seed": "npm run db:seed --workspace=apps/api",
-    "db:reset": "prisma migrate reset --schema=apps/api/prisma/schema.prisma --skip-seed --force && npm run db:seed",
-    "load-sample-model": "node scripts/load-sample-model.mjs",
     "load-large-sample-model": "node scripts/load-large-sample-model.mjs",
-    "migrate-storage": "node apps/api/dist/storage/migrate-storage.js",
-    "postinstall": "patch-package && prisma generate --schema=apps/api/prisma/schema.prisma && npm run build --workspace=packages/shared && npm run build --workspace=packages/client && npm run build --workspace=packages/probe"
+    "postinstall": "patch-package && npm run build --workspace=packages/shared && npm run build --workspace=packages/client"
   },
   "engines": {
     "node": ">=20.0.0 <23.0.0",
