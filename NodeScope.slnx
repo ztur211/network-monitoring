@@ -37,5 +37,6 @@
     <Project Path="tests/NodeScope.ArchitectureTests/NodeScope.ArchitectureTests.csproj" />
     <Project Path="tests/NodeScope.ContractTests/NodeScope.ContractTests.csproj" />
     <Project Path="tests/NodeScope.Monitoring.Tests/NodeScope.Monitoring.Tests.csproj" />
+    <Project Path="tests/NodeScope.Platform.Tests/NodeScope.Platform.Tests.csproj" />
   </Folder>
 </Solution>

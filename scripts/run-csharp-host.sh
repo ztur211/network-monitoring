@@ -25,6 +25,11 @@ export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-test-secret-minimum-32-characte
 # BETTER_AUTH_URL is THIS host's public base URL, not the Node target's.
 export FRONTEND_URL="${FRONTEND_URL:-http://localhost:8081}"
 export BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:5199}"
+# The suite provisions fresh users/orgs per test from one IP, far past the
+# interactive-client rate limits. Lift them for the target only (non-production),
+# mirroring run-contract-target.sh.
+export THROTTLE_DEFAULT_LIMIT="${THROTTLE_DEFAULT_LIMIT:-100000}"
+export THROTTLE_AUTH_LIMIT="${THROTTLE_AUTH_LIMIT:-100000}"
 export SECRET_ENCRYPTION_KEY="${SECRET_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}"
 export REFRESH_INTERVAL_SECONDS="${REFRESH_INTERVAL_SECONDS:-2}"
 export STORAGE_ENDPOINT="${STORAGE_ENDPOINT:-http://localhost:9100}"

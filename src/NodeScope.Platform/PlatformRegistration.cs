@@ -74,6 +74,10 @@ public static class PlatformRegistration
         services.AddSingleton<IAuthorizationHandler, OrgRequirementHandler>();
         services.AddAuthorization();
 
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton(ThrottleOptions.FromConfiguration(configuration));
+        services.AddSingleton<ThrottleStore>();
+
         return services;
     }
 

@@ -2,6 +2,7 @@ using System.Reflection;
 using Npgsql;
 using NodeScope.Platform;
 using NodeScope.Platform.Abstractions;
+using NodeScope.Platform.Http;
 
 namespace NodeScope.Api;
 
@@ -23,7 +24,8 @@ internal static class HealthEndpoints
 
     public static IEndpointRouteBuilder MapApiHealthEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/health", GetAsync);
+        // Unthrottled (Node's @SkipThrottle intent): probes and dashboards poll it freely.
+        app.MapGet("/api/health", GetAsync).SkipThrottle();
         return app;
     }
 

@@ -18,8 +18,10 @@ internal static class BandwidthEndpoints
 
     public static IEndpointRouteBuilder MapBandwidthEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/bandwidth/echo", Download);
-        app.MapPost("/api/bandwidth/echo", UploadAsync);
+        // Unthrottled by design (a speed test measures throughput; a throttle would be the
+        // measurement) - Node's @SkipThrottle intent, now covering both buckets.
+        app.MapGet("/api/bandwidth/echo", Download).SkipThrottle();
+        app.MapPost("/api/bandwidth/echo", UploadAsync).SkipThrottle();
         return app;
     }
 

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodeScope.Modules.Identity.Domain;
 using NodeScope.Modules.Identity.Infrastructure.Persistence;
+using NodeScope.Platform.Http;
 
 namespace NodeScope.Modules.Identity.Infrastructure.Auth;
 
@@ -37,11 +38,15 @@ internal static partial class BetterAuthEndpoints
     public static void Map(IEndpointRouteBuilder app)
     {
         // All public: the global Nest AuthGuard skipped this controller via @Public().
-        app.MapPost("/api/auth/sign-up/email", SignUpAsync);
-        app.MapPost("/api/auth/sign-in/email", SignInAsync);
-        app.MapPost("/api/auth/sign-out", SignOutAsync);
+        // The writes share ONE strict auth-bucket counter per client, exactly as Node's
+        // single wildcard handler pooled them; get-session stays in the lenient default
+        // bucket (the SPA polls it on every navigation).
+        app.MapPost("/api/auth/sign-up/email", SignUpAsync).ThrottleAuthBucket("better-auth");
+        app.MapPost("/api/auth/sign-in/email", SignInAsync).ThrottleAuthBucket("better-auth");
+        app.MapPost("/api/auth/sign-out", SignOutAsync).ThrottleAuthBucket("better-auth");
         app.MapGet("/api/auth/get-session", GetSessionAsync);
-        app.MapPost("/api/auth/request-password-reset", RequestPasswordResetAsync);
+        app.MapPost("/api/auth/request-password-reset", RequestPasswordResetAsync)
+            .ThrottleAuthBucket("better-auth");
     }
 
     private static async Task<IResult> SignUpAsync(

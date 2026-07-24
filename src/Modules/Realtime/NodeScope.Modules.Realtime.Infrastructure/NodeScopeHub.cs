@@ -25,6 +25,7 @@ public sealed class NodeScopeHub : Hub
     private readonly ConnectionRegistry _connections;
     private readonly IUserMetricsService _metrics;
     private readonly IAssistantResponder _assistant;
+    private readonly MetricsSubmitLimiter _metricsLimiter;
 
     public NodeScopeHub(
         IOrgMembershipResolver members,
@@ -32,7 +33,8 @@ public sealed class NodeScopeHub : Hub
         IHomeNetworkProbe homeNetwork,
         ConnectionRegistry connections,
         IUserMetricsService metrics,
-        IAssistantResponder assistant)
+        IAssistantResponder assistant,
+        MetricsSubmitLimiter metricsLimiter)
     {
         _members = members;
         _permissions = permissions;
@@ -40,6 +42,7 @@ public sealed class NodeScopeHub : Hub
         _connections = connections;
         _metrics = metrics;
         _assistant = assistant;
+        _metricsLimiter = metricsLimiter;
     }
 
     public override async Task OnConnectedAsync()
@@ -104,6 +107,13 @@ public sealed class NodeScopeHub : Hub
         if (userId is null || member is null)
         {
             // Metrics belong to an organization, so a user without one has nowhere to put them.
+            return;
+        }
+
+        if (!_metricsLimiter.Allow(userId))
+        {
+            // Silently dropped past the per-user window cap, exactly as Node dropped it: the
+            // hub write path is what guards the hypertable against a flooding client.
             return;
         }
 

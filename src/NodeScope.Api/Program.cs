@@ -36,7 +36,7 @@ builder.Services.AddNodeScopePlatform(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddMonitoringModule(builder.Configuration);
-builder.Services.AddRealtimeModule();
+builder.Services.AddRealtimeModule(builder.Configuration);
 builder.Services.AddAssistantModule(builder.Configuration);
 
 // Decision 21 (transition only, deleted at cutover): while modules land one at a time,
@@ -80,10 +80,13 @@ app.UseRequestDecompression();
 app.UseAuditContext();
 app.UseAuthentication();
 app.UseAuthorization();
+// After authorization, matching the Nest guard order (AuthGuard before ThrottlerGuard):
+// a rejected credential never consumes rate-limit budget.
+app.UseThrottling();
 
 // Bare /health is this host's own liveness probe; /api/health is the product's readiness
 // endpoint (HealthEndpoints), which the contract fixture gates suite startup on.
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health").SkipThrottle();
 app.MapApiHealthEndpoint();
 
 app.MapBandwidthEndpoints();

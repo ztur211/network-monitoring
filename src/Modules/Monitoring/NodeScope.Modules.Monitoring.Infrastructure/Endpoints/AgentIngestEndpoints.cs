@@ -20,7 +20,9 @@ internal static class AgentIngestEndpoints
     {
         var group = app.MapGroup("/api/v1/monitoring/agent");
 
-        group.MapPost("/enroll", EnrollAsync);
+        // Strict auth-bucket throttle, its own counter (Node's STRICT_ENROLL_THROTTLE):
+        // enrollment codes are a credential and get the credential-guessing budget.
+        group.MapPost("/enroll", EnrollAsync).ThrottleAuthBucket("agent-enroll");
         group.MapGet("/devices", DevicesAsync).AddEndpointFilter(AgentAuth.RequireAgentTokenAsync);
         group.MapPost("/heartbeat", HeartbeatAsync).AddEndpointFilter(AgentAuth.RequireAgentTokenAsync);
     }
