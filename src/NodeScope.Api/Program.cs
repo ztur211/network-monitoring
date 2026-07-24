@@ -81,9 +81,10 @@ app.UseAuditContext();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// This host's own liveness probe. The product's /api/health stays with the module that
-// owns the readiness checks and is proxied until that lands.
+// Bare /health is this host's own liveness probe; /api/health is the product's readiness
+// endpoint (HealthEndpoints), which the contract fixture gates suite startup on.
 app.MapHealthChecks("/health");
+app.MapApiHealthEndpoint();
 
 app.MapBandwidthEndpoints();
 app.MapInventoryEndpoints();

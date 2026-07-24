@@ -23,6 +23,10 @@ internal sealed class IdentityDbContext : DbContext
 
     public DbSet<UserRow> Users => Set<UserRow>();
 
+    public DbSet<AccountRow> Accounts => Set<AccountRow>();
+
+    public DbSet<VerificationRow> Verifications => Set<VerificationRow>();
+
     public DbSet<OrganizationRow> Organizations => Set<OrganizationRow>();
 
     public DbSet<OrganizationMemberRow> OrganizationMembers => Set<OrganizationMemberRow>();
@@ -50,11 +54,28 @@ internal sealed class IdentityDbContext : DbContext
             entity.ToTable("Session");
             entity.HasKey(row => row.Id);
             entity.HasIndex(row => row.Token).IsUnique();
+            // The FK is declared so EF's insert ordering knows a new Session's User precedes
+            // it in one SaveChanges (the shim's sign-up writes User + Account + Session).
+            entity.HasOne<UserRow>().WithMany().HasForeignKey(row => row.UserId);
         });
 
         modelBuilder.Entity<UserRow>(entity =>
         {
             entity.ToTable("User");
+            entity.HasKey(row => row.Id);
+            entity.HasIndex(row => row.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<AccountRow>(entity =>
+        {
+            entity.ToTable("Account");
+            entity.HasKey(row => row.Id);
+            entity.HasOne<UserRow>().WithMany().HasForeignKey(row => row.UserId);
+        });
+
+        modelBuilder.Entity<VerificationRow>(entity =>
+        {
+            entity.ToTable("Verification");
             entity.HasKey(row => row.Id);
         });
 
@@ -124,7 +145,7 @@ internal sealed class IdentityDbContext : DbContext
     }
 }
 
-/// <summary>A row of <c>Session</c> (Better Auth's table; the C# handler reads it verbatim).</summary>
+/// <summary>A row of <c>Session</c> (Better Auth's table; minted and read by the Decision 7 shim).</summary>
 internal sealed class SessionRow
 {
     public string Id { get; set; } = null!;
@@ -134,6 +155,14 @@ internal sealed class SessionRow
     public string Token { get; set; } = null!;
 
     public DateTime ExpiresAt { get; set; }
+
+    public string? IpAddress { get; set; }
+
+    public string? UserAgent { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>A <c>User</c> row: the authentication slice plus the profile the module serves.</summary>
@@ -143,9 +172,13 @@ internal sealed class UserRow
 
     public string Email { get; set; } = null!;
 
+    public bool EmailVerified { get; set; }
+
     public bool IsSuperAdmin { get; set; }
 
     public string? Name { get; set; }
+
+    public string? Image { get; set; }
 
     public AccountTier Tier { get; set; }
 
@@ -154,6 +187,47 @@ internal sealed class UserRow
     public double? HomeLongitude { get; set; }
 
     public JsonDocument? MapPreferences { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// An <c>Account</c> row (Better Auth's credential store). Only the credential slice is
+/// mapped: the OAuth token columns are all nullable and no social provider is configured.
+/// <c>Password</c> is the argon2id PHC string where <c>ProviderId == "credential"</c>.
+/// </summary>
+internal sealed class AccountRow
+{
+    public string Id { get; set; } = null!;
+
+    public string UserId { get; set; } = null!;
+
+    public string AccountId { get; set; } = null!;
+
+    public string ProviderId { get; set; } = null!;
+
+    public string? Password { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// A <c>Verification</c> row. The shim writes <c>reset-password:&lt;token&gt;</c> rows exactly as
+/// Better Auth does, so password reset becomes real by adding an email sender, not a schema.
+/// </summary>
+internal sealed class VerificationRow
+{
+    public string Id { get; set; } = null!;
+
+    public string Identifier { get; set; } = null!;
+
+    public string Value { get; set; } = null!;
+
+    public DateTime ExpiresAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

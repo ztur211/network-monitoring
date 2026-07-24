@@ -21,6 +21,10 @@ export ASPNETCORE_URLS="${ASPNETCORE_URLS:-http://127.0.0.1:5199}"
 export NODESCOPE_PROXY_TARGET="${NODESCOPE_PROXY_TARGET:-http://localhost:3000}"
 export DATABASE_URL="${DATABASE_URL:-postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test}"
 export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-test-secret-minimum-32-characters-long-aaa}"
+# Desktop-auth builds absolute redirects from these (same two the Node target requires).
+# BETTER_AUTH_URL is THIS host's public base URL, not the Node target's.
+export FRONTEND_URL="${FRONTEND_URL:-http://localhost:8081}"
+export BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:5199}"
 export SECRET_ENCRYPTION_KEY="${SECRET_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}"
 export REFRESH_INTERVAL_SECONDS="${REFRESH_INTERVAL_SECONDS:-2}"
 export STORAGE_ENDPOINT="${STORAGE_ENDPOINT:-http://localhost:9100}"

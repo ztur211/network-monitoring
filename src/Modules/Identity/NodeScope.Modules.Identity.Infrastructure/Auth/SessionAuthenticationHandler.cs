@@ -19,6 +19,14 @@ public static class SessionAuthenticationDefaults
 
     /// <summary>Claim carrying <c>User.isSuperAdmin</c>, which gates the org-provisioning routes.</summary>
     public const string SuperAdminClaim = "nodescope:superAdmin";
+
+    /// <summary>
+    /// Set in <c>HttpContext.Items</c> when this request's sliding refresh fired. The handler
+    /// runs before every endpoint (UseAuthentication authenticates the default scheme even on
+    /// anonymous routes), so get-session can never observe a due session itself - it re-issues
+    /// the cookie off this flag instead, matching Better Auth's fresh Set-Cookie on refresh.
+    /// </summary>
+    public const string RefreshedItemKey = "nodescope:sessionRefreshed";
 }
 
 /// <summary>Options for <see cref="SessionAuthenticationHandler"/>.</summary>
@@ -36,10 +44,10 @@ public sealed class SessionAuthenticationOptions : AuthenticationSchemeOptions
 /// Challenge and forbid responses write the Node error envelope verbatim.
 /// </summary>
 /// <remarks>
-/// Deliberate deviation, recorded in the decision log: Better Auth's sliding refresh
-/// (<c>updateAge</c>) is not applied here. During the transition the Node side still serves
-/// <c>/api/auth/*</c> and refreshes sessions; the C# side only validates. Revisit at the
-/// Identity endpoint port.
+/// Sliding refresh (<c>updateAge</c>): Node's global AuthGuard resolves every request through
+/// Better Auth's getSession, which extends a session's expiry once it is more than 24 hours
+/// old - so any authenticated request slides the session, not just get-session. The same
+/// applies here: a cheap due-check on the already-loaded expiry, one UPDATE when it fires.
 /// </remarks>
 internal sealed class SessionAuthenticationHandler : AuthenticationHandler<SessionAuthenticationOptions>
 {
@@ -75,11 +83,28 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
         var now = DateTime.UtcNow;
         var session = await _db.Sessions
             .Where(row => row.Token == token && row.ExpiresAt > now)
-            .Join(_db.Users, row => row.UserId, user => user.Id, (_, user) => new { user.Id, user.IsSuperAdmin })
+            .Join(
+                _db.Users,
+                row => row.UserId,
+                user => user.Id,
+                (row, user) => new { user.Id, user.IsSuperAdmin, row.ExpiresAt })
             .FirstOrDefaultAsync(Context.RequestAborted);
         if (session is null)
         {
             return AuthenticateResult.NoResult();
+        }
+
+        if (BetterAuthDefaults.RefreshDue(session.ExpiresAt, now))
+        {
+            var refreshedExpiry = now + BetterAuthDefaults.SessionTtl;
+            await _db.Sessions
+                .Where(row => row.Token == token)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(row => row.ExpiresAt, refreshedExpiry)
+                        .SetProperty(row => row.UpdatedAt, now),
+                    Context.RequestAborted);
+            Context.Items[SessionAuthenticationDefaults.RefreshedItemKey] = true;
         }
 
         var userId = session.Id;

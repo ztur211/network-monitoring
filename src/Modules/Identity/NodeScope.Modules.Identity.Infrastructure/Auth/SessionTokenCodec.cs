@@ -21,8 +21,19 @@ namespace NodeScope.Modules.Identity.Infrastructure.Auth;
 /// </summary>
 internal static class SessionTokenCodec
 {
-    private const string CookieName = "better-auth.session_token";
+    internal const string CookieName = "better-auth.session_token";
     private const string SecureCookieName = "__Secure-better-auth.session_token";
+
+    /// <summary>
+    /// The signed credential Node mints: <c>&lt;token&gt;.&lt;HMAC-SHA256(token, secret)&gt;</c> with the
+    /// signature in standard base64 WITH padding (better-call's btoa path). This exact string is
+    /// the <c>set-auth-token</c> header value; the cookie carries its encodeURIComponent form.
+    /// </summary>
+    public static string Sign(string token, string secret)
+    {
+        var signature = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(token));
+        return $"{token}.{Convert.ToBase64String(signature)}";
+    }
 
     /// <summary>The verified session token carried by the request, or null.</summary>
     public static string? Extract(HttpRequest request, string secret)
