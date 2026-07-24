@@ -44,29 +44,42 @@ public static class PlatformRegistration
         // Replaced by the Realtime module's implementation when it lands (TryAdd loses).
         services.TryAddSingleton<IRealtimeService, NoopRealtimeService>();
 
-        services.AddSingleton(new S3StorageOptions(
-            Bucket: configuration["STORAGE_BUCKET"] ?? "nodescope",
-            Endpoint: configuration["STORAGE_ENDPOINT"],
-            Region: configuration["STORAGE_REGION"] ?? "us-east-1",
-            AccessKey: configuration["STORAGE_ACCESS_KEY"] ?? "",
-            SecretKey: configuration["STORAGE_SECRET_KEY"] ?? ""));
-        services.AddSingleton<IAmazonS3>(provider =>
+        // STORAGE_DRIVER selects the backend like Node's storageConfig: `s3` (default;
+        // S3/MinIO) or `fs` (local filesystem, the single-node appliance). Only the selected
+        // backend's graph is registered, so fs mode carries no AWS client.
+        if (string.Equals(configuration["STORAGE_DRIVER"] ?? "s3", "fs", StringComparison.Ordinal))
         {
-            var options = provider.GetRequiredService<S3StorageOptions>();
-            var config = new AmazonS3Config
+            services.AddSingleton(new FsStorageOptions(
+                configuration["STORAGE_FS_ROOT"]
+                    ?? Path.Combine(Environment.CurrentDirectory, "var", "storage")));
+            services.AddSingleton<IObjectStorage, FsObjectStorage>();
+        }
+        else
+        {
+            services.AddSingleton(new S3StorageOptions(
+                Bucket: configuration["STORAGE_BUCKET"] ?? "nodescope",
+                Endpoint: configuration["STORAGE_ENDPOINT"],
+                Region: configuration["STORAGE_REGION"] ?? "us-east-1",
+                AccessKey: configuration["STORAGE_ACCESS_KEY"] ?? "",
+                SecretKey: configuration["STORAGE_SECRET_KEY"] ?? ""));
+            services.AddSingleton<IAmazonS3>(provider =>
             {
-                RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region),
-                // MinIO addresses buckets by path, not by virtual host.
-                ForcePathStyle = true,
-            };
-            if (!string.IsNullOrEmpty(options.Endpoint))
-            {
-                config.ServiceURL = options.Endpoint;
-            }
+                var options = provider.GetRequiredService<S3StorageOptions>();
+                var config = new AmazonS3Config
+                {
+                    RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region),
+                    // MinIO addresses buckets by path, not by virtual host.
+                    ForcePathStyle = true,
+                };
+                if (!string.IsNullOrEmpty(options.Endpoint))
+                {
+                    config.ServiceURL = options.Endpoint;
+                }
 
-            return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
-        });
-        services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+                return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
+            });
+            services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+        }
         services.AddHttpClient<IGeocoder, NominatimGeocoder>();
 
         services.AddScoped<OrgContextHolder>();

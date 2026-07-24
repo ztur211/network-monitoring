@@ -43,15 +43,20 @@
     <!--
       API port (sequencing step 4). EF Core + Npgsql per Decision 5; the Npgsql
       provider's own train (10.0.3) lags the EF core packages (10.0.10) - both
-      are the latest stable of their line. YARP backs the transition-only
-      fallback proxy (Decision 21): unported routes forward to the Node API so
-      the contract suite keeps one BASE_URL while modules land one at a time.
-      It is deleted at cutover alongside the Node code.
+      are the latest stable of their line. (YARP, which backed the Decision 21
+      transition proxy, was deleted at the Decision 11 cutover.)
     -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <!--
+      Decision 11/20: the migrations-only model (NodeScope.Migrations) owns the schema.
+      Design is the dotnet-ef tooling hook; the NetTopologySuite plugin exists solely so
+      the PostGIS geometry(Point,4326) column scaffolds and emits correct DDL - runtime
+      spatial access stays raw SQL and no module references NTS.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
 
     <!--

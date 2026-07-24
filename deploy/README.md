@@ -62,12 +62,12 @@ Single host, **one public origin**, same-origin routing (simplest cookies/CORS/C
                  Cloudflare Tunnel (free TLS + hostname,
                             │       no inbound port-forward)
                             ▼
-        ┌─────────────── your Linux box (Docker) ───────────────┐
-        │  caddy  ──/api/*, /socket.io/*──▶  api  (NestJS :3000) │
-        │    │     ──everything else──────▶  web static (SPA)    │
-        │    └── serves apps/web/dist with index.html catchall   │
-        │  api ──▶ db (timescaledb-ha:pg16)  +  redis:7          │
-        └────────────────────────────────────────────────────────┘
+        ┌─────────────── your Linux box (Docker) ────────────────┐
+        │  caddy ──/api/*, /hubs/*──▶  api  (ASP.NET Core :3000)  │
+        │    │    ──everything else─▶  web static (SPA)           │
+        │    └── serves the static export with index.html fallback│
+        │  api ──▶ db (timescaledb-ha:pg16)                       │
+        └─────────────────────────────────────────────────────────┘
 ```
 
 - **One origin** (e.g. `https://nodescope.example.com`) for both the web app and
@@ -90,8 +90,7 @@ Single host, **one public origin**, same-origin routing (simplest cookies/CORS/C
 ## 2. The one open decision — public hostname & routing
 
 This is the "discuss later" item. Everything domain-dependent
-(`FRONTEND_URL`, `BETTER_AUTH_URL`, `EXPO_PUBLIC_API_URL`, the web CSP, and the
-hardcoded URLs in `scripts/smoke.mjs`) keys off it.
+(`FRONTEND_URL`, `BETTER_AUTH_URL`, the desktop app's server URL) keys off it.
 
 | Option | Hostname | Free? | Effort | Notes |
 |---|---|---|---|---|
@@ -109,13 +108,11 @@ hardcoded URLs in `scripts/smoke.mjs`) keys off it.
 ## 3. Prerequisites (on the host)
 
 - A Linux machine with **Docker Engine + Docker Compose v2** and **≥ 2 GB RAM**
-  (TimescaleDB + the Node API together want headroom).
+  (TimescaleDB + the API together want headroom).
 - Outbound internet (Tailscale Funnel / Cloudflare Tunnel need **no inbound** ports).
-- An **Anthropic API key** (you have one) — and **set a spend cap** in the
-  Anthropic console before exposing the demo, since the AI endpoint will be
-  publicly reachable.
 - The repo cloned on the box (or built elsewhere and images pushed — the runbook
-  assumes building on the box).
+  assumes building on the box). No other toolchain: the install and smoke test are
+  plain bash + curl.
 
 ---
 
@@ -130,19 +127,21 @@ on the box · **[decide]** = a choice you make.
   + outbound).
 
 ### D1 — In-repo deploy artifacts · [repo]
-New files under `deploy/` (none exist yet — the repo has no API Dockerfile and the
-web is only ever built as a static export):
-- **`deploy/Dockerfile.api`** — multi-stage: `npm ci --legacy-peer-deps` →
-  `prisma generate` → `npm run build --workspace=apps/api` → runtime image running
-  `node apps/api/dist/main.js` as a non-root user, with a `/api/health` healthcheck.
-- **`deploy/Dockerfile.web`** (or a Caddy build stage) — `npm run build --workspace=apps/web`
-  producing `apps/web/dist`, baked with `EXPO_PUBLIC_API_URL` = the chosen origin.
-- **`deploy/Caddyfile`** — serve `apps/web/dist` with `try_files … index.html`
-  (SPA catchall), and `reverse_proxy /api/* /socket.io/*` → `api:3000`.
+What lives under `deploy/`:
+- **`deploy/Dockerfile.api`** — multi-stage: `dotnet publish src/NodeScope.Api`
+  (Release, warnings-as-errors) → `mcr.microsoft.com/dotnet/aspnet` runtime image
+  running as the non-root `app` user, with a `/api/health` healthcheck. The host
+  applies EF migrations itself on boot (baselining a Prisma-era database), so
+  there is no entrypoint script. The same image runs the demo seed one-shot
+  (`seed` argument).
+- **`deploy/Dockerfile.web`** — builds the web static export; origin-agnostic
+  (same-origin at runtime), so no rebuild on IP change. Also bakes the staged
+  agent binaries + manifest under `/srv/agent` (Decision 13).
+- **`deploy/Caddyfile`** — serves the SPA with `try_files … index.html`
+  (catchall), and `reverse_proxy /api/* /hubs/*` → `api:3000`.
 - **`deploy/docker-compose.prod.yml`** — `db` (timescaledb-ha:pg16, named volume,
-  healthcheck), `redis` (with AOF persistence), `api` (waits for `db` healthy, runs
-  `prisma migrate deploy` on start, then boots), `caddy`, and optionally
-  `cloudflared`. `restart: unless-stopped` on all.
+  healthcheck), `api` (waits for `db` healthy; migrates then serves), `caddy`,
+  and optionally `cloudflared`. `restart: unless-stopped` on all.
 - **`deploy/.env.example`** — every var the API/web need (see §5),
   with `openssl`-based generation notes. The real `.env` is **git-ignored**.
 
@@ -151,23 +150,26 @@ Copy `deploy/.env.example` → `deploy/.env`, then fill:
 - `BETTER_AUTH_SECRET` — `openssl rand -base64 48`
 - `SECRET_ENCRYPTION_KEY` — `openssl rand -base64 32` (SNMP credential crypto; boot-required)
 - `POSTGRES_PASSWORD` — `openssl rand -base64 24` (and matching `DATABASE_URL`)
-- `AI_BASE_URL` — optional; a local OpenAI-compatible model server (e.g. `http://host.docker.internal:11434/v1`). Leave empty to run without an assistant
 - `SEED_PASSWORD` — for the one-shot demo seed user
 - the single-origin URLs (filled once §2 is decided)
 
 ### D3 — Build, bring up, migrate · [host]
 ```bash
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
-# the api container runs `prisma migrate deploy` on start; confirm:
-docker compose -f deploy/docker-compose.prod.yml logs api | grep -i migrat
-# (TimescaleModule creates the hypertable/compression/retention idempotently on boot)
+# the api host applies EF migrations before it serves; confirm:
+docker compose -f deploy/docker-compose.prod.yml logs api | grep -i -e migrat -e baseline
+# (the MonitoringMetric_5m continuous aggregate is ensured idempotently on boot)
 ```
-On a **fresh** DB the manually-authored `20260516000000_init` migration applies
-(adds the PostGIS extension, geometry column + sync trigger, ChangeLog
-constraint). Verify extensions: `SELECT postgis_version();` and
+On a **fresh** DB the `Initial` migration builds the whole schema (PostGIS
+extension, geometry column + sync trigger, TimescaleDB hypertables, compression
+and retention policies). A database created by the Node-era stack is detected and
+**baselined** — the migration is stamped as applied, the schema untouched. Verify
+extensions: `SELECT postgis_version();` and
 `SELECT extversion FROM pg_extension WHERE extname='timescaledb';`.
 
-Optionally seed demo data: `SEED_PASSWORD=… docker compose … exec api npx prisma db seed`.
+Optionally seed demo data with the demo overlay's one-shot (see
+`deploy/docker-compose.demo.yml`), or directly:
+`docker compose … run --rm api seed` (needs `SEED_PASSWORD` in the env).
 
 ### D4 — Expose · [host]
 **Tailscale Funnel (recommended).** On the host:
@@ -185,30 +187,22 @@ terminates TLS), and re-run `up -d --build` so the web bundle bakes the origin.
 Alternatives — **Cloudflare Tunnel**: add `--profile tunnel` + `CLOUDFLARE_TUNNEL_TOKEN`
 and route your CF hostname to `http://web:80`; **Caddy TLS**: set `SITE_ADDRESS`
 to your domain, publish 443, and drop `auto_https off` from the Caddyfile.
-`PUBLIC_ORIGIN` drives `FRONTEND_URL` / `BETTER_AUTH_URL` / `EXPO_PUBLIC_API_URL`,
-and `scripts/smoke.mjs` takes the origin as an argument — no code changes needed.
+`PUBLIC_ORIGIN` drives `FRONTEND_URL` / `BETTER_AUTH_URL` — no code changes needed.
 
 ### D5 — Verify · [host]
-```bash
-node scripts/smoke.mjs https://<origin> https://<origin>
-```
-All six checks should pass (health, unauth session, CORS preflight, Socket.io
-handshake, web shell, SPA catchall). Then a manual walkthrough: sign up → set home
-location → add devices on 2 floors → connection + fiber run → circuit → AI
-assistant → confirm live metrics tick.
+`deploy/nodescope.sh install` runs the smoke test itself (curl-only: API health,
+unauthenticated get-session, web shell, SPA catchall); re-run it any time with a
+plain `curl` against those URLs. Then a manual walkthrough: sign up → set home
+location → add devices on 2 floors → connection + fiber run → circuit → confirm
+device status updates.
 
 ### D6 — Production hardening (single-host adaptation) · [host] + [repo]
 - **DB backups** — `deploy/backup.sh [out-dir]` writes a timestamped gzipped `pg_dump`; cron it to off-box storage (`0 3 * * * …/deploy/backup.sh /var/backups/nodescope`). (+ volume snapshots.)
-- **Redis persistence** — AOF on (already in the compose), survives restart.
 - **Restart & health** — `restart: unless-stopped` + container `healthcheck`s so
   Docker auto-recovers crashes.
-- **Two API replicas** — run `api` with `--scale api=2` behind Caddy for in-host
-  redundancy + rolling restarts (not true multi-AZ HA — see §6).
 - **Log rotation** — configured in the compose (`json-file`, `max-size: 10m`, `max-file: 3`) so container logs can't fill the host disk.
-- **`trust proxy`** — `main.ts` sets `trust proxy: 1`; behind Tunnel→Caddy the hop
-  count differs, so confirm `req.ip` is the real client (affects per-IP AI rate
-  limiting + `checkOnHome`). Adjust if needed.
-- **Anthropic spend cap** — set in console (non-negotiable for a public demo).
+- **`TRUST_PROXY`** — defaults to 1 (the Caddy hop); behind Tunnel→Caddy set 2 so
+  rate limiting keys on the real client, not a shared edge address.
 - **Secrets** — `deploy/.env` is git-ignored; never commit it.
 
 ---
@@ -217,21 +211,17 @@ assistant → confirm live metrics tick.
 
 | Var | Where | Value (single-origin demo) |
 |---|---|---|
-| `NODE_ENV` | api | `production` |
-| `PORT` | api | `3000` |
+| `NODE_ENV` | api | `production` — still read by the C# host: it gates the production rate limits on the same check the Node stack used |
 | `DATABASE_URL` | api | `postgresql://nodescope:<pw>@db:5432/nodescope` |
-| `REDIS_URL` | api | empty = single-node in-memory (default); `redis://redis:6379` with `--profile redis` |
 | `SECRET_ENCRYPTION_KEY` | api | `openssl rand -base64 32` (required — API refuses to boot without it) |
 | `STORAGE_DRIVER` | api | `fs` (default; blobs on the blobstore volume) or `s3` |
 | `STORAGE_FS_ROOT` | api | `/data/storage` (set by compose; fs mode only) |
 | `BETTER_AUTH_SECRET` | api | `openssl rand -base64 48` |
 | `BETTER_AUTH_URL` | api | `https://<origin>` |
-| `FRONTEND_URL` | api | `https://<origin>` (required — `main.ts` throws without it) |
-| `AI_BASE_URL` | api | optional; local OpenAI-compatible server, empty = no assistant |
-| `AI_MODEL` | api | `qwen2.5` |
+| `FRONTEND_URL` | api | `https://<origin>` (required) |
+| `TRUST_PROXY` | api | proxy hops to trust for the client IP; `1` default, `2` behind a tunnel |
 | `GEOCODING_USER_AGENT` | api | `NodeScope/1.0 (you@example.com)` |
-| `SEED_PASSWORD` | api (seed only) | demo user password |
-| `EXPO_PUBLIC_API_URL` | web (build-time) | `https://<origin>` |
+| `SEED_PASSWORD` | seed one-shot | demo user password |
 
 ---
 
@@ -243,16 +233,13 @@ free self-hosted demo:
 | Phase-9 checklist item | Self-hosted demo |
 |---|---|
 | Managed PG (TimescaleDB+PostGIS) | `timescaledb-ha:pg16` container ✓ |
-| Managed Redis | `redis:7` container ✓ |
-| App Platform 2× instances, zero-downtime | 2 API replicas behind Caddy (in-host) — **partial** |
+| App Platform 2× instances, zero-downtime | Single API instance; in-process state (Decision 8) — **deferred to the MSP topology** |
 | PgBouncer pooling (`DATABASE_URL`) | Not needed at demo scale; **deferred** |
 | DO Spaces bucket | Filesystem storage backend (`STORAGE_DRIVER=fs`) ✓ |
 | HTTPS enforced | Cloudflare Tunnel / Caddy TLS ✓ |
 | DO monitoring alerts | Container healthchecks + (optional) Uptime Kuma — **adapted** |
-| `prisma migrate deploy` pre-deploy | API entrypoint runs it ✓ |
-| Anthropic spend cap | Set in console ✓ |
-| Post-deploy smoke test | `scripts/smoke.mjs` against the origin ✓ |
-| `npm audit` zero high/critical | Already met in shippable code (residual advisories are Expo/RN dev-tooling, not bundled) ✓ |
+| Migrations before serving | The host applies EF migrations on boot, before it listens ✓ |
+| Post-deploy smoke test | `deploy/nodescope.sh install` runs its curl smoke test ✓ |
 
 ### Genuinely deferred (require paid infra) — deliberate decisions
 - **True multi-host HA** (a single box is a single point of failure).

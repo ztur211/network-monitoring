@@ -32,15 +32,11 @@ services:
       STORAGE_FS_ROOT: /data/storage
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}
       SEED_PASSWORD: ${SEED_PASSWORD:-devpassword123}
-      API_URL: http://api:3000
-      WEB_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      # Also upload the real FZK-Haus IFC through the API (needs internet on first run),
+      # so the 3D viewer shows an actual building instead of the placeholder's empty scene.
+      SEED_SAMPLE_MODEL: "true"
     volumes:
       - blobstore:/data/storage
-    entrypoint: ["/bin/sh", "-lc"]
-    command:
-      - |
-        echo '[demo-seed] seeding org/site/building…'
-        npm run db:seed
-        echo '[demo-seed] uploading the FZK-Haus sample model (needs internet on first run)…'
-        node scripts/load-sample-model.mjs
-        echo '[demo-seed] done — open the desktop app and view Main Building.'
+    # The seed runs in-process against its own loopback server (same image, `seed` arg):
+    # org/site/building, owner + super-admin, devices, placeholder model, sample IFC.
+    command: ["seed"]

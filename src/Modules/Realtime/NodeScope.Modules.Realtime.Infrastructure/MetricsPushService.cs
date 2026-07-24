@@ -72,22 +72,33 @@ internal sealed partial class MetricsPushService : IHostedService, IDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(_interval);
-        while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            try
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                await PushAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+                try
+                {
+                    await PushAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
 #pragma warning disable CA1031 // One bad cycle must not end the loop for every user.
-            catch (Exception exception)
-            {
-                Log.CycleFailed(_logger, exception);
-            }
+                catch (Exception exception)
+                {
+                    Log.CycleFailed(_logger, exception);
+                }
 #pragma warning restore CA1031
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal stop. The loop parks in WaitForNextTickAsync between cycles, so
+            // cancellation surfaces HERE, in the while condition - outside the inner
+            // try. Left uncaught it faulted the loop task, StopAsync rethrew it, and
+            // every graceful shutdown of the host crashed with an unhandled
+            // OperationCanceledException.
         }
     }
 

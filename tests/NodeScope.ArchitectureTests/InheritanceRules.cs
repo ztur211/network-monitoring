@@ -27,6 +27,7 @@ public class InheritanceRules
         "System.Exception",                                         // domain exceptions
         "Microsoft.EntityFrameworkCore.DbContext",                  // per-module contexts (Decision 5)
         "Microsoft.EntityFrameworkCore.Migrations.Migration",       // tooling-generated
+        "Microsoft.EntityFrameworkCore.Infrastructure.ModelSnapshot", // tooling-generated (dotnet-ef snapshot)
         "Microsoft.AspNetCore.SignalR.Hub",                         // realtime hubs
         "Microsoft.AspNetCore.Authentication.AuthenticationHandler`1", // the session handler (Decision 7)
         "Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions", // AddScheme<TOptions,> constrains to this class

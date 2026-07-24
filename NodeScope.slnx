@@ -3,6 +3,7 @@
     <Project Path="src/NodeScope.Agent/NodeScope.Agent.csproj" />
     <Project Path="src/NodeScope.Api/NodeScope.Api.csproj" />
     <Project Path="src/NodeScope.Contracts/NodeScope.Contracts.csproj" />
+    <Project Path="src/NodeScope.Migrations/NodeScope.Migrations.csproj" />
     <Project Path="src/NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
     <Project Path="src/NodeScope.Platform/NodeScope.Platform.csproj" />
   </Folder>

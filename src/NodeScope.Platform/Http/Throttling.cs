@@ -19,7 +19,7 @@ public sealed record ThrottleBucket(string Name, int Limit, TimeSpan Ttl);
 /// production gate is Node's exact check: <c>NODE_ENV == "production"</c>, which the appliance
 /// compose already sets - revisit at Decision 20 if the C# image drops that variable.
 /// </summary>
-public sealed record ThrottleOptions(IReadOnlyList<ThrottleBucket> Buckets)
+public sealed record ThrottleOptions(IReadOnlyList<ThrottleBucket> Buckets, int TrustedProxyHops = 1)
 {
     public const string DefaultBucket = "default";
     public const string AuthBucket = "auth";
@@ -38,7 +38,26 @@ public sealed record ThrottleOptions(IReadOnlyList<ThrottleBucket> Buckets)
                 AuthBucket,
                 production ? 5 : OverridableLimit(configuration, "THROTTLE_AUTH_LIMIT", 200),
                 TimeSpan.FromMinutes(15)),
-        ]);
+        ], TrustProxyHops(configuration));
+    }
+
+    /// <summary>
+    /// Node's <c>TRUST_PROXY</c> hop count (Express <c>trust proxy</c>), default 1 - one
+    /// Caddy hop in front. Behind Cloudflare Tunnel -&gt; Caddy set 2, or the throttle would
+    /// key every external user on a shared Cloudflare edge address. Only the hop-count form
+    /// is supported; <c>0</c> or <c>false</c> means "trust nothing" (key on the peer).
+    /// </summary>
+    private static int TrustProxyHops(IConfiguration configuration)
+    {
+        var raw = configuration["TRUST_PROXY"];
+        if (string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var hops) && hops >= 0
+            ? hops
+            : 1;
     }
 
     private static int OverridableLimit(IConfiguration configuration, string key, int fallback) =>
@@ -99,9 +118,9 @@ public static class ThrottleMetadata
 /// exactly - <c>X-RateLimit-{Limit,Remaining,Reset}</c> per passing bucket (<c>-auth</c>
 /// suffix for the auth bucket, none for default) and <c>Retry-After[-auth]</c> on the 429,
 /// whose body is the <c>GEN_004 RATE_LIMITED</c> envelope via the exception middleware.
-/// The client key is the peer address (Node keyed on Express <c>req.ip</c>; with
-/// <c>trust proxy 1</c> that is the address the trusted hop recorded, so the last
-/// <c>X-Forwarded-For</c> entry when one exists).
+/// The client key is Express's <c>req.ip</c> under <c>trust proxy TRUST_PROXY</c> (hop
+/// count, default 1 - the single Caddy hop; 2 behind Cloudflare Tunnel -&gt; Caddy), the
+/// same env var the Node API read.
 /// </summary>
 public static class Throttling
 {
@@ -123,7 +142,7 @@ public static class Throttling
             {
                 var options = context.RequestServices.GetRequiredService<ThrottleOptions>();
                 var store = context.RequestServices.GetRequiredService<ThrottleStore>();
-                var client = ClientKey(context);
+                var client = ClientKey(context, options.TrustedProxyHops);
                 var routeKey = metadata?.SharedKey ?? EndpointKey(context, endpoint);
                 foreach (var bucket in options.Buckets)
                 {
@@ -173,16 +192,22 @@ public static class Throttling
             ? $"{context.Request.Method} {route.RoutePattern.RawText}"
             : endpoint.DisplayName ?? context.Request.Path.ToString();
 
-    private static string ClientKey(HttpContext context)
+    /// <summary>
+    /// Express's <c>req.ip</c> under <c>trust proxy &lt;hops&gt;</c>: walking the chain
+    /// [X-Forwarded-For entries..., peer] from the peer inward, the client is the first
+    /// untrusted address - <c>entries[^hops]</c>, clamped to the leftmost entry when every
+    /// hop is trusted. Zero hops means the header is not trusted at all: key on the peer.
+    /// </summary>
+    internal static string ClientKey(HttpContext context, int trustedProxyHops)
     {
         var forwarded = context.Request.Headers["X-Forwarded-For"].ToString();
-        if (forwarded.Length > 0)
+        if (trustedProxyHops > 0 && forwarded.Length > 0)
         {
             var entries = forwarded.Split(',');
-            var last = entries[^1].Trim();
-            if (last.Length > 0)
+            var client = entries[Math.Max(0, entries.Length - trustedProxyHops)].Trim();
+            if (client.Length > 0)
             {
-                return last;
+                return client;
             }
         }
 

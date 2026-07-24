@@ -18,6 +18,11 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
+  <!-- DefaultHttpContext for the client-key (TRUST_PROXY) resolution tests. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/NodeScope.Platform/NodeScope.Platform.csproj" />
   </ItemGroup>

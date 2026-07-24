@@ -12,7 +12,6 @@ using NodeScope.Modules.Monitoring.Infrastructure;
 using NodeScope.Modules.Realtime.Infrastructure;
 using NodeScope.Platform;
 using NodeScope.Platform.Http;
-using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,40 +38,12 @@ builder.Services.AddMonitoringModule(builder.Configuration);
 builder.Services.AddRealtimeModule(builder.Configuration);
 builder.Services.AddAssistantModule(builder.Configuration);
 
-// Decision 21 (transition only, deleted at cutover): while modules land one at a time,
-// every route this host does not serve natively is forwarded to the Node API, so the
-// contract suite keeps a single BASE_URL and arrange steps (sign-in, org provisioning)
-// keep working before Identity is ported. Sessions minted by Node validate here because
-// both processes read the same Session table and share BETTER_AUTH_SECRET.
-var proxyTarget = builder.Configuration["NODESCOPE_PROXY_TARGET"];
-if (!string.IsNullOrEmpty(proxyTarget))
-{
-    builder.Services.AddReverseProxy().LoadFromMemory(
-        routes:
-        [
-            new RouteConfig
-            {
-                RouteId = "node-fallback",
-                ClusterId = "node",
-                // Any natively mapped endpoint (order 0) wins; only unmatched paths fall through.
-                Order = 10_000,
-                Match = new RouteMatch { Path = "{**catch-all}" },
-            },
-        ],
-        clusters:
-        [
-            new ClusterConfig
-            {
-                ClusterId = "node",
-                Destinations = new Dictionary<string, DestinationConfig>(StringComparer.Ordinal)
-                {
-                    ["node"] = new() { Address = proxyTarget },
-                },
-            },
-        ]);
-}
-
 var app = builder.Build();
+
+// Decision 11/20: this host owns the schema (Decision 5, EF migrations). Pending
+// migrations are applied before the app serves traffic; a database created by the
+// Node stack is baselined first, so Initial is stamped rather than re-run.
+await app.Services.MigrateNodeScopeDatabaseAsync().ConfigureAwait(false);
 
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseJsonBodyLimit();
@@ -96,9 +67,12 @@ app.MapRealtimeEndpoints();
 app.MapAssistantEndpoints();
 app.MapIdentityEndpoints();
 
-if (!string.IsNullOrEmpty(proxyTarget))
+// Seed mode (`dotnet NodeScope.Api.dll seed`): the dev/demo dataset instead of serving.
+// Replaces the Node stack's `npm run db:seed` + `scripts/load-sample-model.mjs`.
+if (args.Contains("seed", StringComparer.Ordinal))
 {
-    app.MapReverseProxy();
+    await DemoSeeder.RunAsync(app).ConfigureAwait(false);
+    return;
 }
 
 await app.RunAsync().ConfigureAwait(false);

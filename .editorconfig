@@ -115,3 +115,23 @@ dotnet_diagnostic.CA2007.severity = none
 # the externally-visible-API rules describe a surface that does not exist here.
 dotnet_diagnostic.CA1515.severity = none      # xUnit needs public fixtures/collection types
 dotnet_diagnostic.CA1062.severity = none      # fixtures are injected by the runner, never null
+
+# --- Relaxed in the migrations-only model ------------------------------------
+# NodeScope.Migrations is scaffolded database-first (Decision 11 cutover): entity
+# and member names mirror the schema's own names, collection navigations follow
+# the scaffolder's deterministic shape, and dotnet-ef regenerates pieces of it.
+# API-design rules for hand-authored libraries would fight the tooling here; the
+# project has exactly two consumers (dotnet-ef and the Api startup migrator).
+# (** with no slash so files at the project ROOT match too - "**/*.cs" requires a
+# subdirectory and silently skips MigrationsDbContext.cs.)
+[src/NodeScope.Migrations/**.cs]
+dotnet_diagnostic.CA1002.severity = none      # scaffolder emits List<T> navigations
+dotnet_diagnostic.CA2227.severity = none      # scaffolder emits settable collections
+dotnet_diagnostic.CA1716.severity = none      # "Property" is the table's real name
+dotnet_diagnostic.CA1720.severity = none      # "Guid" is the column's real name
+dotnet_diagnostic.CA1707.severity = none      # snake_case index/constraint names
+dotnet_diagnostic.CA1034.severity = none      # nested types in generated migrations
+dotnet_diagnostic.CA1861.severity = none      # scaffolder emits inline label arrays
+dotnet_diagnostic.CA1062.severity = none      # OnModelCreating is invoked by EF, never null
+dotnet_diagnostic.CA1825.severity = none      # dotnet-ef emits new bool[0] in index configs
+dotnet_diagnostic.IDE0161.severity = none     # dotnet-ef emits block-scoped namespaces

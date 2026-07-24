@@ -44,6 +44,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nodescope}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
       POSTGRES_DB: ${POSTGRES_DB:-nodescope}
+      # Pin timescaledb-tune to the CONTAINER's share, not the whole host: unbounded it
+      # sizes shared_buffers/effective_cache_size to total host memory and starves
+      # every other service. Keep these in step with DB_MEMORY_LIMIT/DB_CPU_LIMIT.
+      # NOTE initdb-time settings - they only apply to a FRESH data directory. Pinning
+      # CPUs also drops max_connections, so it is pinned back up explicitly.
+      TS_TUNE_MEMORY: ${DB_TUNE_MEMORY:-1GB}
+      TS_TUNE_NUM_CPUS: ${DB_TUNE_NUM_CPUS:-1}
+      TS_TUNE_MAX_CONNS: ${DB_TUNE_MAX_CONNS:-100}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -53,82 +61,42 @@ services:
       retries: 20
     # No host port published - reachable only inside the compose network.
 
-  # Redis is OPTIONAL - only needed for MULTI-REPLICA deployments. The single-node
-  # appliance runs the API against an in-memory backing and never starts this service.
-  # Enable it with `--profile redis` and set REDIS_URL + CLUSTER_MODE in deploy/.env.
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    logging: *default-logging
-    # maxmemory + an eviction policy so Redis bounds its own heap *inside* the container
-    # limit: it evicts cold keys rather than growing until the OOM killer takes the whole
-    # service down. Kept just under the container limit to leave room for overhead/AOF.
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --maxmemory
-      - ${REDIS_MAXMEMORY:-192mb}
-      - --maxmemory-policy
-      - allkeys-lru
-    profiles: ["redis"]
-    deploy:
-      resources:
-        limits:
-          memory: ${REDIS_MEMORY_LIMIT:-256m}
-          cpus: "${REDIS_CPU_LIMIT:-0.5}"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+  # (The optional Redis service is gone with the Node stack: the ASP.NET Core host keeps
+  # all interim state in-process on the single-node appliance - Decision 8. A multi-node
+  # MSP deployment reintroduces Redis as a SignalR backplane, nothing else.)
 
   api:
     image: ghcr.io/ztur211/nodescope-api:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
-    # No hard dependency on redis: single-node boots without it. When you run
-    # `--profile redis`, start redis first (or just re-run `up`, it will start too).
     depends_on:
       db:
         condition: service_healthy
     deploy:
       resources:
         limits:
+          # The .NET GC is cgroup-aware: its default heap limit is 75% of this cap, so
+          # heap growth surfaces as a logged OutOfMemoryException inside the app rather
+          # than a silent container OOM-kill. No knob to keep in step.
           memory: ${API_MEMORY_LIMIT:-1g}
           cpus: "${API_CPU_LIMIT:-1.0}"
     environment:
+      # Still read by the C# host: it gates the production rate limits on Node's exact
+      # NODE_ENV check, so the wire behavior of the Node era carries over unchanged.
       NODE_ENV: production
-      PORT: "3000"
-      # Cap V8's old-space *below* the container limit (default ~75% of 1g), so heap growth
-      # hits a GC ceiling and throws inside Node - where it is logged and recoverable -
-      # instead of the container being OOM-killed with no explanation. Keep this in step
-      # with API_MEMORY_LIMIT if you raise it.
-      NODE_OPTIONS: ${API_NODE_OPTIONS:---max-old-space-size=768}
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
-      # Empty by default = single-node in-memory backing. For multi-replica set this to
-      # redis://redis:6379 and CLUSTER_MODE=true in deploy/.env, and use `--profile redis`.
-      REDIS_URL: ${REDIS_URL:-}
-      CLUSTER_MODE: ${CLUSTER_MODE:-false}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
-      # CryptoModule (SNMP credential encryption) refuses to boot without a
-      # base64-encoded 32-byte key: `openssl rand -base64 32`.
+      # SNMP credential encryption refuses to boot without a base64-encoded
+      # 32-byte key: `openssl rand -base64 32`.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env (openssl rand -base64 32)}
-      # Same-origin demo: both the API base and the auth base are the public origin.
+      # Same-origin appliance: both the API base and the auth base are the public origin
+      # (desktop-auth builds its redirects from these).
       BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       FRONTEND_URL: ${PUBLIC_ORIGIN}
-      # AI is local-model-only and entirely optional. Unset AI_BASE_URL means no
-      # assistant: the API boots normally and chat falls back to a canned
-      # network-aware summary. No hosted provider exists, by design — the AI
-      # context carries device IPs and topology that must not leave the site.
-      AI_BASE_URL: ${AI_BASE_URL:-}
-      AI_MODEL: ${AI_MODEL:-qwen2.5}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
-      # Proxy hops to trust for the real client IP (per-IP AI rate limiting +
-      # checkOnHome). 1 = the single Caddy hop (default); behind Cloudflare
-      # Tunnel → Caddy → API set 2.
+      # Proxy hops to trust for the real client IP (rate-limit keying). 1 = the single
+      # Caddy hop (default); behind Cloudflare Tunnel → Caddy → API set 2, or every
+      # external user shares one Cloudflare edge address and the strict auth budget.
       TRUST_PROXY: ${TRUST_PROXY:-1}
       # Embedded prober: OFF unless the appliance sits on the network it monitors.
       # A cycle that outlasts the interval is skipped (with a warning), never stacked -
@@ -146,7 +114,7 @@ services:
     volumes:
       - blobstore:/data/storage
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       start_period: 60s
@@ -197,5 +165,4 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
   blobstore:

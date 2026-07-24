@@ -63,8 +63,8 @@ curl http://localhost:8080/api/health
 ## Notes
 
 - **Single-node, no Redis:** `/health` reports `redis: disabled (in-memory)` — this is the
-  local-first appliance mode. To run multi-replica instead, drop `-f docker-compose.demo.yml`,
-  add `--profile redis`, and set `REDIS_URL` + `CLUSTER_MODE=true` (see `.env.example`).
+  local-first appliance mode (all interim state is in-process; a future multi-node MSP
+  deployment adds Redis only as a SignalR backplane).
 - **Data stays local:** everything is on this machine; nothing is sent to any cloud.
 - **Re-seeding:** re-running `up` re-runs `demo-seed` (idempotent).
 - **Stop / reset:**

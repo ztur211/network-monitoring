@@ -1,75 +1,45 @@
 # syntax=docker/dockerfile:1
 #
-# NodeScope API (NestJS) — multi-stage build for the self-hosted demo.
-# Build context is the repo ROOT (deploy/docker-compose.prod.yml sets context: ..).
+# NodeScope API (ASP.NET Core) - multi-stage build for the self-hosted appliance.
+# Build context is the repo ROOT (deploy/docker-compose.build.yml sets context: ..).
 #
-#   build stage : `npm ci` runs the root postinstall (patch-package, prisma
-#                 generate, build @nodescope/shared), then `nest build` -> dist.
-#   runtime     : runs `prisma migrate deploy`, then `node apps/api/dist/main.js`.
+#   build stage : dotnet publish src/NodeScope.Api (Release, warnings-as-errors)
+#   runtime     : aspnet runtime image; the host applies EF migrations itself on
+#                 boot (baselining a Prisma-era database), so there is no
+#                 entrypoint script and no migration CLI in the image.
 #
-# Both stages share one base image so argon2's native binding and the Prisma
-# query engine stay ABI-compatible between build and runtime.
+# The same image also runs the demo seed as a one-shot:
+#   docker run ... nodescope-api seed        (see deploy/docker-compose.demo.yml)
 
-FROM node:22-bookworm-slim AS build
-WORKDIR /app
-# Toolchain for native-module source fallback (argon2 ships prebuilds, but keep
-# the compile path working) + openssl/ca-certs for the Prisma engine download.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ openssl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# 1) Install with the full workspace manifest set so npm workspaces links all
-#    packages and the root postinstall can run. postinstall needs the prisma
-#    schema, the package sources it builds (shared/client/probe — their
-#    tsconfigs extend the root tsconfig.base.json), and patches/ — copy those
-#    first so the dependency layer caches across source-only changes.
-COPY package.json package-lock.json .npmrc tsconfig.base.json ./
-COPY patches ./patches
-COPY packages/shared ./packages/shared
-COPY packages/client ./packages/client
-COPY packages/probe ./packages/probe
-COPY apps/api/package.json ./apps/api/
-COPY apps/api/prisma ./apps/api/prisma
-COPY apps/web/package.json ./apps/web/
-RUN npm ci --legacy-peer-deps
-
-# 2) Build the API. @nodescope/shared was already built by the postinstall above.
-COPY apps/api ./apps/api
-# scripts/ carries load-sample-model.mjs so the demo-seed one-shot service (see
-# docker-compose.demo.yml) can populate the FZK-Haus model on first boot.
-COPY scripts ./scripts
-RUN npm run build --workspace=apps/api
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /source
+# The full analyzer configuration is part of the build (EnforceCodeStyleInBuild),
+# so the image build fails on exactly what a dev build fails on.
+COPY Directory.Build.props Directory.Packages.props .editorconfig ./
+COPY src ./src
+RUN dotnet publish src/NodeScope.Api -c Release -o /app
 
 # ---------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS runtime
-ENV NODE_ENV=production
-WORKDIR /app
-# iputils-ping is REQUIRED, not optional: the embedded prober shells out to `ping` for ICMP
-# (spawned so we need no NET_RAW capability). node:*-slim ships no ping binary, so without
-# this the spawn failed with ENOENT on every probe and the device was reported DOWN - a
-# broken image masquerading as a fleet-wide outage. The probe now also detects a missing
-# binary and says so loudly (packages/probe), but the binary belongs here.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# iputils-ping is REQUIRED, not optional: the embedded prober's ICMP
+# (System.Net.NetworkInformation.Ping) falls back to spawning `ping` when
+# unprivileged ICMP sockets are unavailable, and without a ping binary every
+# ICMP-only device reads DOWN - a broken image masquerading as a fleet-wide
+# outage (the node:*-slim lesson, deliberately carried over).
+# curl backs the image/compose healthchecks.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl ca-certificates iputils-ping \
+ && apt-get install -y --no-install-recommends iputils-ping curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Bring the whole built workspace: node_modules carries the Prisma CLI + the
-# generated client, and the @nodescope/shared workspace symlink resolves to the
-# copied packages/shared (with its built dist).
-COPY --from=build /app /app
-# Runtime product-knowledge the AI ProductContext reads from
-# `process.cwd()/docs/product-knowledge` (cwd is /app at runtime).
-COPY docs/product-knowledge ./docs/product-knowledge
-COPY deploy/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
-RUN chmod +x /usr/local/bin/api-entrypoint.sh && chown -R node:node /app
-# FS storage mode writes blobs here; pre-create it owned by node so a mounted
-# volume at this path is writable by the (non-root) runtime user.
-RUN mkdir -p /data/storage && chown -R node:node /data/storage
-USER node
+WORKDIR /app
+COPY --from=build /app .
+# FS storage mode (the appliance default) writes blobs here; pre-create it owned
+# by the image's non-root `app` user so a mounted volume at this path is writable.
+RUN mkdir -p /data/storage && chown -R app:app /data/storage
+USER app
 
-ENV PORT=3000
+ENV ASPNETCORE_HTTP_PORTS=3000
 EXPOSE 3000
-# Node has global fetch - no curl needed in the image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-ENTRYPOINT ["api-entrypoint.sh"]
+  CMD curl -fsS http://127.0.0.1:3000/api/health || exit 1
+ENTRYPOINT ["dotnet", "NodeScope.Api.dll"]

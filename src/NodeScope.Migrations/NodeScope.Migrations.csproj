@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The migrations-only model (Decision 5): the ONE place that knows the full schema,
+    used by the dotnet-ef tooling, the Api's startup migrator, and the demo seeder.
+    Runtime data access stays on the per-module DbContexts, which map deliberately
+    narrow slices - product request paths must never instantiate this context.
+
+    The model was scaffolded database-first from a prisma-migrate-deployed database at
+    the Decision 11 cutover (the Initial migration is verified equal to the Prisma DDL
+    by pg_dump diff) and is maintained code-first from here on.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

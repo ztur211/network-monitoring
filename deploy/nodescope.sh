@@ -111,9 +111,35 @@ cmd_install() {
   log "starting the stack…"; compose up -d --wait
   local origin_url; origin_url="$(get_kv PUBLIC_ORIGIN)"
   log "running smoke test…"
-  node "${REPO_ROOT}/scripts/smoke.mjs" "${origin_url}" "${origin_url}"
+  smoke_test "${origin_url}"
   log "NodeScope is up at ${origin_url}"
   log "create your first account there, then point the desktop app at ${origin_url}/api"
+}
+
+# End-to-end reachability through the real origin (Caddy -> API / static files) -
+# what the containers' own healthchecks cannot see. curl-only, so the appliance
+# host needs no toolchain. Exits via die on the first failed check.
+smoke_test() {
+  local origin="$1"
+  local body
+
+  # API readiness through the proxy.
+  curl -fsS --retry 10 --retry-delay 2 --retry-all-errors "${origin}/api/health" >/dev/null \
+    || die "smoke: ${origin}/api/health is not answering"
+  log "  ✔ API /api/health"
+
+  # Unauthenticated get-session must be HTTP 200 with a literal JSON null body.
+  body="$(curl -fsS "${origin}/api/auth/get-session")" && [ "${body}" = "null" ] \
+    || die "smoke: /api/auth/get-session should return null, got: ${body}"
+  log "  ✔ API /api/auth/get-session (unauthenticated)"
+
+  # The web shell and the SPA catchall both serve index.html.
+  curl -fsS "${origin}/" | grep -qi "<html" \
+    || die "smoke: ${origin}/ did not serve the web shell"
+  log "  ✔ Web / (index.html)"
+  curl -fsS "${origin}/__catchall_smoke" | grep -qi "<html" \
+    || die "smoke: SPA catchall did not serve index.html"
+  log "  ✔ Web SPA catchall"
 }
 
 cmd_reconfigure() {

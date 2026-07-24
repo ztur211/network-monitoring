@@ -11,12 +11,12 @@
 {$SITE_ADDRESS::80} {
 	encode zstd gzip
 
-	# API + realtime → the NestJS service (same origin as the web app).
-	# reverse_proxy transparently handles the Socket.io WebSocket upgrade.
+	# API + realtime → the ASP.NET Core service (same origin as the web app).
+	# reverse_proxy transparently handles the SignalR WebSocket upgrade.
 	handle /api/* {
 		reverse_proxy {$API_UPSTREAM:api:3000}
 	}
-	handle /socket.io/* {
+	handle /hubs/* {
 		reverse_proxy {$API_UPSTREAM:api:3000}
 	}
 

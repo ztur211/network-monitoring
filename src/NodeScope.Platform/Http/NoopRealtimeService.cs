@@ -3,9 +3,9 @@ using NodeScope.Platform.Abstractions;
 namespace NodeScope.Platform.Http;
 
 /// <summary>
-/// The stand-in <see cref="IRealtimeService"/> until the Realtime module lands (step 4's
-/// interim gap, Decision 21): producers already emit, nothing is delivered. Registered with
-/// TryAdd so the Realtime module's implementation replaces it without ceremony.
+/// The default <see cref="IRealtimeService"/> for a host composed without the Realtime
+/// module: producers emit, nothing is delivered. Registered with TryAdd so the Realtime
+/// module's implementation replaces it without ceremony.
 /// </summary>
 internal sealed class NoopRealtimeService : IRealtimeService
 {
