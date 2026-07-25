@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:NodeScope.Desktop.ViewModels"
+        x:Class="NodeScope.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="NodeScope"
+        Width="1280"
+        Height="800"
+        WindowStartupLocation="CenterScreen">
+
+  <DockPanel>
+
+    <TextBlock Name="StatusText"
+               DockPanel.Dock="Bottom"
+               Margin="12,6"
+               FontSize="12"
+               Opacity="0.8"
+               Text="{Binding Status}" />
+
+    <StackPanel HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+      <TextBlock HorizontalAlignment="Center"
+                 FontSize="28"
+                 FontWeight="SemiBold"
+                 Text="NodeScope" />
+      <TextBlock HorizontalAlignment="Center"
+                 FontSize="14"
+                 Opacity="0.7"
+                 Text="Native desktop client - shell placeholder" />
+    </StackPanel>
+
+  </DockPanel>
+
+</Window>

@@ -3,6 +3,7 @@
     <Project Path="src/NodeScope.Agent/NodeScope.Agent.csproj" />
     <Project Path="src/NodeScope.Api/NodeScope.Api.csproj" />
     <Project Path="src/NodeScope.Contracts/NodeScope.Contracts.csproj" />
+    <Project Path="src/NodeScope.Desktop/NodeScope.Desktop.csproj" />
     <Project Path="src/NodeScope.Migrations/NodeScope.Migrations.csproj" />
     <Project Path="src/NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
     <Project Path="src/NodeScope.Platform/NodeScope.Platform.csproj" />
@@ -37,6 +38,7 @@
     <Project Path="tests/NodeScope.Agent.Tests/NodeScope.Agent.Tests.csproj" />
     <Project Path="tests/NodeScope.ArchitectureTests/NodeScope.ArchitectureTests.csproj" />
     <Project Path="tests/NodeScope.ContractTests/NodeScope.ContractTests.csproj" />
+    <Project Path="tests/NodeScope.Desktop.Tests/NodeScope.Desktop.Tests.csproj" />
     <Project Path="tests/NodeScope.Monitoring.Tests/NodeScope.Monitoring.Tests.csproj" />
     <Project Path="tests/NodeScope.Platform.Tests/NodeScope.Platform.Tests.csproj" />
   </Folder>

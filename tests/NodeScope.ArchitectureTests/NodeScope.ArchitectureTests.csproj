@@ -34,6 +34,9 @@
       rule and AgentBoundaryRules to inspect it.
     -->
     <ProjectReference Include="../../src/NodeScope.Agent/NodeScope.Agent.csproj" />
+    <!-- The desktop client is likewise outside the Api graph; referenced so its assembly
+         lands in the test output for DesktopBoundaryRules and the inheritance rule. -->
+    <ProjectReference Include="../../src/NodeScope.Desktop/NodeScope.Desktop.csproj" />
   </ItemGroup>
 
 </Project>

@@ -34,6 +34,8 @@ public class InheritanceRules
         "System.Text.Json.Serialization.JsonSerializerContext",        // source-generated JSON (AOT agent); the generator requires it
         "System.Text.Json.Serialization.JsonConverter`1",              // custom wire formats (JS-style dates); STJ has no composition seam
         "System.IO.Stream",                                            // streaming decorators; the pipeline takes a Stream, not an interface
+        "Avalonia.Application",                                        // the desktop client's App (Decision 14); Avalonia offers no composition seam here
+        "Avalonia.Controls.Window",                                    // desktop windows; ditto
     };
 
     [Fact]

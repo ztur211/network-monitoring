@@ -75,8 +75,42 @@
     -->
     <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
 
+    <!--
+      Desktop client (step 5, Decision 14: Avalonia 12). Fonts.Inter bundles the
+      UI font so text renders identically on every OS instead of falling back to
+      whatever the host has installed. Headless.XUnit is the Decision 18 test
+      driver; it pulls Avalonia.Headless transitively.
+    -->
+    <PackageVersion Include="Avalonia" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.0" />
+
+    <!--
+      MVVM source generators for the desktop client. Used in attribute mode
+      ([INotifyPropertyChanged] on partial classes), NOT by inheriting
+      ObservableObject - Decision 6 reserves inheritance for framework
+      integration, and the generator can embed the INPC implementation instead.
+    -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+
+    <!--
+      DI + logging for the desktop client (Decision 19: first-party MEL; Serilog
+      rejected). The API host gets these transitively from ASP.NET Core; the
+      desktop client references them directly.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
+
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
+    <!--
+      Avalonia.Headless.XUnit 12.x integrates with xunit v3 (not v2), so the
+      desktop test project rides the v3 line while the older projects stay on
+      2.9.3; the 3.x visualstudio runner drives both generations.
+    -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
 
     <!--

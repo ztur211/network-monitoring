@@ -135,3 +135,13 @@ dotnet_diagnostic.CA1861.severity = none      # scaffolder emits inline label ar
 dotnet_diagnostic.CA1062.severity = none      # OnModelCreating is invoked by EF, never null
 dotnet_diagnostic.CA1825.severity = none      # dotnet-ef emits new bool[0] in index configs
 dotnet_diagnostic.IDE0161.severity = none     # dotnet-ef emits block-scoped namespaces
+
+# --- Relaxed in the desktop client --------------------------------------------
+# MVVMTK0032 pushes [INotifyPropertyChanged] users toward inheriting
+# ObservableObject so the generated INPC code is not duplicated per view model.
+# Decision 6 reserves inheritance for framework integration with no composition
+# alternative - and the attribute IS the toolkit's composition alternative. The
+# duplication is a few hundred bytes of IL per view model; the base-class-free
+# default is worth more here.
+[src/NodeScope.Desktop/**.cs]
+dotnet_diagnostic.MVVMTK0032.severity = none

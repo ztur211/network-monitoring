@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The native desktop client (sequencing step 5, Decision 14: Avalonia 12).
+    Replaces apps/web (Expo/RN-Web) and apps/desktop (Electron + three.js) with
+    one client. References Contracts only - the client talks to the appliance
+    over HTTP and SignalR, never to server internals; DesktopBoundaryRules in
+    the architecture tests enforces it, exactly as for the agent.
+
+    Run under WSLg with: dotnet run (project src/NodeScope.Desktop)
+    The Windows-bound parts to come (xBIM tessellation, the GL 3D viewer -
+    Decision 16) stay behind seams; everything else must remain portable.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Version>0.1.0</Version>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <!-- Bundled UI font: identical text rendering on every OS instead of host-font fallback. -->
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NodeScope.Desktop.Tests" />
+  </ItemGroup>
+
+</Project>
