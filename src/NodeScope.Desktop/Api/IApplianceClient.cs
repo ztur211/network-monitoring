@@ -269,6 +269,25 @@ internal interface IApplianceClient : IDisposable
     public Task<SnmpAssignment> AssignSnmpAsync(
         string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken);
 
+    // --- onboarding -------------------------------------------------------
+
+    /// <summary>
+    /// <c>POST /api/v1/onboarding/turn</c> (OWNER/ADMIN). All-null input is the init
+    /// turn; otherwise exactly one of <paramref name="chipChoice"/> or
+    /// <paramref name="fieldValues"/> rides. Field values stay object-typed so a
+    /// number field can be told from a string on the wire. Already-complete
+    /// onboarding is 409 <c>ONBOARD_002</c>. The host rejects unknown body members,
+    /// so nothing else (the web's <c>browserDeviceId</c> would 400 here).
+    /// </summary>
+    public Task<OnboardingTurn> SendOnboardingTurnAsync(
+        string bearerToken,
+        string? chipChoice,
+        IReadOnlyDictionary<string, object>? fieldValues,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/onboarding/skip</c>: dismisses the caller's wizard state.</summary>
+    public Task SkipOnboardingAsync(string bearerToken, CancellationToken cancellationToken);
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,

@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:api="using:NodeScope.Desktop.Api"
+             x:Class="NodeScope.Desktop.Views.OnboardingView"
+             x:DataType="vm:OnboardingViewModel">
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="{x:Type vm:BotEntry}">
+      <Border HorizontalAlignment="Left"
+              MaxWidth="360"
+              Margin="0,0,48,8"
+              Padding="10,8"
+              CornerRadius="12,12,12,2"
+              Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+        <TextBlock TextWrapping="Wrap" Text="{Binding Message}" />
+      </Border>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:UserEntry}">
+      <Border HorizontalAlignment="Right"
+              MaxWidth="360"
+              Margin="48,0,0,8"
+              Padding="10,8"
+              CornerRadius="12,12,2,12"
+              Background="#2563eb">
+        <TextBlock TextWrapping="Wrap" Foreground="White" Text="{Binding Message}" />
+      </Border>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <Panel>
+    <Border Background="#80000000" />
+
+    <Border MaxWidth="520"
+            MinWidth="440"
+            Margin="24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            CornerRadius="12"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1">
+      <DockPanel Margin="20">
+
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+          <Button DockPanel.Dock="Right"
+                  Name="SkipButton"
+                  Command="{Binding SkipCommand}"
+                  Content="Skip for now" />
+          <StackPanel>
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="Set up your network" />
+            <TextBlock Opacity="0.6" FontSize="12" Text="A couple of questions and the map comes alive." />
+          </StackPanel>
+        </DockPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+          <TextBlock Name="WizardError"
+                     Foreground="{DynamicResource SystemErrorTextColor}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     Text="{Binding Error}" />
+
+          <ItemsControl Name="ChipRow"
+                        ItemsSource="{Binding Chips}"
+                        IsEnabled="{Binding !IsBusy}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="api:OnboardingChip">
+                <Button Margin="0,0,6,6"
+                        Command="{Binding $parent[UserControl].((vm:OnboardingViewModel)DataContext).PickChipCommand}"
+                        CommandParameter="{Binding}"
+                        Content="{Binding Label}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <StackPanel Name="FieldsPanel" Spacing="6" IsVisible="{Binding HasFields}">
+            <ItemsControl ItemsSource="{Binding Fields}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:WizardFieldInput">
+                  <StackPanel Spacing="4" Margin="0,0,0,6">
+                    <TextBlock FontWeight="Medium" FontSize="12" Text="{Binding Field.Label}" />
+                    <TextBox Watermark="{Binding Watermark}" Text="{Binding Text}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Name="ContinueButton"
+                    Classes="accent"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Command="{Binding SubmitFieldsCommand}"
+                    IsEnabled="{Binding !IsBusy}"
+                    Content="Continue" />
+          </StackPanel>
+        </StackPanel>
+
+        <ScrollViewer Name="TranscriptScroll" MaxHeight="360">
+          <ItemsControl Name="TranscriptList" ItemsSource="{Binding Transcript}" />
+        </ScrollViewer>
+
+      </DockPanel>
+    </Border>
+  </Panel>
+
+</UserControl>

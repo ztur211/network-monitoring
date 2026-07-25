@@ -18,13 +18,20 @@ internal sealed record WorkspaceSection(string Title, string Placeholder, object
 internal sealed partial class WorkspaceViewModel : IDisposable
 {
     private readonly DesktopAuthFlow _flow;
+    private readonly ApplianceSession _session;
+    private readonly ILoggerFactory _loggers;
     private readonly MapViewModel _map;
     private readonly BimViewerViewModel _bimViewer;
     private readonly InventoryViewModel _inventory;
     private readonly SettingsViewModel _settings;
+    private readonly CancellationTokenSource _lifetime = new();
 
     [ObservableProperty]
     private WorkspaceSection _selectedSection;
+
+    /// <summary>The onboarding wizard overlay, open while the org still has no network.</summary>
+    [ObservableProperty]
+    private OnboardingViewModel? _wizard;
 
     public WorkspaceViewModel(
         CurrentUser user,
@@ -36,6 +43,8 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         IIfcTessellator tessellator)
     {
         _flow = flow;
+        _session = session;
+        _loggers = loggers;
         User = user;
         ServerUrl = serverUrl;
         _map = new MapViewModel(session, user, loggers.CreateLogger<MapViewModel>());
@@ -56,7 +65,11 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             new("Settings", "Loading settings.", _settings),
         ];
         _selectedSection = Sections[0];
+        WizardCheck = MaybeOpenWizardAsync();
     }
+
+    /// <summary>The wizard auto-open probe; awaited by tests.</summary>
+    internal Task WizardCheck { get; }
 
     public CurrentUser User { get; }
 
@@ -69,12 +82,54 @@ internal sealed partial class WorkspaceViewModel : IDisposable
 
     public void Dispose()
     {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
         _map.Dispose();
         _bimViewer.Dispose();
         _inventory.Dispose();
         _settings.Dispose();
+        Wizard?.Dispose();
     }
 
     [RelayCommand]
     private Task SignOutAsync() => _flow.SignOutAsync(CancellationToken.None);
+
+    /// <summary>
+    /// Web parity: the wizard auto-opens when the org has no network yet. The turn
+    /// endpoint is OWNER/ADMIN, so a MEMBER of a network-less org never sees it.
+    /// Closing it (skip or done) keeps it closed for this session.
+    /// </summary>
+    private async Task MaybeOpenWizardAsync()
+    {
+        try
+        {
+            var networksTask = _session.Client.GetNetworksAsync(_session.Token, _lifetime.Token);
+            var accessTask = _session.Client.GetAccessSummaryAsync(_session.Token, _lifetime.Token);
+            await Task.WhenAll(networksTask, accessTask);
+            if ((await networksTask).Count == 0 && (await accessTask).CanConfigure)
+            {
+                Wizard = new OnboardingViewModel(
+                    _session,
+                    _loggers.CreateLogger<OnboardingViewModel>(),
+                    close: CloseWizard);
+            }
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
+        {
+            WorkspaceLog.WizardProbeFailed(_loggers.CreateLogger<WorkspaceViewModel>(), failure);
+        }
+    }
+
+    private void CloseWizard()
+    {
+        Wizard?.Dispose();
+        Wizard = null;
+    }
+}
+
+internal static partial class WorkspaceLog
+{
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Onboarding auto-open probe failed")]
+    public static partial void WizardProbeFailed(ILogger logger, Exception exception);
 }

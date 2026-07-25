@@ -636,6 +636,41 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
         SendJsonAsync<SnmpAssignment, SnmpAssignment>(
             HttpMethod.Post, "api/v1/snmp/assign", bearerToken, assignment, cancellationToken);
 
+    public Task<OnboardingTurn> SendOnboardingTurnAsync(
+        string bearerToken,
+        string? chipChoice,
+        IReadOnlyDictionary<string, object>? fieldValues,
+        CancellationToken cancellationToken)
+    {
+        // Only the provided members ride; the host disallows unknown members and an
+        // all-absent body is the init turn.
+        var body = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (chipChoice is not null)
+        {
+            body["chipChoice"] = chipChoice;
+        }
+
+        if (fieldValues is not null)
+        {
+            body["fieldValues"] = fieldValues;
+        }
+
+        return SendJsonAsync<Dictionary<string, object>, OnboardingTurn>(
+            HttpMethod.Post, "api/v1/onboarding/turn", bearerToken, body, cancellationToken);
+    }
+
+    public async Task SkipOnboardingAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, new Uri("api/v1/onboarding/skip", UriKind.Relative))
+        {
+            Content = JsonContent.Create(new Dictionary<string, object>(), options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,

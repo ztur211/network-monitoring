@@ -18,8 +18,12 @@
     <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
       <views:SettingsView />
     </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:OnboardingViewModel}">
+      <views:OnboardingView />
+    </DataTemplate>
   </UserControl.DataTemplates>
 
+  <Panel>
   <DockPanel>
 
     <Border DockPanel.Dock="Top" Padding="12,8">
@@ -81,5 +85,10 @@
     </Panel>
 
   </DockPanel>
+
+  <!-- The onboarding wizard overlays the whole workspace while the org has no network. -->
+  <ContentControl Content="{Binding Wizard}"
+                  IsVisible="{Binding Wizard, Converter={x:Static ObjectConverters.IsNotNull}}" />
+  </Panel>
 
 </UserControl>

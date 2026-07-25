@@ -994,6 +994,55 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         return Task.FromResult(assignment);
     }
 
+    // --- onboarding -------------------------------------------------------
+
+    /// <summary>Scripted turns, consumed in order; the last one repeats when exhausted.</summary>
+    public List<OnboardingTurn> TurnsToReturn { get; } = [];
+
+    public List<(string? ChipChoice, IReadOnlyDictionary<string, object>? FieldValues)> TurnRequests { get; } = [];
+
+    public int SkipCalls { get; private set; }
+
+    public Exception? OnboardingFailure { get; set; }
+
+    public Task<OnboardingTurn> SendOnboardingTurnAsync(
+        string bearerToken,
+        string? chipChoice,
+        IReadOnlyDictionary<string, object>? fieldValues,
+        CancellationToken cancellationToken)
+    {
+        if (OnboardingFailure is not null)
+        {
+            return Task.FromException<OnboardingTurn>(OnboardingFailure);
+        }
+
+        TurnRequests.Add((chipChoice, fieldValues));
+        if (TurnsToReturn.Count == 0)
+        {
+            return Task.FromResult(new OnboardingTurn(
+                "welcome", "Welcome!", [new OnboardingChip("Let's go", "start")], [], false));
+        }
+
+        var turn = TurnsToReturn[0];
+        if (TurnsToReturn.Count > 1)
+        {
+            TurnsToReturn.RemoveAt(0);
+        }
+
+        return Task.FromResult(turn);
+    }
+
+    public Task SkipOnboardingAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        if (OnboardingFailure is not null)
+        {
+            return Task.FromException(OnboardingFailure);
+        }
+
+        SkipCalls++;
+        return Task.CompletedTask;
+    }
+
     private static string? StringOrNull(JsonElement value) =>
         value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
