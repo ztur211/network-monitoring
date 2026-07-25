@@ -9,6 +9,9 @@
     <DataTemplate DataType="{x:Type vm:MapViewModel}">
       <views:MapView />
     </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:BimViewerViewModel}">
+      <views:BimViewerView />
+    </DataTemplate>
   </UserControl.DataTemplates>
 
   <DockPanel>

@@ -25,6 +25,22 @@ public static class StorageKeys
         $"org/{organizationId}/building/{propertyId}/{versionId}.ifc";
 
     /// <summary>
+    /// The upload-time tessellation paired with an immutable IFC version (Decision 16).
+    /// Keeping both objects under the same version id makes cleanup and authorization
+    /// follow the IFC lifecycle without exposing storage details on the wire.
+    /// </summary>
+    public static string BuildingModelGeometry(string organizationId, string propertyId, string versionId) =>
+        $"org/{organizationId}/building/{propertyId}/{versionId}.wexbim";
+
+    /// <summary>
+    /// The upload-time IFC element index paired with the wexBIM artifact. It
+    /// preserves the express-label to GlobalId/type/name mapping that wexBIM
+    /// intentionally omits, enabling portable picking, linking, and BCF.
+    /// </summary>
+    public static string BuildingModelMetadata(string organizationId, string propertyId, string versionId) =>
+        $"org/{organizationId}/building/{propertyId}/{versionId}.elements.json";
+
+    /// <summary>
     /// A BCF viewpoint snapshot. The random suffix keeps re-imports of the same topic from
     /// overwriting an existing snapshot before the new import is known to have succeeded.
     /// </summary>

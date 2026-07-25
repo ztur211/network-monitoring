@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
+using NodeScope.Desktop.Bim;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -18,6 +19,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
 {
     private readonly DesktopAuthFlow _flow;
     private readonly MapViewModel _map;
+    private readonly BimViewerViewModel _bimViewer;
 
     [ObservableProperty]
     private WorkspaceSection _selectedSection;
@@ -27,17 +29,22 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         Uri serverUrl,
         DesktopAuthFlow flow,
         ApplianceSession session,
-        ILoggerFactory loggers)
+        ILoggerFactory loggers,
+        IIfcTessellator tessellator)
     {
         _flow = flow;
         User = user;
         ServerUrl = serverUrl;
         _map = new MapViewModel(session, user, loggers.CreateLogger<MapViewModel>());
+        _bimViewer = new BimViewerViewModel(
+            session,
+            loggers.CreateLogger<BimViewerViewModel>(),
+            tessellator);
 
         Sections =
         [
             new("Map", "The GIS map arrives with the Mapsui + tileserver-gl milestone.", _map),
-            new("3D Viewer", "The BIM viewer arrives with the wexbim milestone (Windows first)."),
+            new("3D Viewer", "Loading the native BIM viewer.", _bimViewer),
             new("Inventory", "Devices, networks, circuits and clients arrive with the CRUD milestone."),
             new("Assistant", "Chat arrives once the client core is in place."),
             new("Settings", "Client settings arrive here; sign-out lives in the header for now."),
@@ -54,7 +61,11 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     /// <summary>The step-5 build order, one entry per surface.</summary>
     public IReadOnlyList<WorkspaceSection> Sections { get; }
 
-    public void Dispose() => _map.Dispose();
+    public void Dispose()
+    {
+        _map.Dispose();
+        _bimViewer.Dispose();
+    }
 
     [RelayCommand]
     private Task SignOutAsync() => _flow.SignOutAsync(CancellationToken.None);

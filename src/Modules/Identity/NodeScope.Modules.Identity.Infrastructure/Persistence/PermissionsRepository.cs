@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using NodeScope.Modules.Identity.Application.Permissions;
 using NodeScope.Modules.Identity.Domain;
 using NodeScope.Platform.Abstractions;
+using Npgsql;
 
 namespace NodeScope.Modules.Identity.Infrastructure.Persistence;
 

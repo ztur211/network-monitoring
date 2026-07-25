@@ -19,7 +19,7 @@ public sealed partial class NominatimGeocoder : IGeocoder
     // Process-wide, because the policy caps requests per client, not per instance - and the
     // typed HttpClient this sits on is created per use.
     private static readonly SemaphoreSlim Gate = new(1, 1);
-    private static DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
+    private static DateTimeOffset LastRequestAt = DateTimeOffset.MinValue;
 
     private readonly HttpClient _http;
     private readonly ILogger<NominatimGeocoder> _logger;
@@ -66,13 +66,13 @@ public sealed partial class NominatimGeocoder : IGeocoder
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            var elapsed = DateTimeOffset.UtcNow - lastRequestAt;
+            var elapsed = DateTimeOffset.UtcNow - LastRequestAt;
             if (elapsed < MinInterval)
             {
                 await Task.Delay(MinInterval - elapsed, cancellationToken);
             }
 
-            lastRequestAt = DateTimeOffset.UtcNow;
+            LastRequestAt = DateTimeOffset.UtcNow;
         }
         finally
         {

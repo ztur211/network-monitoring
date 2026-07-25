@@ -1,8 +1,8 @@
 using System.Reflection;
-using Npgsql;
 using NodeScope.Platform;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Http;
+using Npgsql;
 
 namespace NodeScope.Api;
 

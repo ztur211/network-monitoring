@@ -20,7 +20,7 @@
                Text="Sign in to your appliance" />
 
     <TextBox Name="ServerUrlBox"
-             Watermark="https://nodescope.example.com"
+             PlaceholderText="https://nodescope.example.com"
              Text="{Binding ServerUrl}"
              IsEnabled="{Binding !Busy}" />
 

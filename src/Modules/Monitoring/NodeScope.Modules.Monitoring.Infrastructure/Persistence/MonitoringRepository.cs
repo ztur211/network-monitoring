@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using NpgsqlTypes;
 using NodeScope.Modules.Monitoring.Application.Ingest;
 using NodeScope.Modules.Monitoring.Domain;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace NodeScope.Modules.Monitoring.Infrastructure.Persistence;
 

@@ -86,9 +86,27 @@ public sealed class ApiClient
         byte[] body,
         string contentType = "application/octet-stream",
         Auth? auth = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await SendRawAsync(HttpMethod.Post, path, body, contentType, auth, cancellationToken);
+
+    /// <summary>PUTs raw bytes, used by a model version's wexBIM artifact upload.</summary>
+    public async Task<ApiResponse> PutRawAsync(
+        string path,
+        byte[] body,
+        string contentType = "application/octet-stream",
+        Auth? auth = null,
+        CancellationToken cancellationToken = default) =>
+        await SendRawAsync(HttpMethod.Put, path, body, contentType, auth, cancellationToken);
+
+    private async Task<ApiResponse> SendRawAsync(
+        HttpMethod method,
+        string path,
+        byte[] body,
+        string contentType,
+        Auth? auth,
+        CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path.TrimStart('/'), UriKind.Relative));
+        using var request = new HttpRequestMessage(method, new Uri(path.TrimStart('/'), UriKind.Relative));
         request.Content = new ByteArrayContent(body);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         ApplyAuth(request, auth);

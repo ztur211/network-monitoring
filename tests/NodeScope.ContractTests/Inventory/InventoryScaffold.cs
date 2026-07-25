@@ -115,6 +115,19 @@ internal static class InventoryScaffold
     public static byte[] MinimalIfcBytes() =>
         System.Text.Encoding.UTF8.GetBytes("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n");
 
+    /// <summary>
+    /// xBIM's official v4 CubeA fixture (436 bytes). Keeping the tiny binary inline makes
+    /// both the API contract and desktop parser tests exercise a real wexBIM file without
+    /// checking a third-party binary asset into the product tree.
+    /// </summary>
+    public static byte[] CubeWexBimBytes() => Convert.FromBase64String(
+        "lVecBQQBAAAACAAAAAwAAAAAAAAAAQAAAAUAAAAAAHpEnBKOCYMhxsEbEHToQgzPwQAAAAAAAGnAAQABAAAACGAGRAhgBkQAAPpD"
+        + "AAAAAAAAAAAAAAAACGCGRAhghkQAAHpElAAAAP/+/j7//v4+//7+PgAAgD+UAAAA//7+Pv/+/j7//v4+AACAP5QAAAD//v4+"
+        + "//7+Pv/+/j4AAIA/lAAAAP/+/j7//v4+//7+PgAAgD+UAAAA//7+Pv/+/j7//v4+AACAP8EAAAAwAgAAAAAAAAAAAAAAAAhg"
+        + "hkQIYIZEAAB6RAEAAAABAAAAwQAAADACAAAAAJQAAAC1AAAAAQgAAAAMAAAAwOYLs8I8eUQAAAAAehqcQuDmC7MAAHpEwOYLs8I8"
+        + "eUQAAHpEehqcQuDmC7MAAAAACGCGRHoanEIAAHpECGCGRHoanEIAAAAAwjx5RAhghkQAAAAAwjx5RAhghkQAAHpEBgAAAAIAAADB"
+        + "hAABAgEAAwIAAAA/9QMEAQQDBQIAAAA/dwQGBwYEBQIAAADCBgcAAgAHBgIAAAB+fgYDAAMGBQIAAAAAfgEHAgcBBA==");
+
     /// <summary>A SITE with a BUILDING under it - the arrange for model/BCF/export tests.</summary>
     /// <param name="SiteId">The top-level SITE.</param>
     /// <param name="BuildingId">A BUILDING nested under the site.</param>

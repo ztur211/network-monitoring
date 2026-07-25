@@ -37,6 +37,8 @@ public class InheritanceRules
         "Avalonia.Application",                                        // the desktop client's App (Decision 14); Avalonia offers no composition seam here
         "Avalonia.Controls.Window",                                    // desktop windows; ditto
         "Avalonia.Controls.UserControl",                               // desktop views behind DataTemplates; ditto
+        "Avalonia.Controls.Control",                                   // custom software-rendered controls must participate in Avalonia's render lifecycle
+        "Avalonia.OpenGL.Controls.OpenGlControlBase",                   // Avalonia owns the native GL context and exposes it only through this lifecycle base
     };
 
     [Fact]
@@ -69,7 +71,7 @@ public class InheritanceRules
             violations.Count == 0,
             "Inheritance is reserved for framework integration (Decision 6). Prefer composition, "
             + "an extension method, or an endpoint filter. If a new framework base class is genuinely "
-            + "unavoidable, add it to AllowedBaseTypes with a comment saying why.\n  "
+            + "unavoidable, add it to the allowlist with a comment saying why.\n  "
             + string.Join("\n  ", violations));
     }
 

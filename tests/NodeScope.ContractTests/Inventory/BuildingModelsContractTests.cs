@@ -8,7 +8,9 @@ namespace NodeScope.ContractTests.Inventory;
 /// auto-activated version, the versions list grows monotonically, and the file
 /// downloads (active and by-version) return the exact uploaded bytes as a raw
 /// octet-stream. Unknown versions are MODEL_004; deleting the active version is
-/// refused with MODEL_005 (409).
+/// refused with MODEL_005 (409). The native-client path can keep a version inactive,
+/// pair it with validated wexBIM and IFC element-index artifacts, and activate only
+/// after all derived objects land.
 /// </summary>
 [Collection(ContractSuite.Name)]
 public class BuildingModelsContractTests
@@ -96,6 +98,121 @@ public class BuildingModelsContractTests
             org.OwnerCookie);
         Assert.Equal(HttpStatusCode.OK, byVersion.Status);
         Assert.Equal(bytes, byVersion.Body);
+    }
+
+    [Fact]
+    public async Task Native_import_pairs_ifc_and_wexbim_before_activation()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var ifc = InventoryScaffold.MinimalIfcBytes();
+        var geometry = InventoryScaffold.CubeWexBimBytes();
+
+        var upload = await _api.PostRawAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions?fileName=cube.ifc&activate=false",
+            ifc,
+            auth: org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.Created, upload.Status);
+        var versionId = InventoryScaffold.RequireId(upload.Data);
+
+        var modelBeforeActivation = await _api.GetAsync(
+            $"v1/buildings/{building.BuildingId}/model",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, modelBeforeActivation.Status);
+        Assert.Equal(JsonValueKind.Null, modelBeforeActivation.Data.GetProperty("activeVersionId").ValueKind);
+
+        var missing = await _api.GetAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/geometry",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.NotFound, missing.Status);
+        Assert.Equal("MODEL_009", missing.ErrorCode);
+
+        var invalid = await _api.PutRawAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/geometry",
+            [1, 2, 3, 4, 5],
+            auth: org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.Status);
+        Assert.Equal("MODEL_010", invalid.ErrorCode);
+
+        var geometryUpload = await _api.PutRawAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/geometry",
+            geometry,
+            "application/vnd.xbim.wexbim",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, geometryUpload.Status);
+        Assert.Equal(versionId, geometryUpload.Data.GetProperty("versionId").GetString());
+        Assert.Equal("WEXBIM", geometryUpload.Data.GetProperty("format").GetString());
+        Assert.Equal(geometry.Length, geometryUpload.Data.GetProperty("sizeBytes").GetInt32());
+        Assert.Equal(
+            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(geometry)),
+            geometryUpload.Data.GetProperty("contentHash").GetString());
+
+        var byVersion = await _api.GetRawAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/geometry",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, byVersion.Status);
+        Assert.Contains("application/vnd.xbim.wexbim", byVersion.Header("Content-Type"), StringComparison.Ordinal);
+        Assert.Contains("cube.wexbim", byVersion.Header("Content-Disposition"), StringComparison.Ordinal);
+        Assert.Equal(geometry, byVersion.Body);
+
+        var missingMetadata = await _api.GetAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/metadata",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.NotFound, missingMetadata.Status);
+        Assert.Equal("MODEL_012", missingMetadata.ErrorCode);
+
+        var metadataUpload = await _api.PutAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/metadata",
+            new
+            {
+                formatVersion = 1,
+                elements = new[]
+                {
+                    new
+                    {
+                        productLabel = 17,
+                        globalId = "0ABCDEFGHIJKLMNOPQRSTU",
+                        typeName = "IfcWall",
+                        name = "North service wall",
+                    },
+                },
+            },
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, metadataUpload.Status);
+        Assert.Equal(versionId, metadataUpload.Data.GetProperty("versionId").GetString());
+        Assert.Equal(1, metadataUpload.Data.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(1, metadataUpload.Data.GetProperty("elementCount").GetInt32());
+        Assert.True(metadataUpload.Data.GetProperty("sizeBytes").GetInt32() > 0);
+        Assert.Equal(64, metadataUpload.Data.GetProperty("contentHash").GetString()?.Length);
+
+        var versionMetadata = await _api.GetAsync(
+            $"v1/buildings/{building.BuildingId}/model/versions/{versionId}/metadata",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, versionMetadata.Status);
+        Assert.Equal(versionId, versionMetadata.Data.GetProperty("versionId").GetString());
+        var element = Assert.Single(versionMetadata.Data.GetProperty("elements").EnumerateArray());
+        Assert.Equal(17, element.GetProperty("productLabel").GetInt32());
+        Assert.Equal("0ABCDEFGHIJKLMNOPQRSTU", element.GetProperty("globalId").GetString());
+        Assert.Equal("IfcWall", element.GetProperty("typeName").GetString());
+        Assert.Equal("North service wall", element.GetProperty("name").GetString());
+
+        var activation = await _api.PutAsync(
+            $"v1/buildings/{building.BuildingId}/model/active",
+            new { versionId },
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, activation.Status);
+
+        var active = await _api.GetRawAsync(
+            $"v1/buildings/{building.BuildingId}/model/active/geometry",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, active.Status);
+        Assert.Equal(geometry, active.Body);
+
+        var activeMetadata = await _api.GetAsync(
+            $"v1/buildings/{building.BuildingId}/model/active/metadata",
+            org.OwnerCookie);
+        Assert.Equal(HttpStatusCode.OK, activeMetadata.Status);
+        Assert.Equal(versionId, activeMetadata.Data.GetProperty("versionId").GetString());
     }
 
     [Fact]

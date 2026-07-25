@@ -8,14 +8,16 @@
     the architecture tests enforces it, exactly as for the agent.
 
     Run under WSLg with: dotnet run (project src/NodeScope.Desktop)
-    The Windows-bound parts to come (xBIM tessellation, the GL 3D viewer -
-    Decision 16) stay behind seams; everything else must remain portable.
+    Decision 16's xBIM tessellation stays behind a Windows-only seam. Its
+    portable wexBIM reader and GL/software viewers run on every supported OS.
   -->
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <Version>0.1.0</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Silk's span-friendly GL upload overloads still cross an unmanaged pointer boundary. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,6 +31,10 @@
     <PackageReference Include="Mapsui.Avalonia" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <!-- Decision 16: IFC tessellation runs only on Windows; viewing the derived wexBIM stays portable. -->
+    <PackageReference Include="Xbim.Essentials" />
+    <PackageReference Include="Xbim.Geometry" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <!-- Decision 17: the Windows token vault wraps the entry with per-user DPAPI. -->

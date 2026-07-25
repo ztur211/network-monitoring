@@ -1,19 +1,19 @@
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using NodeScope.Modules.Identity.Infrastructure.Auth;
+using NodeScope.Modules.Identity.Application.Membership;
+using NodeScope.Modules.Identity.Application.Organizations;
+using NodeScope.Modules.Identity.Application.Permissions;
+using NodeScope.Modules.Identity.Application.Users;
 using NodeScope.Modules.Identity.Domain;
+using NodeScope.Modules.Identity.Infrastructure.Auth;
+using NodeScope.Modules.Identity.Infrastructure.Endpoints;
 using NodeScope.Modules.Identity.Infrastructure.Persistence;
 using NodeScope.Modules.Identity.Infrastructure.Scope;
 using NodeScope.Platform;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Data;
-using Microsoft.AspNetCore.Routing;
-using NodeScope.Modules.Identity.Application.Organizations;
-using NodeScope.Modules.Identity.Application.Membership;
-using NodeScope.Modules.Identity.Application.Permissions;
-using NodeScope.Modules.Identity.Application.Users;
-using NodeScope.Modules.Identity.Infrastructure.Endpoints;
 
 namespace NodeScope.Modules.Identity.Infrastructure;
 

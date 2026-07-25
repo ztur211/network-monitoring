@@ -8,6 +8,7 @@
   -->
 
   <ItemGroup>
+    <ProjectReference Include="../../../NodeScope.Contracts/NodeScope.Contracts.csproj" />
     <ProjectReference Include="../../../NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
   </ItemGroup>
 

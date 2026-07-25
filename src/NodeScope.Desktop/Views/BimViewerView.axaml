@@ -1,0 +1,855 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:api="using:NodeScope.Desktop.Api"
+             xmlns:bim="using:NodeScope.Desktop.Bim"
+             x:Class="NodeScope.Desktop.Views.BimViewerView"
+             x:DataType="vm:BimViewerViewModel"
+             Background="#09101D">
+
+  <UserControl.Styles>
+    <Style Selector="Button.bim-action">
+      <Setter Property="Foreground" Value="#E7EEF9" />
+      <Setter Property="Background" Value="#18263B" />
+      <Setter Property="BorderBrush" Value="#3A4B66" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.bim-action:pointerover">
+      <Setter Property="Background" Value="#223653" />
+      <Setter Property="BorderBrush" Value="#5A76A0" />
+    </Style>
+    <Style Selector="Button.bim-action:pressed">
+      <Setter Property="Background" Value="#2C4770" />
+    </Style>
+    <Style Selector="Button.bim-action:disabled">
+      <Setter Property="Foreground" Value="#91A0B5" />
+      <Setter Property="Background" Value="#111B2C" />
+      <Setter Property="BorderBrush" Value="#26344B" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.bim-action:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="TextElement.Foreground" Value="#91A0B5" />
+      <Setter Property="Opacity" Value="0.72" />
+    </Style>
+    <Style Selector="Button.view-preset">
+      <Setter Property="Padding" Value="11,6" />
+      <Setter Property="MinWidth" Value="52" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#9CAAC0" />
+    </Style>
+    <Style Selector="TextBlock.eyebrow">
+      <Setter Property="Foreground" Value="#8393AC" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="#ED111B2C" />
+      <Setter Property="BorderBrush" Value="#33445F" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#111B2C" />
+      <Setter Property="Foreground" Value="#E9EFF8" />
+      <Setter Property="BorderBrush" Value="#3A4B66" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="#111B2C" />
+      <Setter Property="Foreground" Value="#E9EFF8" />
+      <Setter Property="BorderBrush" Value="#3A4B66" />
+    </Style>
+    <Style Selector="ListBox">
+      <Setter Property="Background" Value="#0D1626" />
+      <Setter Property="BorderBrush" Value="#2C3B53" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="Foreground" Value="#9CAAC0" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Foreground" Value="#F0F5FC" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Border Grid.Row="0"
+            Padding="16,11"
+            Background="#111B2C"
+            BorderBrush="#26344B"
+            BorderThickness="0,0,0,1"
+            ZIndex="20">
+      <Grid ColumnDefinitions="Auto,14,*,14,Auto"
+            RowDefinitions="Auto,Auto">
+        <StackPanel Grid.Row="0"
+                    Grid.Column="0"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center"
+                    Spacing="10">
+          <TextBlock VerticalAlignment="Center"
+                     Classes="eyebrow"
+                     FontSize="12"
+                     Text="BUILDING" />
+          <ComboBox Name="BuildingPicker"
+                    Width="210"
+                    ItemsSource="{Binding Buildings}"
+                    SelectedItem="{Binding SelectedBuilding}"
+                    PlaceholderText="Choose a building">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="api:PropertySummary">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding Name}" />
+                  <TextBlock Grid.Column="1"
+                             Margin="12,0,0,0"
+                             Foreground="#8390A5"
+                             Text="{Binding Code}" />
+                </Grid>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+
+        <StackPanel Grid.Row="0"
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Spacing="2"
+                    IsVisible="{Binding IsReady}">
+          <TextBlock FontWeight="SemiBold"
+                     Foreground="#E9EFF8"
+                     TextTrimming="CharacterEllipsis"
+                     Text="{Binding ModelCaption}" />
+          <TextBlock Classes="muted"
+                     FontSize="11"
+                     TextTrimming="CharacterEllipsis"
+                     Text="{Binding GeometryCaption}" />
+        </StackPanel>
+
+        <Button Name="ImportIfcButton"
+                Grid.Row="0"
+                Grid.Column="4"
+                Classes="bim-action"
+                Padding="13,7"
+                Click="OnImportIfcClick"
+                Content="{Binding ImportButtonText}"
+                IsEnabled="{Binding CanImport}"
+                ToolTip.Tip="{Binding ImportToolTip}" />
+
+        <StackPanel Grid.Row="1"
+                    Grid.ColumnSpan="5"
+                    Margin="0,9,0,0"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    IsEnabled="{Binding IsReady}">
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding IsometricCommand}"
+                  ToolTip.Tip="Isometric view"
+                  Content="Iso" />
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding FrontCommand}"
+                  ToolTip.Tip="Front view"
+                  Content="Front" />
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding RightCommand}"
+                  ToolTip.Tip="Right view"
+                  Content="Right" />
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding TopCommand}"
+                  ToolTip.Tip="Top view"
+                  Content="Top" />
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding FitCommand}"
+                  ToolTip.Tip="Fit the full model"
+                  Content="Fit" />
+          <Button Classes="bim-action view-preset"
+                  Command="{Binding ShowAllCommand}"
+                  ToolTip.Tip="Restore all model elements"
+                  Content="Show all" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1"
+          ColumnDefinitions="*,360">
+      <Grid Name="ViewportSurface"
+            Grid.Column="0">
+        <bim:SoftwareBimViewport Name="SoftwareViewport"
+                                 Focusable="True"
+                                 IsVisible="{Binding IsReady}" />
+        <bim:OpenGlBimViewport Name="Viewport"
+                               IsHitTestVisible="False"
+                               IsVisible="{Binding IsReady}" />
+
+        <Border Name="NocHud"
+                Classes="panel"
+                Width="270"
+                MaxHeight="330"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="14"
+                Padding="13,11"
+                IsVisible="{Binding IsReady}">
+          <StackPanel Spacing="9">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="1">
+                <TextBlock Classes="eyebrow" Text="NETWORK OPERATIONS" />
+                <TextBlock Foreground="#F2F6FC"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Text="Building health" />
+              </StackPanel>
+              <ComboBox Grid.Column="1"
+                        Width="104"
+                        ItemsSource="{Binding FloorOptions}"
+                        SelectedItem="{Binding SelectedFloor}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:BimFloorOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+            <Grid ColumnDefinitions="*,*,*,*"
+                  ColumnSpacing="6">
+              <Border Grid.Column="0" Padding="6,5" CornerRadius="5" Background="#173D2A">
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock HorizontalAlignment="Center" Foreground="#65D992" FontWeight="Bold" Text="{Binding UpCount}" />
+                  <TextBlock Classes="eyebrow" Text="UP" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Padding="6,5" CornerRadius="5" Background="#481F29">
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock HorizontalAlignment="Center" Foreground="#FF7A81" FontWeight="Bold" Text="{Binding DownCount}" />
+                  <TextBlock Classes="eyebrow" Text="DOWN" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="2" Padding="6,5" CornerRadius="5" Background="#493819">
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock HorizontalAlignment="Center" Foreground="#FFC353" FontWeight="Bold" Text="{Binding WarningCount}" />
+                  <TextBlock Classes="eyebrow" Text="WARN" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="3" Padding="6,5" CornerRadius="5" Background="#252F41">
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock HorizontalAlignment="Center" Foreground="#AFBCD0" FontWeight="Bold" Text="{Binding UnknownCount}" />
+                  <TextBlock Classes="eyebrow" Text="UNK" />
+                </StackPanel>
+              </Border>
+            </Grid>
+            <ScrollViewer MaxHeight="180"
+                          VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding HealthDevices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:BimDeviceItem"
+                                x:CompileBindings="False">
+                    <Button Classes="bim-action"
+                            Margin="0,0,0,5"
+                            Padding="8,6"
+                            HorizontalContentAlignment="Stretch"
+                            Click="OnFlyToDeviceClick"
+                            Tag="{Binding}">
+                      <Grid ColumnDefinitions="8,*,Auto"
+                            ColumnSpacing="8">
+                        <Border Width="7"
+                                Height="7"
+                                CornerRadius="4"
+                                VerticalAlignment="Center"
+                                Background="{Binding StateBrush}" />
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Foreground="#E9EFF8"
+                                     FontSize="11"
+                                     FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis"
+                                     Text="{Binding Name}" />
+                          <TextBlock Classes="muted"
+                                     FontSize="9"
+                                     Text="{Binding FloorCaption}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2"
+                                    HorizontalAlignment="Right">
+                          <TextBlock HorizontalAlignment="Right"
+                                     FontSize="10"
+                                     FontWeight="Bold"
+                                     Foreground="#C9D5E6"
+                                     Text="{Binding State}" />
+                          <TextBlock HorizontalAlignment="Right"
+                                     Classes="muted"
+                                     FontSize="9"
+                                     Text="{Binding LatencyCaption}" />
+                        </StackPanel>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </StackPanel>
+        </Border>
+
+        <Border Name="SelectionInspector"
+                Classes="panel"
+                Width="285"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="14,14,14,54"
+                Padding="13,11"
+                IsVisible="{Binding HasSelection}">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="eyebrow" Text="SELECTION" />
+              <Button Name="SelectionFocusButton"
+                      Grid.Column="1"
+                      Classes="bim-action"
+                      Padding="8,3"
+                      Command="{Binding FocusSelectionCommand}"
+                      IsEnabled="{Binding CanFocusSelection}">
+                <TextBlock Foreground="#E7EEF9" Text="Focus" />
+              </Button>
+            </Grid>
+            <StackPanel Spacing="4"
+                        IsVisible="{Binding HasSelectedProduct}">
+              <TextBlock Foreground="#F0F5FC"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         Text="{Binding SelectedProductCaption}" />
+              <TextBlock Classes="muted"
+                         FontSize="10"
+                         Text="{Binding SelectedProduct.GlobalId}" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Classes="bim-action"
+                        Padding="9,4"
+                        Command="{Binding HideSelectedCommand}"
+                        Content="Hide" />
+                <Button Classes="bim-action"
+                        Padding="9,4"
+                        Command="{Binding IsolateSelectedCommand}"
+                        Content="Isolate" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Spacing="4"
+                        IsVisible="{Binding HasSelectedDevice}">
+              <TextBlock Foreground="#F0F5FC"
+                         FontWeight="SemiBold"
+                         Text="{Binding SelectedDevice.Name}" />
+              <TextBlock Classes="muted"
+                         FontSize="10"
+                         Text="{Binding SelectedDevice.LatencyCaption}" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Classes="bim-action"
+                        Padding="9,4"
+                        Command="{Binding BeginPlaceDeviceCommand}"
+                        IsEnabled="{Binding CanPlaceSelectedDevice}"
+                        Content="Place" />
+                <Button Classes="bim-action"
+                        Padding="9,4"
+                        Command="{Binding BeginLinkDeviceCommand}"
+                        IsEnabled="{Binding CanLinkSelectedDevice}"
+                        Content="Link IFC" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Margin="14"
+                Padding="10,7"
+                CornerRadius="6"
+                Background="#E5111B2C"
+                BorderBrush="#33445F"
+                BorderThickness="1"
+                IsVisible="{Binding IsReady}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock FontSize="11"
+                       Foreground="#B8C5D8"
+                       Text="{Binding InteractionHint}" />
+            <Button Classes="bim-action"
+                    Padding="7,2"
+                    Command="{Binding CancelInteractionCommand}"
+                    IsVisible="{Binding IsInteractionPending}"
+                    Content="Cancel" />
+          </StackPanel>
+        </Border>
+
+        <Border Name="LoadingPanel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="24,20"
+                CornerRadius="10"
+                Background="#E6111B2C"
+                BorderBrush="#33445F"
+                BorderThickness="1"
+                IsVisible="{Binding IsLoading}">
+          <StackPanel Width="280" Spacing="12">
+            <ProgressBar IsIndeterminate="True" Height="3" />
+            <TextBlock HorizontalAlignment="Center"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="#E9EFF8"
+                       Text="Preparing 3D geometry" />
+            <TextBlock HorizontalAlignment="Center"
+                       Classes="muted"
+                       FontSize="12"
+                       Text="Downloading and decoding the active model" />
+          </StackPanel>
+        </Border>
+
+        <Border Name="StatusPanel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="28,24"
+                CornerRadius="12"
+                Background="#F2111B2C"
+                BorderBrush="#33445F"
+                BorderThickness="1"
+                IsVisible="{Binding HasStatus}">
+          <StackPanel Width="390" Spacing="9">
+            <Border Width="42"
+                    Height="42"
+                    HorizontalAlignment="Center"
+                    CornerRadius="21"
+                    Background="#1D4ED8">
+              <TextBlock HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         FontSize="20"
+                         FontWeight="Bold"
+                         Foreground="White"
+                         Text="3D" />
+            </Border>
+            <TextBlock Name="StatusTitle"
+                       Margin="0,4,0,0"
+                       HorizontalAlignment="Center"
+                       FontSize="19"
+                       FontWeight="SemiBold"
+                       Foreground="#F4F7FB"
+                       Text="{Binding StatusTitle}" />
+            <TextBlock Name="StatusMessage"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Classes="muted"
+                       LineHeight="20"
+                       Text="{Binding StatusMessage}" />
+            <Button Name="RetryButton"
+                    Classes="bim-action"
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Center"
+                    Padding="18,8"
+                    Command="{Binding RetryCommand}"
+                    IsVisible="{Binding CanRetry}"
+                    Content="Try again" />
+          </StackPanel>
+        </Border>
+
+        <Border Name="ImportProgressPanel"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="14"
+                Padding="14,12"
+                CornerRadius="8"
+                Background="#F2111B2C"
+                BorderBrush="#3B82F6"
+                BorderThickness="1"
+                IsVisible="{Binding IsImporting}">
+          <Grid ColumnDefinitions="*,Auto"
+                RowDefinitions="Auto,Auto"
+                Width="330">
+            <TextBlock Grid.Row="0"
+                       Grid.Column="0"
+                       Margin="0,0,12,7"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Foreground="#E9EFF8"
+                       Text="{Binding ImportStatus}" />
+            <Button Grid.RowSpan="2"
+                    Grid.Column="1"
+                    Classes="bim-action"
+                    Padding="9,4"
+                    VerticalAlignment="Center"
+                    Command="{Binding CancelImportCommand}"
+                    Content="Cancel" />
+            <ProgressBar Grid.Row="1"
+                         Grid.Column="0"
+                         Height="3"
+                         Margin="0,0,12,0"
+                         IsIndeterminate="True" />
+          </Grid>
+        </Border>
+
+        <Border Name="ImportErrorPanel"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="14"
+                Padding="14,11"
+                CornerRadius="8"
+                Background="#F22A1720"
+                BorderBrush="#9F4051"
+                BorderThickness="1"
+                IsVisible="{Binding HasImportError}">
+          <Grid ColumnDefinitions="*,Auto"
+                Width="390">
+            <TextBlock Margin="0,0,12,0"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="#F6D5DC"
+                       TextWrapping="Wrap"
+                       Text="{Binding ImportError}" />
+            <Button Grid.Column="1"
+                    Classes="bim-action"
+                    Padding="9,4"
+                    VerticalAlignment="Center"
+                    Command="{Binding DismissImportErrorCommand}"
+                    Content="Dismiss" />
+          </Grid>
+        </Border>
+
+        <Border Name="OperationErrorPanel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="14"
+                Padding="12,9"
+                CornerRadius="7"
+                Background="#F2412B17"
+                BorderBrush="#A06A31"
+                BorderThickness="1"
+                IsVisible="{Binding HasOperationError}">
+          <Grid ColumnDefinitions="*,Auto"
+                Width="430">
+            <TextBlock Margin="0,0,12,0"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       Foreground="#FFE0B0"
+                       TextWrapping="Wrap"
+                       Text="{Binding OperationError}" />
+            <Button Grid.Column="1"
+                    Classes="bim-action"
+                    Padding="8,3"
+                    Command="{Binding DismissOperationErrorCommand}"
+                    Content="Dismiss" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Border Grid.Column="1"
+              Background="#0E1828"
+              BorderBrush="#26344B"
+              BorderThickness="1,0,0,0"
+              IsVisible="{Binding IsReady}">
+        <TabControl Name="OperationsTabs"
+                    Padding="0">
+          <TabItem Header="Model">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="14"
+                          Spacing="14">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="eyebrow" Text="SECTION PLANE" />
+                  <CheckBox Foreground="#E7EEF9"
+                            IsChecked="{Binding SectionEnabled}"
+                            Content="Enable section cut" />
+                  <Grid ColumnDefinitions="110,*"
+                        ColumnSpacing="8">
+                    <ComboBox ItemsSource="{Binding SectionAxes}"
+                              SelectedItem="{Binding SectionAxis}" />
+                    <StackPanel Grid.Column="1">
+                      <Slider Minimum="0"
+                              Maximum="100"
+                              Value="{Binding SectionPosition}" />
+                      <TextBlock HorizontalAlignment="Right"
+                                 Classes="muted"
+                                 FontSize="10"
+                                 Text="{Binding SectionCaption}" />
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="#2D3A50" />
+
+                <StackPanel Spacing="7">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="eyebrow" Text="IFC CATEGORIES" />
+                    <Button Grid.Column="1"
+                            Classes="bim-action"
+                            Padding="8,3"
+                            Command="{Binding ShowAllCommand}"
+                            Content="Show all" />
+                  </Grid>
+                  <TextBlock Classes="muted"
+                             FontSize="10"
+                             TextWrapping="Wrap"
+                             Text="{Binding ElementMetadataCaption}" />
+                  <ItemsControl ItemsSource="{Binding Categories}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BimCategoryItem"
+                                    x:CompileBindings="False">
+                        <Button Classes="bim-action"
+                                Margin="0,0,0,5"
+                                Padding="8,6"
+                                HorizontalContentAlignment="Stretch"
+                                Click="OnToggleCategoryClick"
+                                Tag="{Binding}">
+                          <Grid ColumnDefinitions="Auto,*,Auto"
+                                ColumnSpacing="8">
+                            <CheckBox IsHitTestVisible="False"
+                                      IsChecked="{Binding IsVisible}" />
+                            <TextBlock Grid.Column="1"
+                                       Foreground="#DDE6F3"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="{Binding Name}" />
+                            <TextBlock Grid.Column="2"
+                                       Classes="muted"
+                                       Text="{Binding ProductCount}" />
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+          <TabItem Header="Devices">
+            <Grid Margin="12"
+                  RowDefinitions="Auto,12,*">
+              <ListBox Grid.Row="0"
+                       MaxHeight="180"
+                       ItemsSource="{Binding Devices}"
+                       SelectedItem="{Binding SelectedDevice}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:BimDeviceItem">
+                    <Grid ColumnDefinitions="*,Auto"
+                          Margin="4,3"
+                          ColumnSpacing="8">
+                      <StackPanel>
+                        <TextBlock Foreground="#E7EEF9"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="{Binding Name}" />
+                        <TextBlock Classes="muted"
+                                   FontSize="10"
+                                   Text="{Binding FloorCaption}" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1"
+                                  HorizontalAlignment="Right">
+                        <TextBlock HorizontalAlignment="Right"
+                                   Foreground="#C9D5E6"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   Text="{Binding State}" />
+                        <TextBlock HorizontalAlignment="Right"
+                                   Classes="muted"
+                                   FontSize="9"
+                                   Text="{Binding LatencyCaption}" />
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+
+              <ScrollViewer Grid.Row="2"
+                            VerticalScrollBarVisibility="Auto"
+                            IsVisible="{Binding HasSelectedDevice}">
+                <StackPanel Spacing="12">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="eyebrow" Text="DEVICE" />
+                    <TextBlock Foreground="#F1F5FB"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="{Binding SelectedDevice.Name}" />
+                    <TextBlock Classes="muted"
+                               FontSize="10"
+                               Text="{Binding SelectedDevice.Category}" />
+                  </StackPanel>
+                  <Grid ColumnDefinitions="*,*"
+                        ColumnSpacing="7">
+                    <Button Classes="bim-action"
+                            Padding="9,6"
+                            Command="{Binding BeginPlaceDeviceCommand}"
+                            IsEnabled="{Binding CanPlaceSelectedDevice}"
+                            Content="Place on model" />
+                    <Button Grid.Column="1"
+                            Classes="bim-action"
+                            Padding="9,6"
+                            Command="{Binding BeginLinkDeviceCommand}"
+                            IsEnabled="{Binding CanLinkSelectedDevice}"
+                            Content="Link IFC element" />
+                  </Grid>
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="7">
+                    <Button Name="ClearDevicePositionButton"
+                            Classes="bim-action"
+                            Padding="8,4"
+                            Command="{Binding ClearDevicePositionCommand}"
+                            IsEnabled="{Binding CanClearSelectedDevicePosition}"
+                            Content="Clear position" />
+                    <Button Name="ClearDeviceLinkButton"
+                            Classes="bim-action"
+                            Padding="8,4"
+                            Command="{Binding ClearDeviceLinkCommand}"
+                            IsEnabled="{Binding CanClearSelectedDeviceLink}"
+                            Content="Clear link" />
+                    <Button Name="DeviceFlyToButton"
+                            Classes="bim-action"
+                            Padding="8,4"
+                            Command="{Binding FocusSelectionCommand}"
+                            IsEnabled="{Binding CanFocusSelection}">
+                      <TextBlock Foreground="#E7EEF9" Text="Fly to" />
+                    </Button>
+                  </StackPanel>
+
+                  <Border Height="1" Background="#2D3A50" />
+
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="eyebrow" Text="LIVE METRIC" />
+                    <ComboBox Grid.Column="1"
+                              Width="150"
+                              ItemsSource="{Binding MetricNames}"
+                              SelectedItem="{Binding SelectedMetricName}" />
+                  </Grid>
+                  <Border Height="105"
+                          CornerRadius="7"
+                          Background="#0A1322"
+                          BorderBrush="#2C3B53"
+                          BorderThickness="1">
+                    <Grid>
+                      <bim:BimSparkline Name="TelemetrySparkline"
+                                        Points="{Binding MetricSeries.Points}" />
+                      <TextBlock HorizontalAlignment="Right"
+                                 VerticalAlignment="Top"
+                                 Margin="8"
+                                 Foreground="#DDE8F8"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding MetricSeries.LatestCaption}" />
+                    </Grid>
+                  </Border>
+
+                  <TextBlock Classes="eyebrow" Text="RECENT STATUS EVENTS" />
+                  <ItemsControl ItemsSource="{Binding StatusEvents}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BimStatusEventItem">
+                        <Grid ColumnDefinitions="Auto,*,Auto"
+                              Margin="0,0,0,5"
+                              ColumnSpacing="8">
+                          <Border Width="7"
+                                  Height="7"
+                                  CornerRadius="4"
+                                  VerticalAlignment="Center"
+                                  Background="#73839A" />
+                          <StackPanel Grid.Column="1"
+                                      Spacing="1">
+                            <TextBlock Foreground="#DDE6F3"
+                                       Text="{Binding State}" />
+                            <TextBlock Classes="muted"
+                                       FontSize="9"
+                                       Text="{Binding SourceCaption}" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="2"
+                                     Classes="muted"
+                                     FontSize="10"
+                                     Text="{Binding TimeCaption}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </ScrollViewer>
+            </Grid>
+          </TabItem>
+
+          <TabItem Header="Issues">
+            <Grid Margin="12"
+                  RowDefinitions="Auto,14,*">
+              <StackPanel Grid.Row="0"
+                          Spacing="7">
+                <TextBlock Classes="eyebrow" Text="NEW BCF ISSUE FROM VIEW" />
+                <TextBox PlaceholderText="Issue title"
+                         Text="{Binding NewIssueTitle}" />
+                <Grid ColumnDefinitions="*,Auto"
+                      ColumnSpacing="8">
+                  <ComboBox ItemsSource="{Binding IssuePriorities}"
+                            SelectedItem="{Binding NewIssuePriority}" />
+                  <Button Grid.Column="1"
+                          Name="CreateIssueButton"
+                          Classes="bim-action"
+                          Padding="11,6"
+                          Click="OnCreateIssueClick"
+                          IsEnabled="{Binding CanCreateIssue}"
+                          Content="Capture issue" />
+                </Grid>
+              </StackPanel>
+
+              <Grid Grid.Row="2"
+                    RowDefinitions="*,Auto">
+                <Grid>
+                  <ListBox ItemsSource="{Binding BcfTopics}"
+                           SelectedItem="{Binding SelectedBcfTopic}">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="api:BcfTopicSummary">
+                        <Grid ColumnDefinitions="*,Auto"
+                              Margin="4,4"
+                              ColumnSpacing="8">
+                          <StackPanel>
+                            <TextBlock Foreground="#E7EEF9"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding Title}" />
+                            <TextBlock Classes="muted"
+                                       FontSize="10"
+                                       Text="{Binding TopicStatus}" />
+                          </StackPanel>
+                          <StackPanel Grid.Column="1"
+                                      HorizontalAlignment="Right">
+                            <TextBlock HorizontalAlignment="Right"
+                                       Foreground="#C9D5E6"
+                                       FontSize="10"
+                                       FontWeight="Bold"
+                                       Text="{Binding Priority}" />
+                            <TextBlock HorizontalAlignment="Right"
+                                       Classes="muted"
+                                       FontSize="9"
+                                       Text="{Binding CommentCount}" />
+                          </StackPanel>
+                        </Grid>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <StackPanel Name="IssueEmptyState"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Spacing="5"
+                              IsHitTestVisible="False"
+                              IsVisible="{Binding HasNoBcfTopics}">
+                    <TextBlock HorizontalAlignment="Center"
+                               Foreground="#B8C5D8"
+                               FontWeight="SemiBold"
+                               Text="No saved issues" />
+                    <TextBlock MaxWidth="230"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Classes="muted"
+                               FontSize="11"
+                               Text="Name an issue above to capture this view, selection, and visibility state." />
+                  </StackPanel>
+                </Grid>
+                <Button Name="OpenIssueButton"
+                        Grid.Row="1"
+                        Margin="0,9,0,0"
+                        Classes="bim-action"
+                        Padding="10,7"
+                        Command="{Binding ApplySelectedIssueCommand}"
+                        IsEnabled="{Binding CanOpenSelectedIssue}"
+                        Content="Open saved viewpoint" />
+              </Grid>
+            </Grid>
+          </TabItem>
+        </TabControl>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

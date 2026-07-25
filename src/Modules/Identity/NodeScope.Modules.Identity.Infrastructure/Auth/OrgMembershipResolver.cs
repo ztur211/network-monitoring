@@ -28,7 +28,7 @@ internal sealed class OrgMembershipResolver : IOrgMembershipResolver
                 FROM "OrganizationMember"
                 WHERE "userId" = {userId}
                 """)
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
         return member is null
             ? null
             : new OrgMemberContext(member.MemberId, member.OrganizationId, member.Role);

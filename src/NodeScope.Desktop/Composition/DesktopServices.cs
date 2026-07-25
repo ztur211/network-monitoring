@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
+using NodeScope.Desktop.Bim;
 using NodeScope.Desktop.Logging;
 using NodeScope.Desktop.ViewModels;
 
@@ -40,6 +41,7 @@ internal static class DesktopServices
             ? new DpapiTokenVault(storage.VaultFile)
             : new PlainFileTokenVault(storage.VaultFile));
         services.AddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+        services.AddSingleton<IIfcTessellator, XbimIfcTessellator>();
         services.AddSingleton<DesktopAuthFlow>();
 
         services.AddSingleton<MainWindowViewModel>();

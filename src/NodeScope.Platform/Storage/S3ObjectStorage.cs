@@ -1,3 +1,4 @@
+using System.Net;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Transfer;
@@ -58,7 +59,7 @@ internal sealed class S3ObjectStorage : IObjectStorage
             await _s3.GetObjectMetadataAsync(_bucket, key, cancellationToken);
             return true;
         }
-        catch (AmazonS3Exception)
+        catch (AmazonS3Exception failure) when (failure.StatusCode == HttpStatusCode.NotFound)
         {
             return false;
         }

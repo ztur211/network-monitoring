@@ -1,18 +1,14 @@
 using System.Globalization;
 using System.Numerics;
 
-namespace NodeScope.Modules.Inventory.Domain.Ifc;
+namespace NodeScope.Contracts;
 
 /// <summary>
-/// The IFC <c>GlobalId</c> encoding: 128 bits written MSB-first as 22 base-64 characters (the
-/// leading character carries the leftover two bits). A real UUID encodes losslessly, so the id
-/// stays stable and reversible and AEC coordination diffs work; any other seed is folded
-/// deterministically instead. Shared because it is the only join key between BIM elements and
-/// NodeScope devices - the exporter writes it and BCF reads it back. It lives in the domain
-/// rather than in Contracts because only Inventory speaks IFC today; it moves to Contracts if
-/// the desktop client ever needs to derive the same ids.
+/// Losslessly encodes a UUID as an IFC GlobalId. Non-UUID seeds use the same
+/// deterministic 128-bit fold so every NodeScope client and exporter agrees on
+/// the durable BIM identifier for a device.
 /// </summary>
-public static class IfcGuid
+public static class IfcGlobalId
 {
     private const string Base64Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 
@@ -27,9 +23,9 @@ public static class IfcGuid
             : Fold(seed);
 
         var chars = new char[22];
-        for (var i = 21; i >= 0; i--)
+        for (var index = chars.Length - 1; index >= 0; index--)
         {
-            chars[i] = Base64Alphabet[(int)(value % 64)];
+            chars[index] = Base64Alphabet[(int)(value % 64)];
             value /= 64;
         }
 
@@ -39,7 +35,6 @@ public static class IfcGuid
     private static bool IsUuidHex(string hex) =>
         hex.Length == 32 && hex.All(Uri.IsHexDigit);
 
-    /// <summary>A 128-bit FNV-1a fold, with the seed length mixed in so equal-prefix seeds spread.</summary>
     private static BigInteger Fold(string seed)
     {
         var hash = new BigInteger(0xcbf29ce484222325UL);

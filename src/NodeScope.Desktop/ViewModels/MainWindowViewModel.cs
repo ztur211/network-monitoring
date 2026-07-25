@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Auth;
+using NodeScope.Desktop.Bim;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -25,11 +26,17 @@ internal sealed partial class MainWindowViewModel : IDisposable
     private string _status = "Not signed in";
 
     private readonly ILoggerFactory _loggers;
+    private readonly IIfcTessellator _tessellator;
 
-    public MainWindowViewModel(DesktopAuthFlow flow, SettingsStore settings, ILoggerFactory loggers)
+    public MainWindowViewModel(
+        DesktopAuthFlow flow,
+        SettingsStore settings,
+        ILoggerFactory loggers,
+        IIfcTessellator tessellator)
     {
         _flow = flow;
         _loggers = loggers;
+        _tessellator = tessellator;
         SignIn = new SignInViewModel(flow, settings);
         _content = SignIn;
         flow.StateChanged += OnStateChanged;
@@ -55,7 +62,12 @@ internal sealed partial class MainWindowViewModel : IDisposable
             && _flow.Session is { } session)
         {
             var workspace = new WorkspaceViewModel(
-                snapshot.User, snapshot.ServerUrl, _flow, session, _loggers);
+                snapshot.User,
+                snapshot.ServerUrl,
+                _flow,
+                session,
+                _loggers,
+                _tessellator);
             Content = workspace;
             Status = $"Signed in as {workspace.UserLabel} - {snapshot.ServerUrl.Host}";
             previous?.Dispose();

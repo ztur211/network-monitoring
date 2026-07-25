@@ -104,6 +104,22 @@
     <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.3" />
 
     <!--
+      Native BIM viewport (Decision 16): Avalonia owns the cross-platform GL
+      context and Silk.NET supplies the current OpenGL bindings against that
+      context. Only the binding package is needed - windowing stays Avalonia's
+      responsibility.
+    -->
+    <PackageVersion Include="Silk.NET.OpenGL" Version="2.23.0" />
+    <!--
+      Decision 16 upload tessellation. Geometry's Open Cascade engine ships
+      Windows native assets only, while Essentials and the wexBIM output remain
+      managed. Keep the prerelease geometry build exact until xBIM publishes a
+      stable netcore engine.
+    -->
+    <PackageVersion Include="Xbim.Essentials" Version="6.1.605" />
+    <PackageVersion Include="Xbim.Geometry" Version="6.3.891-netcore" />
+
+    <!--
       MVVM source generators for the desktop client. Used in attribute mode
       ([INotifyPropertyChanged] on partial classes), NOT by inheriting
       ObservableObject - Decision 6 reserves inheritance for framework

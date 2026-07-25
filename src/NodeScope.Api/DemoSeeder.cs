@@ -210,23 +210,23 @@ internal static partial class DemoSeeder
         Device NewDevice(
             string propertyId, string name, DeviceCategory category, double lat, double lon, string ip,
             string? roleCode = null, int? floor = null, string? floorLabel = null, string? notes = null) => new()
-        {
-            Id = NewId(),
-            OrganizationId = orgId,
-            UserId = ownerId,
-            NetworkId = network.Id,
-            PropertyId = propertyId,
-            Name = name,
-            Category = category,
-            Latitude = lat,
-            Longitude = lon,
-            IpAddress = ip,
-            RoleCode = roleCode,
-            Floor = floor,
-            FloorLabel = floorLabel,
-            Notes = notes,
-            UpdatedAt = Now,
-        };
+            {
+                Id = NewId(),
+                OrganizationId = orgId,
+                UserId = ownerId,
+                NetworkId = network.Id,
+                PropertyId = propertyId,
+                Name = name,
+                Category = category,
+                Latitude = lat,
+                Longitude = lon,
+                IpAddress = ip,
+                RoleCode = roleCode,
+                Floor = floor,
+                FloorLabel = floorLabel,
+                Notes = notes,
+                UpdatedAt = Now,
+            };
 
         var router = NewDevice(floor1.Id, "Core Router", DeviceCategory.Router, 40.7128, -74.006, "192.168.1.1",
             roleCode: "CORE_ROUTER", notes: "Main gateway router");

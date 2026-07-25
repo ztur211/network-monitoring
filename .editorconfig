@@ -91,7 +91,7 @@ csharp_using_directive_placement = outside_namespace:error
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 
-# --- Naming: private fields are _camelCase ----------------------------------
+# --- Naming: private instance fields are _camelCase -------------------------
 dotnet_naming_rule.private_fields_underscore.symbols = private_fields
 dotnet_naming_rule.private_fields_underscore.style = underscore_camel
 dotnet_naming_rule.private_fields_underscore.severity = error
@@ -99,8 +99,27 @@ dotnet_naming_rule.private_fields_underscore.severity = error
 dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 
+# Static fields and constants are shared type-level values. The established
+# codebase convention names both with PascalCase.
+dotnet_naming_rule.private_static_fields_pascal.symbols = private_static_fields
+dotnet_naming_rule.private_static_fields_pascal.style = pascal_case
+dotnet_naming_rule.private_static_fields_pascal.severity = error
+
+dotnet_naming_symbols.private_static_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_fields.required_modifiers = static
+
+dotnet_naming_rule.private_constants_pascal.symbols = private_constants
+dotnet_naming_rule.private_constants_pascal.style = pascal_case
+dotnet_naming_rule.private_constants_pascal.severity = error
+
+dotnet_naming_symbols.private_constants.applicable_kinds = field
+dotnet_naming_symbols.private_constants.applicable_accessibilities = private
+dotnet_naming_symbols.private_constants.required_modifiers = const
+
 dotnet_naming_style.underscore_camel.required_prefix = _
 dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_style.pascal_case.capitalization = pascal_case
 
 # --- Relaxed in test projects ------------------------------------------------
 # Test classes are instantiated by the xUnit runner and assert on values that
@@ -125,6 +144,9 @@ dotnet_diagnostic.CA1062.severity = none      # fixtures are injected by the run
 # (** with no slash so files at the project ROOT match too - "**/*.cs" requires a
 # subdirectory and silently skips MigrationsDbContext.cs.)
 [src/NodeScope.Migrations/**.cs]
+# The database-first scaffolder emits these files with a UTF-8 BOM. Match its
+# deterministic output so formatting never rewrites generated artifacts.
+charset = utf-8-bom
 dotnet_diagnostic.CA1002.severity = none      # scaffolder emits List<T> navigations
 dotnet_diagnostic.CA2227.severity = none      # scaffolder emits settable collections
 dotnet_diagnostic.CA1716.severity = none      # "Property" is the table's real name
@@ -135,6 +157,20 @@ dotnet_diagnostic.CA1861.severity = none      # scaffolder emits inline label ar
 dotnet_diagnostic.CA1062.severity = none      # OnModelCreating is invoked by EF, never null
 dotnet_diagnostic.CA1825.severity = none      # dotnet-ef emits new bool[0] in index configs
 dotnet_diagnostic.IDE0161.severity = none     # dotnet-ef emits block-scoped namespaces
+
+[src/NodeScope.Migrations/MigrationsDbContext.cs]
+dotnet_diagnostic.CS8618.severity = none      # scaffolded DbSet properties are initialized by EF
+
+# Hand-authored extensions in the migrations project follow the repository's
+# ordinary UTF-8 convention instead of the database scaffolder's output.
+[src/NodeScope.Migrations/Entities/Enums.cs]
+charset = utf-8
+
+[src/NodeScope.Migrations/MigrationsDbContext.Conventions.cs]
+charset = utf-8
+
+[src/NodeScope.Migrations/MigrationsDbContextFactory.cs]
+charset = utf-8
 
 # --- Relaxed in the desktop client --------------------------------------------
 # MVVMTK0032 pushes [INotifyPropertyChanged] users toward inheriting

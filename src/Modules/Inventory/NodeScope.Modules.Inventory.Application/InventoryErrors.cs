@@ -55,6 +55,18 @@ public static class InventoryErrors
     /// <summary>409 <c>MODEL_008</c>: a BUILDING carrying a model cannot be deleted.</summary>
     public static ApiException BuildingHasModel() => new("MODEL_008", "BUILDING_HAS_MODEL", 409);
 
+    /// <summary>404 <c>MODEL_009</c>: the IFC version has no uploaded render artifact.</summary>
+    public static ApiException ModelGeometryNotFound() =>
+        new("MODEL_009", "MODEL_GEOMETRY_NOT_FOUND", 404);
+
+    /// <summary>404 <c>MODEL_012</c>: the version predates or lacks its IFC element index.</summary>
+    public static ApiException ModelMetadataNotFound() =>
+        new("MODEL_012", "MODEL_METADATA_NOT_FOUND", 404);
+
+    /// <summary>422 <c>MODEL_013</c>: malformed or oversized IFC element metadata.</summary>
+    public static ApiException InvalidModelMetadata() =>
+        new("MODEL_013", "INVALID_MODEL_METADATA", 422);
+
     /// <summary>409 <c>PERM_005</c>: a property with team/member assignments cannot be deleted.</summary>
     public static ApiException PropertyAssigned() => new("PERM_005", "PROPERTY_ASSIGNED", 409);
 

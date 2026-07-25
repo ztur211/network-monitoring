@@ -1,9 +1,9 @@
 using System.Text.Json;
+using NodeScope.Contracts;
 using NodeScope.Contracts.Realtime;
 using NodeScope.Modules.Inventory.Application.Devices;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain.Bcf;
-using NodeScope.Modules.Inventory.Domain.Ifc;
 using NodeScope.Platform.Abstractions;
 
 namespace NodeScope.Modules.Inventory.Application.Bcf;
@@ -304,7 +304,7 @@ public sealed class BcfAccess
 
 /// <summary>
 /// Resolves BCF viewpoint components to NodeScope devices. The join key is
-/// <c>IfcGuid.Of(deviceId)</c>: the exported model carries that id on each element, so a
+/// <c>IfcGlobalId.Of(deviceId)</c>: the exported model carries that id on each element, so a
 /// coordination tool's selection comes back as an id we can map to a device.
 /// </summary>
 public sealed class BcfDeviceLinks
@@ -330,7 +330,10 @@ public sealed class BcfDeviceLinks
         }
 
         var devices = await _devices.ListAsync(organizationId, subtree, cancellationToken);
-        return devices.ToDictionary(device => IfcGuid.Of(device.Id), device => device.Id, StringComparer.Ordinal);
+        return devices.ToDictionary(
+            device => IfcGlobalId.Of(device.Id),
+            device => device.Id,
+            StringComparer.Ordinal);
     }
 
     /// <summary>The distinct device ids the given component ids resolve to.</summary>

@@ -1,7 +1,7 @@
+using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using NodeScope.Platform.Http;
-using System.Net;
 using Xunit;
 
 namespace NodeScope.Platform.Tests;

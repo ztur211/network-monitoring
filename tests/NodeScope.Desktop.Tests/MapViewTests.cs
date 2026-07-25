@@ -1,9 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Mapsui;
+using Mapsui.Projections;
 using Mapsui.Rendering;
 using Mapsui.Rendering.Skia;
-using Mapsui.Projections;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Tests.Fakes;

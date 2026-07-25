@@ -45,6 +45,129 @@ internal interface IApplianceClient : IDisposable
     /// <summary><c>PUT /api/v1/users/me/preferences</c>: replaces the shared preferences JSON.</summary>
     public Task PutPreferencesAsync(
         string bearerToken, JsonElement preferences, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/properties</c>: the member's readable property tree.</summary>
+    public Task<IReadOnlyList<PropertySummary>> GetPropertiesAsync(
+        string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/buildings/{id}/model</c>: active model metadata.</summary>
+    public Task<BuildingModelSummary> GetBuildingModelAsync(
+        string bearerToken, string propertyId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>GET /api/v1/buildings/{id}/model/active/geometry</c>: the compact,
+    /// cross-platform render artifact. The client enforces the appliance's 200 MiB
+    /// ceiling even when an intermediary strips Content-Length.
+    /// </summary>
+    public Task<byte[]> GetActiveModelGeometryAsync(
+        string bearerToken, string propertyId, CancellationToken cancellationToken);
+
+    /// <summary>The active version's express-label to IFC GlobalId/type/name index.</summary>
+    public Task<BuildingModelMetadataSummary> GetActiveModelMetadataAsync(
+        string bearerToken, string propertyId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Uploads the immutable IFC without activating it. The caller must pair the
+    /// returned version with geometry before calling <see cref="ActivateModelVersionAsync"/>.
+    /// </summary>
+    public Task<BuildingModelVersionSummary> UploadModelVersionAsync(
+        string bearerToken,
+        string propertyId,
+        string fileName,
+        Stream content,
+        CancellationToken cancellationToken);
+
+    /// <summary>Uploads the wexBIM artifact derived from an immutable IFC version.</summary>
+    public Task UploadModelGeometryAsync(
+        string bearerToken,
+        string propertyId,
+        string versionId,
+        byte[] content,
+        CancellationToken cancellationToken);
+
+    /// <summary>Uploads the product identity index extracted alongside wexBIM.</summary>
+    public Task UploadModelMetadataAsync(
+        string bearerToken,
+        string propertyId,
+        string versionId,
+        IReadOnlyList<BuildingModelElementMetadata> elements,
+        CancellationToken cancellationToken);
+
+    /// <summary>Atomically makes the fully-paired version the model shown to readers.</summary>
+    public Task<BuildingModelSummary> ActivateModelVersionAsync(
+        string bearerToken,
+        string propertyId,
+        string versionId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Compensates a failed import by removing its still-inactive version.</summary>
+    public Task DeleteModelVersionAsync(
+        string bearerToken,
+        string propertyId,
+        string versionId,
+        CancellationToken cancellationToken);
+
+    public Task<AccessSummary> GetAccessSummaryAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<BimDevice>> GetBuildingDevicesAsync(
+        string bearerToken,
+        string propertyId,
+        CancellationToken cancellationToken);
+
+    public Task<BimDevice> SetDevicePositionAsync(
+        string bearerToken,
+        string deviceId,
+        double? x,
+        double? y,
+        double? z,
+        CancellationToken cancellationToken);
+
+    public Task<BimDevice> SetDeviceIfcLinkAsync(
+        string bearerToken,
+        string deviceId,
+        string? ifcGlobalId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<BimDeviceStatus>> GetBuildingDeviceStatusAsync(
+        string bearerToken,
+        string propertyId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<string>> GetDeviceMetricNamesAsync(
+        string bearerToken,
+        string deviceId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<BimMetricPoint>> GetDeviceMetricsAsync(
+        string bearerToken,
+        string deviceId,
+        string metric,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<BimStatusEvent>> GetDeviceStatusEventsAsync(
+        string bearerToken,
+        string deviceId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
+        string bearerToken,
+        string propertyId,
+        CancellationToken cancellationToken);
+
+    public Task<BcfTopic> GetBcfTopicAsync(
+        string bearerToken,
+        string topicId,
+        CancellationToken cancellationToken);
+
+    public Task<BcfTopic> CreateBcfTopicAsync(
+        string bearerToken,
+        string propertyId,
+        CreateBcfTopic topic,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>

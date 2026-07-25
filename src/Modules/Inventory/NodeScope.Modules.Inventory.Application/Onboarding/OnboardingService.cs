@@ -208,20 +208,20 @@ public sealed class OnboardingService
                 break;
 
             case GeocodeAddressEffect geocode:
-            {
-                var coordinates = await _geocoder.GeocodeAsync(geocode.Address, cancellationToken);
-                if (coordinates is { } found)
                 {
-                    await UpsertNetworkAsync(
-                        organizationId,
-                        userId,
-                        null,
-                        network => network with { HomeLatitude = found.Latitude, HomeLongitude = found.Longitude },
-                        cancellationToken);
-                }
+                    var coordinates = await _geocoder.GeocodeAsync(geocode.Address, cancellationToken);
+                    if (coordinates is { } found)
+                    {
+                        await UpsertNetworkAsync(
+                            organizationId,
+                            userId,
+                            null,
+                            network => network with { HomeLatitude = found.Latitude, HomeLongitude = found.Longitude },
+                            cancellationToken);
+                    }
 
-                break;
-            }
+                    break;
+                }
 
             // Browser devices retired with BROWSER_CLIENT, and infrastructure devices need the
             // property context the wizard does not collect yet - both are no-ops in Node too.

@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text;
-using NodeScope.Modules.Inventory.Domain.Ifc;
+using NodeScope.Contracts;
 
 namespace NodeScope.Modules.Inventory.Domain.Export;
 
@@ -30,7 +30,7 @@ public static class Ifc2x3Writer
         ArgumentNullException.ThrowIfNull(buildingName);
         var builder = new StepBuilder();
         string Guid(string suffix = "") =>
-            $"'{IfcGuid.Of(suffix.Length == 0 ? buildingId : $"{buildingId}:{suffix}")}'";
+            $"'{IfcGlobalId.Of(suffix.Length == 0 ? buildingId : $"{buildingId}:{suffix}")}'";
 
         var person = builder.Add("IFCPERSON($,$,'NodeScope',$,$,$,$,$)");
         var organization = builder.Add("IFCORGANIZATION($,'NodeScope',$,$,$)");
@@ -84,7 +84,7 @@ public static class Ifc2x3Writer
             // The proxy carries only its native IFC GlobalId. The device association lives in
             // NodeScope's database, so no network data is ever written into the model.
             proxies.Add(builder.Add(
-                $"IFCBUILDINGELEMENTPROXY('{IfcGuid.Of(device.Id)}',{owner},{Text("Network Device")},$,$,{placement},{productDefinition},$,$)"));
+                $"IFCBUILDINGELEMENTPROXY('{IfcGlobalId.Of(device.Id)}',{owner},{Text("Network Device")},$,$,{placement},{productDefinition},$,$)"));
         }
 
         if (proxies.Count > 0)

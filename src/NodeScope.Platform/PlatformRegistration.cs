@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Npgsql;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Audit;
 using NodeScope.Platform.Data;
 using NodeScope.Platform.Geocoding;
 using NodeScope.Platform.Http;
 using NodeScope.Platform.Storage;
+using Npgsql;
 
 namespace NodeScope.Platform;
 

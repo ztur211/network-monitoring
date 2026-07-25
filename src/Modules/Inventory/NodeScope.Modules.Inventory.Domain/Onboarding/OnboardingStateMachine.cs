@@ -197,67 +197,67 @@ public static class OnboardingStateMachine
                 return Advance(progress, OnboardingStepId.NetworkName, []);
 
             case OnboardingStepId.NetworkName:
-            {
-                var name = ReadField(input, "name");
-                return name is null
-                    ? Stay(progress, stepId)
-                    : Advance(progress with { NetworkName = name }, OnboardingStepId.Address, []);
-            }
+                {
+                    var name = ReadField(input, "name");
+                    return name is null
+                        ? Stay(progress, stepId)
+                        : Advance(progress with { NetworkName = name }, OnboardingStepId.Address, []);
+                }
 
             case OnboardingStepId.Address:
-            {
-                if (IsSkip(input))
                 {
-                    return Advance(
-                        progress,
-                        OnboardingStepId.BrowserDeviceName,
-                        [new SaveNetworkEffect(progress.NetworkName!)]);
-                }
+                    if (IsSkip(input))
+                    {
+                        return Advance(
+                            progress,
+                            OnboardingStepId.BrowserDeviceName,
+                            [new SaveNetworkEffect(progress.NetworkName!)]);
+                    }
 
-                var address = ReadField(input, "address");
-                return address is null
-                    ? Stay(progress, stepId)
-                    : Advance(
-                        progress with { HomeAddress = address },
-                        OnboardingStepId.BrowserDeviceName,
-                        [
-                            new SaveNetworkEffect(progress.NetworkName!, HomeAddress: address),
+                    var address = ReadField(input, "address");
+                    return address is null
+                        ? Stay(progress, stepId)
+                        : Advance(
+                            progress with { HomeAddress = address },
+                            OnboardingStepId.BrowserDeviceName,
+                            [
+                                new SaveNetworkEffect(progress.NetworkName!, HomeAddress: address),
                             new GeocodeAddressEffect(address),
-                        ]);
-            }
+                            ]);
+                }
 
             case OnboardingStepId.BrowserDeviceName:
-            {
-                var name = ReadField(input, "name");
-                return name is null
-                    ? Stay(progress, stepId)
-                    : Advance(progress with { BrowserDeviceName = name }, OnboardingStepId.Mobility, []);
-            }
+                {
+                    var name = ReadField(input, "name");
+                    return name is null
+                        ? Stay(progress, stepId)
+                        : Advance(progress with { BrowserDeviceName = name }, OnboardingStepId.Mobility, []);
+                }
 
             case OnboardingStepId.Mobility:
-            {
-                if (input is not ChipInput chip || !MobilityValues.Contains(chip.Value, StringComparer.Ordinal))
                 {
-                    return Stay(progress, stepId);
-                }
+                    if (input is not ChipInput chip || !MobilityValues.Contains(chip.Value, StringComparer.Ordinal))
+                    {
+                        return Stay(progress, stepId);
+                    }
 
-                return Advance(
-                    progress with { Mobility = chip.Value },
-                    OnboardingStepId.ConfirmHomeIp,
-                    [new SaveBrowserDeviceEffect(progress.BrowserDeviceName!, chip.Value)]);
-            }
+                    return Advance(
+                        progress with { Mobility = chip.Value },
+                        OnboardingStepId.ConfirmHomeIp,
+                        [new SaveBrowserDeviceEffect(progress.BrowserDeviceName!, chip.Value)]);
+                }
 
             case OnboardingStepId.ConfirmHomeIp:
-            {
-                if (input is not ChipInput confirm)
                 {
-                    return Stay(progress, stepId);
-                }
+                    if (input is not ChipInput confirm)
+                    {
+                        return Stay(progress, stepId);
+                    }
 
-                return confirm.Value == "yes"
-                    ? Advance(progress, OnboardingStepId.RouterMac, [new SaveHomeIpEffect()])
-                    : Advance(progress, OnboardingStepId.RouterMac, []);
-            }
+                    return confirm.Value == "yes"
+                        ? Advance(progress, OnboardingStepId.RouterMac, [new SaveHomeIpEffect()])
+                        : Advance(progress, OnboardingStepId.RouterMac, []);
+                }
 
             case OnboardingStepId.RouterMac:
                 return HandleMacDevice(
@@ -272,41 +272,41 @@ public static class OnboardingStateMachine
                     (name, mac) => new SaveModemDeviceEffect(name, mac));
 
             case OnboardingStepId.Isp:
-            {
-                if (IsSkip(input))
                 {
-                    return Advance(progress, OnboardingStepId.Speeds, []);
-                }
+                    if (IsSkip(input))
+                    {
+                        return Advance(progress, OnboardingStepId.Speeds, []);
+                    }
 
-                var isp = ReadField(input, "isp");
-                return isp is null
-                    ? Stay(progress, stepId)
-                    : Advance(
-                        progress with { Isp = isp },
-                        OnboardingStepId.Speeds,
-                        [new SaveNetworkEffect(progress.NetworkName!, Isp: isp)]);
-            }
+                    var isp = ReadField(input, "isp");
+                    return isp is null
+                        ? Stay(progress, stepId)
+                        : Advance(
+                            progress with { Isp = isp },
+                            OnboardingStepId.Speeds,
+                            [new SaveNetworkEffect(progress.NetworkName!, Isp: isp)]);
+                }
 
             case OnboardingStepId.Speeds:
-            {
-                if (IsSkip(input))
                 {
-                    return Advance(progress, OnboardingStepId.Done, [], complete: true);
-                }
+                    if (IsSkip(input))
+                    {
+                        return Advance(progress, OnboardingStepId.Done, [], complete: true);
+                    }
 
-                var downMbps = ReadNumberField(input, "downMbps");
-                var upMbps = ReadNumberField(input, "upMbps");
-                if (downMbps is null && upMbps is null)
-                {
-                    return Stay(progress, stepId);
-                }
+                    var downMbps = ReadNumberField(input, "downMbps");
+                    var upMbps = ReadNumberField(input, "upMbps");
+                    if (downMbps is null && upMbps is null)
+                    {
+                        return Stay(progress, stepId);
+                    }
 
-                return Advance(
-                    progress with { DownMbps = downMbps, UpMbps = upMbps },
-                    OnboardingStepId.Done,
-                    [new SaveNetworkEffect(progress.NetworkName!, DownMbps: downMbps, UpMbps: upMbps)],
-                    complete: true);
-            }
+                    return Advance(
+                        progress with { DownMbps = downMbps, UpMbps = upMbps },
+                        OnboardingStepId.Done,
+                        [new SaveNetworkEffect(progress.NetworkName!, DownMbps: downMbps, UpMbps: upMbps)],
+                        complete: true);
+                }
 
             case OnboardingStepId.Done:
                 return new StepResult(OnboardingStepId.Done, progress, [], true);

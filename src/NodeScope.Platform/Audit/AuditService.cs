@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Npgsql;
 using NodeScope.Platform.Abstractions;
 using NodeScope.Platform.Http;
+using Npgsql;
 
 namespace NodeScope.Platform.Audit;
 

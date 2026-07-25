@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Npgsql;
 using NodeScope.Migrations.Entities;
+using Npgsql;
 
 namespace NodeScope.Migrations;
 
