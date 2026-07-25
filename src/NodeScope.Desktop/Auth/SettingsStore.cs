@@ -2,8 +2,12 @@ using System.Text.Json;
 
 namespace NodeScope.Desktop.Auth;
 
-/// <summary>Non-secret client settings; today just which appliance to talk to.</summary>
-internal sealed record DesktopSettings(Uri? ApplianceUrl)
+/// <summary>
+/// Non-secret client settings: which appliance to talk to, and the theme choice
+/// ("light"/"dark"; null follows the OS). Theme lives here and only here - the
+/// server's <c>/users/me/preferences</c> blob has no theme field.
+/// </summary>
+internal sealed record DesktopSettings(Uri? ApplianceUrl, string? Theme = null)
 {
     public static DesktopSettings Empty { get; } = new((Uri?)null);
 }

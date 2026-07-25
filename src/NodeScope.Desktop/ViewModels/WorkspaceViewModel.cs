@@ -21,6 +21,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     private readonly MapViewModel _map;
     private readonly BimViewerViewModel _bimViewer;
     private readonly InventoryViewModel _inventory;
+    private readonly SettingsViewModel _settings;
 
     [ObservableProperty]
     private WorkspaceSection _selectedSection;
@@ -30,6 +31,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         Uri serverUrl,
         DesktopAuthFlow flow,
         ApplianceSession session,
+        SettingsStore settingsStore,
         ILoggerFactory loggers,
         IIfcTessellator tessellator)
     {
@@ -42,6 +44,8 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             loggers.CreateLogger<BimViewerViewModel>(),
             tessellator);
         _inventory = new InventoryViewModel(session, loggers);
+        _settings = new SettingsViewModel(
+            session, user, settingsStore, loggers.CreateLogger<SettingsViewModel>());
 
         Sections =
         [
@@ -49,7 +53,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             new("3D Viewer", "Loading the native BIM viewer.", _bimViewer),
             new("Inventory", "Loading equipment, circuits and clients.", _inventory),
             new("Assistant", "Chat arrives once the client core is in place."),
-            new("Settings", "Client settings arrive here; sign-out lives in the header for now."),
+            new("Settings", "Loading settings.", _settings),
         ];
         _selectedSection = Sections[0];
     }
@@ -68,6 +72,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         _map.Dispose();
         _bimViewer.Dispose();
         _inventory.Dispose();
+        _settings.Dispose();
     }
 
     [RelayCommand]

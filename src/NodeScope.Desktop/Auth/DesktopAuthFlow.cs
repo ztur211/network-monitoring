@@ -117,7 +117,8 @@ internal sealed class DesktopAuthFlow(
             return; // an exchange is in flight; let it finish or fail first
         }
 
-        settings.Save(new DesktopSettings(serverUrl));
+        // Read-modify-write: the settings file also carries the theme choice.
+        settings.Save(settings.Load() with { ApplianceUrl = serverUrl });
         var client = UseClient(serverUrl);
 
         var pkce = Pkce.NewPair();

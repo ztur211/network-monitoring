@@ -813,6 +813,187 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
             ? Task.FromResult<IReadOnlyList<NetworkSummary>>([.. Networks])
             : Task.FromException<IReadOnlyList<NetworkSummary>>(InventoryFailure);
 
+    // --- settings ---------------------------------------------------------
+
+    public List<Agent> Agents { get; } = [];
+
+    public List<SnmpCredential> SnmpCredentials { get; } = [];
+
+    public List<OidProfileSummary> OidProfiles { get; } = [];
+
+    public List<DataSource> DataSourcesToReturn { get; } =
+        [new DataSource("browser", false, null, "Browser monitoring inactive")];
+
+    public string EnrollmentCodeToReturn { get; set; } = "code-abc123";
+
+    public Exception? SettingsFailure { get; set; }
+
+    public List<(string? Name, string? Email)> MeUpdates { get; } = [];
+
+    public List<string> GeocodedAddresses { get; } = [];
+
+    public List<string> RevokedAgentIds { get; } = [];
+
+    public List<CreateSnmpCredential> CreatedSnmpCredentials { get; } = [];
+
+    public List<string> DeletedSnmpCredentialIds { get; } = [];
+
+    public List<CreateOidProfile> CreatedOidProfiles { get; } = [];
+
+    public List<SnmpAssignment> Assignments { get; } = [];
+
+    public Task<CurrentUser> UpdateMeAsync(
+        string bearerToken, string? name, string? email, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException<CurrentUser>(SettingsFailure);
+        }
+
+        MeUpdates.Add((name, email));
+        UserToReturn = UserToReturn with
+        {
+            Name = name ?? UserToReturn.Name,
+            Email = email ?? UserToReturn.Email,
+        };
+        return Task.FromResult(UserToReturn);
+    }
+
+    public Task<HomeLocation> SetHomeLocationAsync(
+        string bearerToken, string address, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException<HomeLocation>(SettingsFailure);
+        }
+
+        GeocodedAddresses.Add(address);
+        return Task.FromResult(new HomeLocation(40.7128, -74.006, $"Resolved: {address}"));
+    }
+
+    public Task<IReadOnlyList<DataSource>> GetDataSourcesAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        SettingsFailure is null
+            ? Task.FromResult<IReadOnlyList<DataSource>>([.. DataSourcesToReturn])
+            : Task.FromException<IReadOnlyList<DataSource>>(SettingsFailure);
+
+    public Task<IReadOnlyList<Agent>> GetAgentsAsync(string bearerToken, CancellationToken cancellationToken) =>
+        SettingsFailure is null
+            ? Task.FromResult<IReadOnlyList<Agent>>([.. Agents])
+            : Task.FromException<IReadOnlyList<Agent>>(SettingsFailure);
+
+    public Task<string> CreateAgentEnrollmentCodeAsync(string bearerToken, CancellationToken cancellationToken) =>
+        SettingsFailure is null
+            ? Task.FromResult(EnrollmentCodeToReturn)
+            : Task.FromException<string>(SettingsFailure);
+
+    public Task RevokeAgentAsync(string bearerToken, string agentId, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException(SettingsFailure);
+        }
+
+        RevokedAgentIds.Add(agentId);
+        var index = Agents.FindIndex(agent => string.Equals(agent.Id, agentId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            Agents[index] = Agents[index] with { Status = "REVOKED" };
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<SnmpCredential>> GetSnmpCredentialsAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        SettingsFailure is null
+            ? Task.FromResult<IReadOnlyList<SnmpCredential>>([.. SnmpCredentials])
+            : Task.FromException<IReadOnlyList<SnmpCredential>>(SettingsFailure);
+
+    public Task<SnmpCredential> CreateSnmpCredentialAsync(
+        string bearerToken, CreateSnmpCredential credential, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException<SnmpCredential>(SettingsFailure);
+        }
+
+        CreatedSnmpCredentials.Add(credential);
+        var created = new SnmpCredential(
+            Guid.NewGuid().ToString(),
+            credential.Name,
+            credential.SnmpVersion,
+            credential.SecurityLevel,
+            credential.SecurityName,
+            credential.AuthProtocol,
+            credential.PrivProtocol,
+            credential.Community is not null,
+            credential.AuthKey is not null,
+            credential.PrivKey is not null,
+            1);
+        SnmpCredentials.Add(created);
+        return Task.FromResult(created);
+    }
+
+    public Task DeleteSnmpCredentialAsync(
+        string bearerToken, string credentialId, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException(SettingsFailure);
+        }
+
+        DeletedSnmpCredentialIds.Add(credentialId);
+        _ = SnmpCredentials.RemoveAll(candidate =>
+            string.Equals(candidate.Id, credentialId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<OidProfileSummary>> GetOidProfilesAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        SettingsFailure is null
+            ? Task.FromResult<IReadOnlyList<OidProfileSummary>>([.. OidProfiles])
+            : Task.FromException<IReadOnlyList<OidProfileSummary>>(SettingsFailure);
+
+    public Task<OidProfileSummary> CreateOidProfileAsync(
+        string bearerToken, CreateOidProfile profile, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException<OidProfileSummary>(SettingsFailure);
+        }
+
+        CreatedOidProfiles.Add(profile);
+        var created = new OidProfileSummary(
+            Guid.NewGuid().ToString(), profile.Name, profile.IncludeInterfaceMetrics, 1);
+        OidProfiles.Add(created);
+        return Task.FromResult(created);
+    }
+
+    public Task DeleteOidProfileAsync(
+        string bearerToken, string profileId, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException(SettingsFailure);
+        }
+
+        _ = OidProfiles.RemoveAll(candidate => string.Equals(candidate.Id, profileId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task<SnmpAssignment> AssignSnmpAsync(
+        string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken)
+    {
+        if (SettingsFailure is not null)
+        {
+            return Task.FromException<SnmpAssignment>(SettingsFailure);
+        }
+
+        Assignments.Add(assignment);
+        return Task.FromResult(assignment);
+    }
+
     private static string? StringOrNull(JsonElement value) =>
         value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 

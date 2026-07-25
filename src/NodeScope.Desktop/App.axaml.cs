@@ -37,6 +37,15 @@ internal sealed partial class App : Application
             var logger = _services.GetRequiredService<ILogger<App>>();
             AppLog.Starting(logger, ClientVersion, DesktopPaths.LogDirectory);
 
+            // The theme choice is local-only (settings.json); apply it before any window shows.
+            var storedTheme = _services.GetRequiredService<SettingsStore>().Load().Theme;
+            RequestedThemeVariant = storedTheme switch
+            {
+                "light" => Avalonia.Styling.ThemeVariant.Light,
+                "dark" => Avalonia.Styling.ThemeVariant.Dark,
+                _ => Avalonia.Styling.ThemeVariant.Default,
+            };
+
             SchemeRegistration.EnsureRegistered(logger);
 
             var flow = _services.GetRequiredService<DesktopAuthFlow>();

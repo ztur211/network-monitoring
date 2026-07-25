@@ -582,6 +582,79 @@ public sealed class ApplianceClientTests : IDisposable
         Assert.Equal("n1", Assert.Single(networks).Id);
     }
 
+    [Fact]
+    public async Task Update_me_sends_only_the_provided_fields()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """{"success":true,"data":{"id":"u1","email":"o@a.test","name":"New Name","tier":"FREE"},"timestamp":"t"}""");
+
+        var user = await _client.UpdateMeAsync("tok", "New Name", null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("New Name", user.Name);
+        Assert.Equal(HttpMethod.Patch, _lastRequest!.Method);
+        Assert.Equal("""{"name":"New Name"}""", _lastRequestBody);
+    }
+
+    [Fact]
+    public async Task Set_location_posts_the_address_and_reads_the_coordinates()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """{"success":true,"data":{"latitude":40.7128,"longitude":-74.006,"address":"City Hall"},"timestamp":"t"}""");
+
+        var location = await _client.SetHomeLocationAsync(
+            "tok", "260 Broadway", TestContext.Current.CancellationToken);
+
+        Assert.Equal(40.7128, location.Latitude);
+        Assert.Equal("City Hall", location.Address);
+        Assert.Equal("""{"address":"260 Broadway"}""", _lastRequestBody);
+    }
+
+    [Fact]
+    public async Task Data_sources_unwrap_the_sources_member()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """{"success":true,"data":{"sources":[{"type":"browser","connected":false,"lastSeen":null,"message":"inactive"}]},"timestamp":"t"}""");
+
+        var sources = await _client.GetDataSourcesAsync("tok", TestContext.Current.CancellationToken);
+
+        Assert.Equal("browser", Assert.Single(sources).Type);
+    }
+
+    [Fact]
+    public async Task Enrollment_code_reads_the_created_code()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.Created, """{"success":true,"data":{"code":"enroll-1"},"timestamp":"t"}""");
+
+        var code = await _client.CreateAgentEnrollmentCodeAsync("tok", TestContext.Current.CancellationToken);
+
+        Assert.Equal("enroll-1", code);
+        Assert.EndsWith(
+            "/api/v1/agents/enrollment-code", _lastRequest!.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Snmp_assign_always_serializes_both_ids_even_when_null()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """{"success":true,"data":{"targetType":"device","targetId":"d1","snmpCredentialId":null,"oidProfileId":null},"timestamp":"t"}""");
+
+        var result = await _client.AssignSnmpAsync(
+            "tok",
+            new SnmpAssignment("device", "d1", null, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(result.SnmpCredentialId);
+        // Absent members are a validation error server-side; nulls must ride explicitly.
+        Assert.Equal(
+            """{"targetType":"device","targetId":"d1","snmpCredentialId":null,"oidProfileId":null}""",
+            _lastRequestBody);
+    }
+
     private static HttpResponseMessage Envelope(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

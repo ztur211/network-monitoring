@@ -209,6 +209,66 @@ internal interface IApplianceClient : IDisposable
     public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
         string bearerToken, CancellationToken cancellationToken);
 
+    // --- settings ---------------------------------------------------------
+
+    /// <summary>
+    /// <c>PATCH /api/v1/users/me</c>. Only the provided fields ride (null = unchanged);
+    /// a taken email is <c>AUTH_005</c>.
+    /// </summary>
+    public Task<CurrentUser> UpdateMeAsync(
+        string bearerToken, string? name, string? email, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/users/location</c> with an address; the appliance geocodes it
+    /// (Nominatim). An unresolvable address is <c>MAP_001</c>.
+    /// </summary>
+    public Task<HomeLocation> SetHomeLocationAsync(
+        string bearerToken, string address, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/users/me/data-sources</c>.</summary>
+    public Task<IReadOnlyList<DataSource>> GetDataSourcesAsync(
+        string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/agents</c> (OWNER/ADMIN).</summary>
+    public Task<IReadOnlyList<Agent>> GetAgentsAsync(string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/agents/enrollment-code</c>: mints a one-time pairing code.</summary>
+    public Task<string> CreateAgentEnrollmentCodeAsync(string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/agents/{id}/revoke</c>.</summary>
+    public Task RevokeAgentAsync(string bearerToken, string agentId, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/snmp/credentials</c> (OWNER/ADMIN, like all of /snmp).</summary>
+    public Task<IReadOnlyList<SnmpCredential>> GetSnmpCredentialsAsync(
+        string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/snmp/credentials</c>.</summary>
+    public Task<SnmpCredential> CreateSnmpCredentialAsync(
+        string bearerToken, CreateSnmpCredential credential, CancellationToken cancellationToken);
+
+    /// <summary><c>DELETE /api/v1/snmp/credentials/{id}</c>. Assigned anywhere = 409 <c>SNMP_003</c>.</summary>
+    public Task DeleteSnmpCredentialAsync(
+        string bearerToken, string credentialId, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/snmp/oid-profiles</c>.</summary>
+    public Task<IReadOnlyList<OidProfileSummary>> GetOidProfilesAsync(
+        string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/snmp/oid-profiles</c>.</summary>
+    public Task<OidProfileSummary> CreateOidProfileAsync(
+        string bearerToken, CreateOidProfile profile, CancellationToken cancellationToken);
+
+    /// <summary><c>DELETE /api/v1/snmp/oid-profiles/{id}</c>. Assigned anywhere = 409 <c>SNMP_003</c>.</summary>
+    public Task DeleteOidProfileAsync(
+        string bearerToken, string profileId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/snmp/assign</c>. Both assignment ids are always serialized -
+    /// null unassigns, absence would be a validation error.
+    /// </summary>
+    public Task<SnmpAssignment> AssignSnmpAsync(
+        string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken);
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,

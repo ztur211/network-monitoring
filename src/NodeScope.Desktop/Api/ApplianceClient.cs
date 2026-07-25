@@ -529,6 +529,113 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
         string bearerToken, CancellationToken cancellationToken) =>
         GetDataListAsync<NetworkSummary>("api/v1/networks", bearerToken, cancellationToken);
 
+    public Task<CurrentUser> UpdateMeAsync(
+        string bearerToken, string? name, string? email, CancellationToken cancellationToken)
+    {
+        // Only changed fields ride, like the web client: the server treats an absent
+        // member and a null member the same, but sending less is truer to intent.
+        var body = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (name is not null)
+        {
+            body["name"] = name;
+        }
+
+        if (email is not null)
+        {
+            body["email"] = email;
+        }
+
+        return SendJsonAsync<Dictionary<string, string>, CurrentUser>(
+            HttpMethod.Patch, "api/v1/users/me", bearerToken, body, cancellationToken);
+    }
+
+    public Task<HomeLocation> SetHomeLocationAsync(
+        string bearerToken, string address, CancellationToken cancellationToken) =>
+        SendJsonAsync<SetLocationRequest, HomeLocation>(
+            HttpMethod.Post, "api/v1/users/location", bearerToken, new SetLocationRequest(address), cancellationToken);
+
+    public async Task<IReadOnlyList<DataSource>> GetDataSourcesAsync(
+        string bearerToken, CancellationToken cancellationToken)
+    {
+        var wrapper = await GetDataAsync<DataSourcesResponse>(
+            "api/v1/users/me/data-sources", bearerToken, cancellationToken);
+        return wrapper.Sources;
+    }
+
+    public Task<IReadOnlyList<Agent>> GetAgentsAsync(string bearerToken, CancellationToken cancellationToken) =>
+        GetDataListAsync<Agent>("api/v1/agents", bearerToken, cancellationToken);
+
+    public async Task<string> CreateAgentEnrollmentCodeAsync(
+        string bearerToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, new Uri("api/v1/agents/enrollment-code", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+        return data.TryGetProperty("code", out var code) && code.GetString() is { Length: > 0 } value
+            ? value
+            : throw new ApplianceApiException(
+                ApplianceApiException.ProtocolErrorCode,
+                "The enrollment-code response carried no code.",
+                (int)response.StatusCode);
+    }
+
+    public async Task RevokeAgentAsync(string bearerToken, string agentId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri($"api/v1/agents/{Uri.EscapeDataString(agentId)}/revoke", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<SnmpCredential>> GetSnmpCredentialsAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        GetDataListAsync<SnmpCredential>("api/v1/snmp/credentials", bearerToken, cancellationToken);
+
+    public Task<SnmpCredential> CreateSnmpCredentialAsync(
+        string bearerToken, CreateSnmpCredential credential, CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateSnmpCredential, SnmpCredential>(
+            HttpMethod.Post, "api/v1/snmp/credentials", bearerToken, credential, cancellationToken);
+
+    public async Task DeleteSnmpCredentialAsync(
+        string bearerToken, string credentialId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete,
+            new Uri($"api/v1/snmp/credentials/{Uri.EscapeDataString(credentialId)}", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<OidProfileSummary>> GetOidProfilesAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        GetDataListAsync<OidProfileSummary>("api/v1/snmp/oid-profiles", bearerToken, cancellationToken);
+
+    public Task<OidProfileSummary> CreateOidProfileAsync(
+        string bearerToken, CreateOidProfile profile, CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateOidProfile, OidProfileSummary>(
+            HttpMethod.Post, "api/v1/snmp/oid-profiles", bearerToken, profile, cancellationToken);
+
+    public async Task DeleteOidProfileAsync(
+        string bearerToken, string profileId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete,
+            new Uri($"api/v1/snmp/oid-profiles/{Uri.EscapeDataString(profileId)}", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    public Task<SnmpAssignment> AssignSnmpAsync(
+        string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken) =>
+        SendJsonAsync<SnmpAssignment, SnmpAssignment>(
+            HttpMethod.Post, "api/v1/snmp/assign", bearerToken, assignment, cancellationToken);
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,
@@ -713,4 +820,8 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
 
     /// <summary>The shared optimistic-concurrency PATCH body.</summary>
     private sealed record ChangesetBody(int BaseVersion, IReadOnlyList<FieldChange> Changes);
+
+    private sealed record SetLocationRequest(string Address);
+
+    private sealed record DataSourcesResponse(IReadOnlyList<DataSource> Sources);
 }

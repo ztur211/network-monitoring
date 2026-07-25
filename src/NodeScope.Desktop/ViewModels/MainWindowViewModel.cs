@@ -27,6 +27,7 @@ internal sealed partial class MainWindowViewModel : IDisposable
 
     private readonly ILoggerFactory _loggers;
     private readonly IIfcTessellator _tessellator;
+    private readonly SettingsStore _settings;
 
     public MainWindowViewModel(
         DesktopAuthFlow flow,
@@ -37,6 +38,7 @@ internal sealed partial class MainWindowViewModel : IDisposable
         _flow = flow;
         _loggers = loggers;
         _tessellator = tessellator;
+        _settings = settings;
         SignIn = new SignInViewModel(flow, settings);
         _content = SignIn;
         flow.StateChanged += OnStateChanged;
@@ -66,6 +68,7 @@ internal sealed partial class MainWindowViewModel : IDisposable
                 snapshot.ServerUrl,
                 _flow,
                 session,
+                _settings,
                 _loggers,
                 _tessellator);
             Content = workspace;
