@@ -88,6 +88,22 @@
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.0" />
 
     <!--
+      Map stack for the desktop client (Decision 15): Mapsui composites the
+      appliance-rasterized liberty tiles with native overlay layers.
+      Mapsui.Avalonia targets Avalonia 12 and pulls Mapsui/Tiling/Rendering.Skia
+      + BruTile. TRAP from the spike: on Linux the SkiaSharp/HarfBuzzSharp
+      NATIVE assets must be pinned to the exact managed versions in the graph -
+      unpinned they resolve to mismatched natives that fail at runtime. The
+      managed SkiaSharp here is 3.119.4 (Avalonia 12.1 lifts it above Mapsui's
+      3.119.2), so the Linux natives pin follows the RESOLVED graph, not
+      Mapsui's floor. Re-check `dotnet list package` with the transitive flag
+      whenever Avalonia or Mapsui move.
+    -->
+    <PackageVersion Include="Mapsui.Avalonia" Version="5.1.0" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+    <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.3" />
+
+    <!--
       MVVM source generators for the desktop client. Used in attribute mode
       ([INotifyPropertyChanged] on partial classes), NOT by inheriting
       ObservableObject - Decision 6 reserves inheritance for framework

@@ -4,6 +4,7 @@
 # self-hosted site server (deploy/docker-compose.prod.yml).
 #
 #   ./deploy/nodescope.sh install       # generate secrets, detect LAN IP, bring the stack up, smoke-test
+#   ./deploy/nodescope.sh tiles         # build the map-tile region extract (TILES_AREA/TILES_BBOX in .env)
 #   ./deploy/nodescope.sh reconfigure   # re-detect / change the LAN origin, then restart (no rebuild)
 #   ./deploy/nodescope.sh status        # docker compose ps
 #   ./deploy/nodescope.sh logs [svc]    # tail logs
@@ -60,6 +61,10 @@ ensure_env() {
   [ -n "$(get_kv WEB_PORT)" ]              || set_kv WEB_PORT "${WEB_PORT_DEFAULT}"
   [ -n "$(get_kv AI_PROVIDER)" ]           || set_kv AI_PROVIDER claude
   grep -q '^ANTHROPIC_API_KEY=' "${ENV_FILE}" || set_kv ANTHROPIC_API_KEY ""
+  # Map region (Decision 15): defaults cover the demo seed's NYC devices.
+  # TILES_BBOX may be legitimately empty (= the whole TILES_AREA), so only seed it.
+  [ -n "$(get_kv TILES_AREA)" ]            || set_kv TILES_AREA new-york
+  grep -q '^TILES_BBOX=' "${ENV_FILE}"     || set_kv TILES_BBOX "-74.28,40.48,-73.65,40.95"
   chmod 600 "${ENV_FILE}"
 }
 
@@ -93,11 +98,12 @@ preflight() {
 }
 
 cmd_install() {
-  local origin=""
+  local origin="" tiles=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
       --web-port) [ $# -ge 2 ] || die "--web-port requires a value"; set_kv WEB_PORT "$2"; shift 2 ;;
+      --no-tiles) tiles=0; shift ;;
       *) die "unknown install option: $1" ;;
     esac
   done
@@ -108,19 +114,73 @@ cmd_install() {
   [ "$(printf '%s' "${key}" | base64 -d 2>/dev/null | wc -c)" -eq 32 ] \
     || die "SECRET_ENCRYPTION_KEY must decode to 32 bytes"
   log "pulling images…"; compose pull
+  # Region build BEFORE up: the tiles service only registers the liberty style
+  # when region.mbtiles exists (it stays healthy but 404s styles without it),
+  # and the smoke test asserts the style is served. Idempotent re-installs skip
+  # this instantly when the extract is already on the volume.
+  if [ "${tiles}" -eq 1 ]; then
+    cmd_tiles
+  else
+    log "skipped map tiles (--no-tiles); run './deploy/nodescope.sh tiles' later"
+  fi
   log "starting the stack…"; compose up -d --wait
   local origin_url; origin_url="$(get_kv PUBLIC_ORIGIN)"
   log "running smoke test…"
-  smoke_test "${origin_url}"
+  smoke_test "${origin_url}" "${tiles}"
   log "NodeScope is up at ${origin_url}"
   log "create your first account there, then point the desktop app at ${origin_url}/api"
+}
+
+# Build the map-tile region extract (Decision 15). One-shot planetiler run that
+# writes region.mbtiles onto the tiledata volume; idempotent - an existing
+# extract is kept unless --rebuild. The tiles service picks the file up on
+# restart, which this handles when the service is running.
+cmd_tiles() {
+  local rebuild=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --rebuild) rebuild=1; shift ;;
+      *) die "unknown tiles option: $1" ;;
+    esac
+  done
+  [ -f "${ENV_FILE}" ] || die "no ${ENV_FILE}; run 'install' first"
+  local area bbox
+  area="$(get_kv TILES_AREA)"
+  bbox="$(get_kv TILES_BBOX)"
+  [ -n "${area}" ] || die "TILES_AREA is empty; set a Geofabrik slug in ${ENV_FILE}"
+
+  if [ "${rebuild}" -eq 0 ] && tiles_extract_exists; then
+    log "map tiles: region.mbtiles already on the tiledata volume (use 'tiles --rebuild' to regenerate)"
+    return 0
+  fi
+
+  log "map tiles: building '${area}'${bbox:+ (bbox ${bbox})} - downloads OSM data once, takes minutes…"
+  local -a args=(--download --area="${area}" --output=/data/region.mbtiles --force)
+  [ -n "${bbox}" ] && args+=(--bounds="${bbox}")
+  compose --profile tilesbuild run --rm tiles-build "${args[@]}" \
+    || die "map tiles: planetiler failed (see output above)"
+  # Drop planetiler's source downloads + scratch space - only the extract serves.
+  compose --profile tilesbuild run --rm --entrypoint /bin/sh tiles-build \
+    -c 'rm -rf /data/sources /data/data /data/tmp' >/dev/null
+  # A running tiles service registers the new mbtiles on restart.
+  if [ -n "$(compose ps -q tiles 2>/dev/null)" ]; then
+    compose restart tiles >/dev/null
+  fi
+  log "map tiles: region extract ready"
+}
+
+# True if the tiledata volume already carries region.mbtiles. Probed with the
+# tiles image (its runtime is node; the entrypoint is bypassed so nothing serves).
+tiles_extract_exists() {
+  compose run --rm --no-deps --entrypoint node tiles \
+    -e "process.exit(require('fs').existsSync('/data/region.mbtiles') ? 0 : 1)" >/dev/null 2>&1
 }
 
 # End-to-end reachability through the real origin (Caddy -> API / static files) -
 # what the containers' own healthchecks cannot see. curl-only, so the appliance
 # host needs no toolchain. Exits via die on the first failed check.
 smoke_test() {
-  local origin="$1"
+  local origin="$1" tiles="${2:-1}"
   local body
 
   # API readiness through the proxy.
@@ -140,6 +200,17 @@ smoke_test() {
   curl -fsS "${origin}/__catchall_smoke" | grep -qi "<html" \
     || die "smoke: SPA catchall did not serve index.html"
   log "  ✔ Web SPA catchall"
+
+  # Tileserver alive through the proxy; the style only registers once the
+  # region extract exists, so that check is skipped on --no-tiles installs.
+  curl -fsS "${origin}/tiles/health" >/dev/null \
+    || die "smoke: ${origin}/tiles/health is not answering"
+  log "  ✔ Tiles /tiles/health"
+  if [ "${tiles}" -eq 1 ]; then
+    curl -fsS "${origin}/tiles/styles/liberty/style.json" | grep -q "NodeScope Liberty" \
+      || die "smoke: /tiles/styles/liberty/style.json did not serve the product style"
+    log "  ✔ Tiles liberty style"
+  fi
 }
 
 cmd_reconfigure() {
@@ -163,12 +234,13 @@ cmd_logs() { compose logs "$@"; }
 cmd_up() { compose up -d --wait; }
 cmd_down() { compose down; }
 
-usage() { sed -n '2,12p' "${BASH_SOURCE[0]}"; }
+usage() { sed -n '2,13p' "${BASH_SOURCE[0]}"; }
 
 main() {
   local sub="${1:-}"; shift || true
   case "${sub}" in
     install)     cmd_install "$@" ;;
+    tiles)       cmd_tiles "$@" ;;
     reconfigure) cmd_reconfigure "$@" ;;
     status)      cmd_status "$@" ;;
     logs)        cmd_logs "$@" ;;

@@ -20,6 +20,14 @@
 		reverse_proxy {$API_UPSTREAM:api:3000}
 	}
 
+	# Map tiles (Decision 15): server-rasterized liberty tiles from tileserver-gl,
+	# so the desktop map needs zero WAN at runtime. handle_path strips the /tiles
+	# prefix - the client fetches /tiles/styles/liberty/{z}/{x}/{y}.png and the
+	# tileserver sees /styles/... at its root.
+	handle_path /tiles/* {
+		reverse_proxy {$TILES_UPSTREAM:tiles:8080}
+	}
+
 	# Agent distribution (Decision 13): binaries, manifest, and installers baked
 	# into this image at /srv/agent, staged by scripts/agent-release/build.sh.
 	# A dedicated handle so a missing file 404s - the agent's update check must

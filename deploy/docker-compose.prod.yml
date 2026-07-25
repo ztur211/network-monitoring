@@ -120,6 +120,55 @@ services:
       start_period: 60s
       retries: 5
 
+  # Map tiles (Decision 15): tileserver-gl (MapLibre GL Native) rasterizes the
+  # liberty style from an OpenMapTiles-schema region extract, so the desktop map
+  # fetches every tile from THIS box - zero WAN at runtime, per the local-first
+  # rule. Styles/glyphs/sprites are baked into the image (deploy/tiles/); the
+  # region extract lives on the tiledata volume and is produced once at install
+  # by `nodescope.sh tiles` (the tiles-build one-shot below).
+  tiles:
+    image: ghcr.io/ztur211/nodescope-tiles:${NODESCOPE_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # Rendering is the memory hog here: each pooled MapLibre renderer holds
+          # style + fonts + the tiles it rasterizes. Pool sizes are capped in
+          # deploy/tiles/config.json to fit this budget.
+          memory: ${TILES_MEMORY_LIMIT:-768m}
+          cpus: "${TILES_CPU_LIMIT:-1.0}"
+    volumes:
+      - tiledata:/data
+    healthcheck:
+      # The base image ships no curl/wget; node is the app runtime, so it probes itself.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # One-shot region-extract builder, run by `nodescope.sh tiles` (never `up`):
+  # planetiler downloads the OSM area and writes /data/region.mbtiles onto the
+  # tiledata volume. Profiled out of normal lifecycle commands; arguments are
+  # passed by nodescope.sh, so the command here is only the no-args default.
+  tiles-build:
+    image: ghcr.io/onthegomap/planetiler:0.10.2
+    profiles: ["tilesbuild"]
+    restart: "no"
+    logging: *default-logging
+    environment:
+      # Cap the JVM heap below the container limit; planetiler needs the gap for
+      # off-heap buffers. Both scale together via TILES_BUILD_* in deploy/.env.
+      JAVA_TOOL_OPTIONS: "-Xmx${TILES_BUILD_HEAP:-2g}"
+    deploy:
+      resources:
+        limits:
+          memory: ${TILES_BUILD_MEMORY_LIMIT:-3g}
+          cpus: "${TILES_BUILD_CPU_LIMIT:-2.0}"
+    volumes:
+      - tiledata:/data
+
   web:
     # Origin-agnostic image (same-origin at runtime - see apps/web/lib/api-base.ts),
     # so no PUBLIC_ORIGIN is baked and no rebuild is needed on IP change.
@@ -166,3 +215,4 @@ services:
 volumes:
   pgdata:
   blobstore:
+  tiledata:

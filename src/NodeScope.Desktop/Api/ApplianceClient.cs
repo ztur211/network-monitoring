@@ -61,6 +61,84 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
         await ReadEnvelopeDataAsync(response, cancellationToken);
     }
 
+    public async Task<bool> ProbeTilesAsync(CancellationToken cancellationToken)
+    {
+        // Plain reachability, no envelope: the tile server speaks raw HTTP behind /tiles.
+        using var response = await http.GetAsync(
+            new Uri("tiles/styles/liberty/style.json", UriKind.Relative),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
+
+    public Task<IReadOnlyList<MapDevice>> GetDevicesAsync(string bearerToken, CancellationToken cancellationToken) =>
+        GetItemsAsync<MapDevice>("api/v1/devices", bearerToken, cancellationToken);
+
+    public Task<IReadOnlyList<MapDevice>> GetMapDevicesAsync(
+        string bearerToken, MapBbox bbox, int? floor, CancellationToken cancellationToken)
+    {
+        var query = $"api/v1/map/devices?bbox={Uri.EscapeDataString(bbox.ToString())}";
+        if (floor is { } f)
+        {
+            query += $"&floor={f}";
+        }
+
+        return GetItemsAsync<MapDevice>(query, bearerToken, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<MapFiberRun>> GetMapFiberRunsAsync(
+        string bearerToken, MapBbox bbox, CancellationToken cancellationToken) =>
+        GetItemsAsync<MapFiberRun>(
+            $"api/v1/map/fiber-runs?bbox={Uri.EscapeDataString(bbox.ToString())}", bearerToken, cancellationToken);
+
+    public async Task<JsonElement?> GetPreferencesAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        using var request = AuthorizedGet("api/v1/users/me/preferences", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+
+        return data.ValueKind == JsonValueKind.Object
+            && data.TryGetProperty("preferences", out var preferences)
+            && preferences.ValueKind == JsonValueKind.Object
+            ? preferences.Clone()
+            : null;
+    }
+
+    public async Task PutPreferencesAsync(
+        string bearerToken, JsonElement preferences, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put, new Uri("api/v1/users/me/preferences", UriKind.Relative))
+        {
+            Content = JsonContent.Create(preferences, options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    /// <summary>Shared shape of the list endpoints: envelope <c>data.items</c> as a typed list.</summary>
+    private async Task<IReadOnlyList<T>> GetItemsAsync<T>(
+        string relativeUrl, string bearerToken, CancellationToken cancellationToken)
+    {
+        using var request = AuthorizedGet(relativeUrl, bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+
+        return data.ValueKind == JsonValueKind.Object && data.TryGetProperty("items", out var items)
+            ? items.Deserialize<IReadOnlyList<T>>(Json) ?? []
+            : throw new ApplianceApiException(
+                ApplianceApiException.ProtocolErrorCode,
+                $"The {relativeUrl} response carried no items.", (int)response.StatusCode);
+    }
+
+    private static HttpRequestMessage AuthorizedGet(string relativeUrl, string bearerToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, new Uri(relativeUrl, UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        return request;
+    }
+
     /// <summary>Returns the envelope's <c>data</c>, or throws the envelope's error.</summary>
     private static async Task<JsonElement> ReadEnvelopeDataAsync(
         HttpResponseMessage response, CancellationToken cancellationToken)

@@ -25,6 +25,10 @@
     <!-- Bundled UI font: identical text rendering on every OS instead of host-font fallback. -->
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- Decision 15: the map view. Natives pinned for Linux - see Directory.Packages.props. -->
+    <PackageReference Include="Mapsui.Avalonia" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <!-- Decision 17: the Windows token vault wraps the entry with per-user DPAPI. -->

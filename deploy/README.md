@@ -27,6 +27,10 @@ LAN, create the first account, and point the desktop app at
 - **The IP changed?** `./deploy/nodescope.sh reconfigure` — no rebuild.
 - **Fixed origin / HTTPS?** `./deploy/nodescope.sh install --origin https://nodescope.example.com`.
 - **Everyday ops:** `./deploy/nodescope.sh status | logs | up | down`.
+- **Map tiles:** install also builds the local basemap for `TILES_AREA`/`TILES_BBOX`
+  (defaults: New York / NYC) so map tiles never leave the box at runtime — see
+  `deploy/tiles/README.md`. Changed the region in `deploy/.env`? Run
+  `./deploy/nodescope.sh tiles --rebuild`. Skip at install with `--no-tiles`.
 
 The sections below cover manual setup, remote access (Tailscale / Cloudflare
 Tunnel), and the optional cloud deploy — none of which a LAN appliance needs.

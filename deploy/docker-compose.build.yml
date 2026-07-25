@@ -20,3 +20,8 @@ services:
       args:
         # Empty = same-origin at runtime (the appliance default).
         EXPO_PUBLIC_API_URL: ""
+  tiles:
+    build:
+      # Self-contained context: the image bakes only style/font/sprite assets
+      # (fetched at build) and deploy/tiles' own config - nothing from the repo root.
+      context: tiles

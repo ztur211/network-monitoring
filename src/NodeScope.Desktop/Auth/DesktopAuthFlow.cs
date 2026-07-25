@@ -60,6 +60,13 @@ internal sealed class DesktopAuthFlow(
 
     public SessionSnapshot Current { get; private set; } = SessionSnapshot.SignedOut();
 
+    /// <summary>
+    /// The live client + Bearer credential while <see cref="Current"/> is SignedIn; null
+    /// otherwise. Feature view models (map, inventory, …) call the API through this
+    /// instead of re-reading the vault per request.
+    /// </summary>
+    public ApplianceSession? Session { get; private set; }
+
     public event EventHandler? StateChanged;
 
     public void Dispose() => _client?.Dispose();
@@ -79,6 +86,7 @@ internal sealed class DesktopAuthFlow(
         {
             var user = await client.GetCurrentUserAsync(entry.Token, cancellationToken);
             AuthLog.SessionRestored(logger, user.Email, entry.ServerUrl);
+            Session = new ApplianceSession(client, entry.Token);
             Publish(new SessionSnapshot(SessionPhase.SignedIn, entry.ServerUrl, user, null));
         }
         catch (ApplianceApiException failure) when (failure.Status == 401)
@@ -176,6 +184,7 @@ internal sealed class DesktopAuthFlow(
 
             var user = await pending.Client.GetCurrentUserAsync(token, cancellationToken);
             AuthLog.SignedIn(logger, user.Email, pending.Client.BaseUrl);
+            Session = new ApplianceSession(pending.Client, token);
             Publish(new SessionSnapshot(SessionPhase.SignedIn, pending.Client.BaseUrl, user, null));
         }
         catch (ApplianceApiException failure)
@@ -228,6 +237,11 @@ internal sealed class DesktopAuthFlow(
 
     private void Publish(SessionSnapshot snapshot)
     {
+        if (snapshot.Phase != SessionPhase.SignedIn)
+        {
+            Session = null; // invariant: a session exists exactly while signed in
+        }
+
         Current = snapshot;
         StateChanged?.Invoke(this, EventArgs.Empty);
     }

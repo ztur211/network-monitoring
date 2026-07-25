@@ -1,0 +1,27 @@
+{
+  "options": {
+    "paths": {
+      "fonts": "/assets/fonts",
+      "sprites": "/assets/sprites",
+      "styles": "/assets/styles",
+      "mbtiles": "/data",
+      "pmtiles": "/data"
+    },
+    "minRendererPoolSizes": [1, 1],
+    "maxRendererPoolSizes": [4, 2],
+    "serveStaticMaps": false
+  },
+  "styles": {
+    "liberty": {
+      "style": "liberty.json"
+    },
+    "liberty-nobuildings": {
+      "style": "liberty-nobuildings.json"
+    }
+  },
+  "data": {
+    "region": {
+      "mbtiles": "region.mbtiles"
+    }
+  }
+}

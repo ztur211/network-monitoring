@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Auth;
 
 namespace NodeScope.Desktop.ViewModels;
@@ -23,9 +24,12 @@ internal sealed partial class MainWindowViewModel : IDisposable
     [ObservableProperty]
     private string _status = "Not signed in";
 
-    public MainWindowViewModel(DesktopAuthFlow flow, SettingsStore settings)
+    private readonly ILoggerFactory _loggers;
+
+    public MainWindowViewModel(DesktopAuthFlow flow, SettingsStore settings, ILoggerFactory loggers)
     {
         _flow = flow;
+        _loggers = loggers;
         SignIn = new SignInViewModel(flow, settings);
         _content = SignIn;
         flow.StateChanged += OnStateChanged;
@@ -34,22 +38,33 @@ internal sealed partial class MainWindowViewModel : IDisposable
 
     public SignInViewModel SignIn { get; }
 
-    public void Dispose() => _flow.StateChanged -= OnStateChanged;
+    public void Dispose()
+    {
+        _flow.StateChanged -= OnStateChanged;
+        (Content as IDisposable)?.Dispose();
+    }
 
     private void OnStateChanged(object? sender, EventArgs e) => Apply(_flow.Current);
 
     private void Apply(SessionSnapshot snapshot)
     {
-        if (snapshot is { Phase: SessionPhase.SignedIn, User: not null, ServerUrl: not null })
+        // A replaced workspace releases its feature view models (map layers, timers).
+        var previous = Content as WorkspaceViewModel;
+
+        if (snapshot is { Phase: SessionPhase.SignedIn, User: not null, ServerUrl: not null }
+            && _flow.Session is { } session)
         {
-            var workspace = new WorkspaceViewModel(snapshot.User, snapshot.ServerUrl, _flow);
+            var workspace = new WorkspaceViewModel(
+                snapshot.User, snapshot.ServerUrl, _flow, session, _loggers);
             Content = workspace;
             Status = $"Signed in as {workspace.UserLabel} - {snapshot.ServerUrl.Host}";
+            previous?.Dispose();
             return;
         }
 
         SignIn.Apply(snapshot);
         Content = SignIn;
+        previous?.Dispose();
         Status = snapshot.Phase switch
         {
             SessionPhase.WaitingForBrowser => "Waiting for the browser sign-in…",

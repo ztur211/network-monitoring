@@ -1,0 +1,207 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=Mapsui.UI.Avalonia"
+             x:Class="NodeScope.Desktop.Views.MapView"
+             x:DataType="vm:MapViewModel">
+
+  <Panel>
+
+    <mapsui:MapControl Name="MapHost" />
+
+    <!-- Status banners: tiles missing (amber) and data errors, top center. -->
+    <StackPanel HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,12,0,0"
+                Spacing="6">
+      <Border Name="TilesBanner"
+              IsVisible="{Binding TilesUnavailable}"
+              Background="#f59e0b"
+              CornerRadius="6"
+              Padding="12,6">
+        <TextBlock Foreground="#78350f"
+                   FontSize="12"
+                   FontWeight="Medium"
+                   Text="Map tiles unavailable - device markers still shown" />
+      </Border>
+      <Border Name="DataErrorBanner"
+              IsVisible="{Binding DataError, Converter={x:Static ObjectConverters.IsNotNull}}"
+              Background="#fef2f2"
+              BorderBrush="#fca5a5"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="12,6">
+        <TextBlock Foreground="#991b1b"
+                   FontSize="12"
+                   Text="{Binding DataError}" />
+      </Border>
+    </StackPanel>
+
+    <!-- Layers panel, bottom-left (web MapControls parity). -->
+    <Border Name="LayersPanel"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Margin="12,0,0,32"
+            MinWidth="170"
+            MaxHeight="380"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="0">
+      <StackPanel>
+        <ToggleButton Name="LayersExpander"
+                      IsChecked="{Binding LayersExpanded}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      Padding="12,8">
+          <StackPanel>
+            <TextBlock Text="SHOWING"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       Opacity="0.55" />
+            <TextBlock Text="{Binding ZoomLabel}"
+                       FontSize="13"
+                       FontWeight="Medium" />
+          </StackPanel>
+        </ToggleButton>
+        <ScrollViewer MaxHeight="290"
+                      IsVisible="{Binding LayersExpanded}">
+          <StackPanel Margin="12,0,12,8">
+            <TextBlock Text="BASE MAP"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       Opacity="0.55"
+                       Margin="0,6,0,2" />
+            <CheckBox Name="BuildingsToggle"
+                      IsChecked="{Binding BuildingsVisible}"
+                      Content="Buildings"
+                      FontSize="12"
+                      MinHeight="26"
+                      Padding="6,0,0,0" />
+            <ItemsControl ItemsSource="{Binding CategoryGroups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CategoryGroup">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Opacity="0.55"
+                               Margin="0,8,0,2" />
+                    <ItemsControl ItemsSource="{Binding Toggles}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CategoryToggle">
+                          <CheckBox IsChecked="{Binding IsEnabled}"
+                                    FontSize="12"
+                                    MinHeight="26"
+                                    Padding="6,0,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                              <TextBlock Text="{Binding Info.DisplayName}" FontSize="12" />
+                              <TextBlock Text="{Binding ZoomHint}"
+                                         FontSize="10"
+                                         Opacity="0.45"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+                          </CheckBox>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </StackPanel>
+    </Border>
+
+    <!-- Floor selector, right side (web FloorSelector parity). Hidden until any
+         device carries a floor (the list always holds the "All floors" entry). -->
+    <Border Name="FloorPanel"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Margin="0,0,12,0"
+            IsVisible="{Binding HasFloors}"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="8">
+      <StackPanel Spacing="6" MinWidth="96">
+        <Button Name="FloorModeButton"
+                Command="{Binding CycleFloorModeCommand}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                FontSize="11"
+                Content="{Binding FloorModeLabel}" />
+        <ListBox Name="FloorList"
+                 ItemsSource="{Binding FloorOptions}"
+                 SelectedItem="{Binding SelectedFloorOption}"
+                 MaxHeight="240">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:FloorOption">
+              <TextBlock Text="{Binding Label}" FontSize="12" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </StackPanel>
+    </Border>
+
+    <!-- Device detail sheet, bottom center (web DeviceDetailPanel parity;
+         edit/delete arrive with the CRUD milestone). -->
+    <Border Name="DetailPanel"
+            IsVisible="{Binding SelectedDevice, Converter={x:Static ObjectConverters.IsNotNull}}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,32"
+            MinWidth="280"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="16,12">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Command="{Binding ClearSelectionCommand}"
+                VerticalAlignment="Top"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="4"
+                Content="✕" />
+        <StackPanel Spacing="2">
+          <TextBlock Name="DetailName"
+                     Text="{Binding SelectedDevice.Name}"
+                     FontSize="15"
+                     FontWeight="SemiBold" />
+          <TextBlock Text="{Binding SelectedDeviceCategory}"
+                     FontSize="12"
+                     Opacity="0.7" />
+          <TextBlock Text="{Binding SelectedDevice.IpAddress}"
+                     IsVisible="{Binding SelectedDevice.IpAddress, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     FontSize="12"
+                     FontFamily="Consolas,Menlo,monospace"
+                     Opacity="0.7" />
+          <TextBlock Text="{Binding SelectedDeviceFloor}"
+                     IsVisible="{Binding SelectedDeviceFloor, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     FontSize="12"
+                     Opacity="0.7" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Required data credit (ODbL + OpenMapTiles CC-BY), bottom-right. -->
+    <Border HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Background="#B3FFFFFF"
+            Padding="6,2">
+      <TextBlock Name="AttributionText"
+                 Text="{x:Static vm:MapViewModel.Attribution}"
+                 FontSize="10"
+                 Foreground="#333333" />
+    </Border>
+
+  </Panel>
+
+</UserControl>

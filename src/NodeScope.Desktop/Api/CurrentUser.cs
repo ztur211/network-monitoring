@@ -5,4 +5,9 @@ namespace NodeScope.Desktop.Api;
 /// deliberately not shared with the server: the contract suite guards the wire, and the
 /// client only ever narrows it.
 /// </summary>
-internal sealed record CurrentUser(string Id, string Email, string? Name);
+internal sealed record CurrentUser(
+    string Id,
+    string Email,
+    string? Name,
+    double? HomeLatitude = null,
+    double? HomeLongitude = null);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
 
@@ -46,6 +47,66 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
     public Task RevokeAsync(string bearerToken, CancellationToken cancellationToken)
     {
         RevokedToken = bearerToken;
+        return Task.CompletedTask;
+    }
+
+    // --- map surface -------------------------------------------------------
+
+    public bool TilesAvailable { get; set; } = true;
+
+    public List<MapDevice> Devices { get; } = [];
+
+    public List<MapFiberRun> FiberRuns { get; } = [];
+
+    public JsonElement? StoredPreferences { get; set; }
+
+    public Exception? MapFailure { get; set; }
+
+    public List<MapBbox> DeviceBboxRequests { get; } = [];
+
+    public List<int?> FloorRequests { get; } = [];
+
+    public List<MapBbox> FiberBboxRequests { get; } = [];
+
+    public int PreferencesPuts { get; private set; }
+
+    public Task<bool> ProbeTilesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(TilesAvailable);
+
+    public Task<IReadOnlyList<MapDevice>> GetDevicesAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        LastBearerToken = bearerToken;
+        return MapFailure is null
+            ? Task.FromResult<IReadOnlyList<MapDevice>>([.. Devices])
+            : Task.FromException<IReadOnlyList<MapDevice>>(MapFailure);
+    }
+
+    public Task<IReadOnlyList<MapDevice>> GetMapDevicesAsync(
+        string bearerToken, MapBbox bbox, int? floor, CancellationToken cancellationToken)
+    {
+        DeviceBboxRequests.Add(bbox);
+        FloorRequests.Add(floor);
+        return MapFailure is null
+            ? Task.FromResult<IReadOnlyList<MapDevice>>([.. Devices])
+            : Task.FromException<IReadOnlyList<MapDevice>>(MapFailure);
+    }
+
+    public Task<IReadOnlyList<MapFiberRun>> GetMapFiberRunsAsync(
+        string bearerToken, MapBbox bbox, CancellationToken cancellationToken)
+    {
+        FiberBboxRequests.Add(bbox);
+        return MapFailure is null
+            ? Task.FromResult<IReadOnlyList<MapFiberRun>>([.. FiberRuns])
+            : Task.FromException<IReadOnlyList<MapFiberRun>>(MapFailure);
+    }
+
+    public Task<JsonElement?> GetPreferencesAsync(string bearerToken, CancellationToken cancellationToken) =>
+        Task.FromResult(StoredPreferences);
+
+    public Task PutPreferencesAsync(string bearerToken, JsonElement preferences, CancellationToken cancellationToken)
+    {
+        StoredPreferences = preferences;
+        PreferencesPuts++;
         return Task.CompletedTask;
     }
 }

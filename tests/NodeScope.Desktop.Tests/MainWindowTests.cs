@@ -26,7 +26,7 @@ public sealed class MainWindowTests : IDisposable
         var settings = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
         _flow = new DesktopAuthFlow(
             _clients, _vault, settings, _browser, NullLogger<DesktopAuthFlow>.Instance);
-        _shell = new MainWindowViewModel(_flow, settings);
+        _shell = new MainWindowViewModel(_flow, settings, NullLoggerFactory.Instance);
     }
 
     public void Dispose()
