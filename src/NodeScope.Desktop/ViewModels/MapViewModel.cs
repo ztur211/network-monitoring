@@ -87,6 +87,13 @@ internal sealed partial class MapViewModel : IDisposable
     private CancellationTokenSource? _preferencesDebounce;
     private bool _applyingPreferences;
 
+    private ConfigureScope? _scope;
+    private IReadOnlyList<PropertySummary> _properties = [];
+    private string? _networkId;
+
+    /// <summary>Set while an edit form waits for a "pick new location" tap to come back.</summary>
+    private DeviceFormViewModel? _relocatingForm;
+
     [ObservableProperty]
     private double _currentZoom;
 
@@ -116,6 +123,26 @@ internal sealed partial class MapViewModel : IDisposable
     /// <summary>Set when the appliance has no rendered style yet (region extract not built).</summary>
     [ObservableProperty]
     private bool _tilesUnavailable;
+
+    /// <summary>Whether the caller may place devices at all (F3 verdict; gates the FAB).</summary>
+    [ObservableProperty]
+    private bool _canConfigure;
+
+    /// <summary>Placement mode: the next map tap places a device instead of selecting one.</summary>
+    [ObservableProperty]
+    private bool _isPlacing;
+
+    /// <summary>The device create/edit form shown over the map, when open.</summary>
+    [ObservableProperty]
+    private DeviceFormViewModel? _deviceForm;
+
+    /// <summary>Two-step delete state of the selected-device panel.</summary>
+    [ObservableProperty]
+    private bool _confirmingSelectedDelete;
+
+    /// <summary>A failed mutation (delete rollback); dismissable.</summary>
+    [ObservableProperty]
+    private string? _operationError;
 
     [ObservableProperty]
     private string? _dataError;
@@ -281,9 +308,35 @@ internal sealed partial class MapViewModel : IDisposable
         await ProbeTilesAsync(cancellationToken);
         await LoadPreferencesAsync(cancellationToken);
         await SeedDevicesAsync(cancellationToken);
+        await LoadConfigureContextAsync(cancellationToken);
         if (!cancellationToken.IsCancellationRequested)
         {
             RebuildOverlays();
+        }
+    }
+
+    /// <summary>What placement needs before the FAB may show: scope, properties, the network.</summary>
+    private async Task LoadConfigureContextAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var accessTask = _session.Client.GetAccessSummaryAsync(_session.Token, cancellationToken);
+            var propertiesTask = _session.Client.GetPropertiesAsync(_session.Token, cancellationToken);
+            var networksTask = _session.Client.GetNetworksAsync(_session.Token, cancellationToken);
+            await Task.WhenAll(accessTask, propertiesTask, networksTask);
+
+            _properties = await propertiesTask;
+            _scope = ConfigureScope.Build(await accessTask, _properties);
+            var networks = await networksTask;
+            _networkId = networks.Count > 0 ? networks[0].Id : null;
+            CanConfigure = _scope.CanConfigureAny && _networkId is not null
+                && _scope.ConfigurableProperties(_properties).Count > 0;
+            OnPropertyChanged(nameof(SelectedDeviceEditable));
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
+        {
+            MapLog.ConfigureContextFailed(_logger, failure.Message);
         }
     }
 
@@ -549,6 +602,8 @@ internal sealed partial class MapViewModel : IDisposable
     {
         OnPropertyChanged(nameof(SelectedDeviceCategory));
         OnPropertyChanged(nameof(SelectedDeviceFloor));
+        OnPropertyChanged(nameof(SelectedDeviceEditable));
+        ConfirmingSelectedDelete = false;
         RebuildDeviceFeatures();
     }
 
@@ -671,8 +726,223 @@ internal sealed partial class MapViewModel : IDisposable
     private void OnMapTapped(object? sender, MapEventArgs e)
     {
         var info = e.GetMapInfo([_deviceLayer]);
+        if (IsPlacing)
+        {
+            if (info.WorldPosition is { } world)
+            {
+                var (lng, lat) = SphericalMercator.ToLonLat(world.X, world.Y);
+                CompletePlacement(lat, lng);
+            }
+
+            return;
+        }
+
         SelectDeviceById(info.Feature?["deviceId"] as string);
     }
+
+    /// <summary>Whether the selected device may be edited here (F3 verdict for its property).</summary>
+    public bool SelectedDeviceEditable =>
+        SelectedDevice is { PropertyId: { } propertyId }
+        && _scope?.CanConfigureProperty(propertyId) is true;
+
+    [RelayCommand]
+    private void StartPlacement()
+    {
+        if (!CanConfigure)
+        {
+            return;
+        }
+
+        SelectedDevice = null;
+        IsPlacing = true;
+    }
+
+    [RelayCommand]
+    private void CancelPlacement()
+    {
+        IsPlacing = false;
+        if (_relocatingForm is { } form)
+        {
+            // The aborted relocation reopens the edit form unchanged.
+            _relocatingForm = null;
+            DeviceForm = form;
+        }
+    }
+
+    /// <summary>The placement tap's landing point; internal so tests can drive it directly.</summary>
+    internal void CompletePlacement(double latitude, double longitude)
+    {
+        IsPlacing = false;
+        if (_relocatingForm is { } form)
+        {
+            _relocatingForm = null;
+            form.PlacedLatitude = latitude;
+            form.PlacedLongitude = longitude;
+            DeviceForm = form;
+            return;
+        }
+
+        if (_scope is null || _networkId is null)
+        {
+            return;
+        }
+
+        var options = PropertyOption.Flatten(_scope.ConfigurableProperties(_properties));
+        var created = new DeviceFormViewModel(
+            original: null,
+            options,
+            SubmitCreateAsync,
+            close: () => DeviceForm = null,
+            suggestName: (propertyId, category, cancellationToken) =>
+                _session.Client.GetDeviceNameSuggestionAsync(_session.Token, propertyId, category, cancellationToken))
+        {
+            PlacedLatitude = latitude,
+            PlacedLongitude = longitude,
+        };
+        DeviceForm = created;
+    }
+
+    /// <summary>Opens the edit form for the selected marker, off a fresh single-device read.</summary>
+    [RelayCommand]
+    private async Task EditSelectedAsync()
+    {
+        if (SelectedDevice is not { } selected || !SelectedDeviceEditable)
+        {
+            return;
+        }
+
+        try
+        {
+            var device = await _session.Client.GetDeviceAsync(_session.Token, selected.Id, _lifetime.Token);
+            DeviceFormViewModel? form = null;
+            form = new DeviceFormViewModel(
+                device,
+                PropertyOption.Flatten(_properties),
+                SubmitEditAsync,
+                close: () => DeviceForm = null,
+                suggestName: null,
+                relocate: () =>
+                {
+                    _relocatingForm = form;
+                    DeviceForm = null;
+                    IsPlacing = true;
+                });
+            DeviceForm = form;
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            OperationError = $"Loading the device failed: {failure.Message}";
+        }
+    }
+
+    /// <summary>First press arms ("Confirm?"), second press deletes - mirrors the list rows.</summary>
+    [RelayCommand]
+    private async Task DeleteSelectedAsync()
+    {
+        if (SelectedDevice is not { } selected || !SelectedDeviceEditable)
+        {
+            return;
+        }
+
+        if (!ConfirmingSelectedDelete)
+        {
+            ConfirmingSelectedDelete = true;
+            return;
+        }
+
+        ConfirmingSelectedDelete = false;
+        _devices.Remove(selected.Id);
+        SelectedDevice = null;
+        RebuildOverlays();
+        try
+        {
+            await _session.Client.DeleteDeviceAsync(_session.Token, selected.Id, _lifetime.Token);
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            _devices[selected.Id] = selected;
+            RebuildOverlays();
+            OperationError = $"Deleting \"{selected.Name}\" failed: {failure.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void DismissOperationError() => OperationError = null;
+
+    private async Task<bool> SubmitCreateAsync(DeviceFormViewModel form, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await _session.Client.CreateDeviceAsync(
+                _session.Token, form.BuildCreate(_networkId!), cancellationToken);
+            var mapDevice = ToMapDevice(created);
+            _devices[mapDevice.Id] = mapDevice;
+            FloorOptions = BuildFloorOptions();
+            RebuildOverlays();
+            SelectedDevice = mapDevice;
+
+            // Web parity: fly to the new marker at its category's reveal zoom.
+            if (created is { Latitude: { } lat, Longitude: { } lng })
+            {
+                var minZoom = DeviceCategories.Resolve(created.Category).MinZoom;
+                NavigateTo(lng, lat, Math.Max(CurrentZoom, minZoom));
+            }
+
+            return true;
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            form.SubmitError = failure.Message;
+            return false;
+        }
+    }
+
+    private async Task<bool> SubmitEditAsync(DeviceFormViewModel form, CancellationToken cancellationToken)
+    {
+        var changes = form.BuildChanges();
+        if (changes.Count == 0)
+        {
+            return true;
+        }
+
+        var original = form.Original!;
+        try
+        {
+            var updated = await _session.Client.UpdateDeviceAsync(
+                _session.Token, original.Id, original.Version, changes, cancellationToken);
+            var mapDevice = ToMapDevice(updated);
+            _devices[mapDevice.Id] = mapDevice;
+            FloorOptions = BuildFloorOptions();
+            RebuildOverlays();
+            if (SelectedDevice?.Id == mapDevice.Id)
+            {
+                SelectedDevice = mapDevice;
+            }
+
+            return true;
+        }
+        catch (ApplianceApiException failure) when (failure.Code == "SYNC_001")
+        {
+            form.SubmitError = "Someone else edited this device. Close the form and reopen it to retry.";
+            return false;
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            form.SubmitError = failure.Message;
+            return false;
+        }
+    }
+
+    private static MapDevice ToMapDevice(BimDevice device) => new(
+        device.Id,
+        device.Name,
+        device.Category,
+        device.Latitude,
+        device.Longitude,
+        device.Floor,
+        device.FloorLabel,
+        device.IpAddress,
+        device.PropertyId);
 
     private void SchedulePreferencesSave()
     {
@@ -770,4 +1040,8 @@ internal static partial class MapLog
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Seeding the device cache failed: {Reason}")]
     public static partial void DeviceSeedFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Loading the placement context failed; device placement stays hidden: {Reason}")]
+    public static partial void ConfigureContextFailed(ILogger logger, string reason);
 }

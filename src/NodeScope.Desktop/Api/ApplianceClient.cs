@@ -430,6 +430,105 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
             bearerToken,
             cancellationToken);
 
+    public Task<DevicePage> GetDeviceInventoryAsync(string bearerToken, CancellationToken cancellationToken) =>
+        GetDataAsync<DevicePage>("api/v1/devices", bearerToken, cancellationToken);
+
+    public Task<BimDevice> GetDeviceAsync(
+        string bearerToken, string deviceId, CancellationToken cancellationToken) =>
+        GetDataAsync<BimDevice>(
+            $"api/v1/devices/{Uri.EscapeDataString(deviceId)}", bearerToken, cancellationToken);
+
+    public Task<BimDevice> CreateDeviceAsync(
+        string bearerToken, CreateDevice device, CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateDevice, BimDevice>(
+            HttpMethod.Post, "api/v1/devices", bearerToken, device, cancellationToken);
+
+    public Task<BimDevice> UpdateDeviceAsync(
+        string bearerToken,
+        string deviceId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<ChangesetBody, BimDevice>(
+            HttpMethod.Patch,
+            $"api/v1/devices/{Uri.EscapeDataString(deviceId)}",
+            bearerToken,
+            new ChangesetBody(baseVersion, changes),
+            cancellationToken);
+
+    public async Task DeleteDeviceAsync(
+        string bearerToken, string deviceId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete, new Uri($"api/v1/devices/{Uri.EscapeDataString(deviceId)}", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    public async Task<string> GetDeviceNameSuggestionAsync(
+        string bearerToken, string propertyId, string category, CancellationToken cancellationToken)
+    {
+        var query = $"api/v1/devices/name-suggestion?propertyId={Uri.EscapeDataString(propertyId)}"
+            + $"&category={Uri.EscapeDataString(category)}";
+        using var request = AuthorizedGet(query, bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+        return data.TryGetProperty("suggestedName", out var name) && name.GetString() is { } value
+            ? value
+            : throw new ApplianceApiException(
+                ApplianceApiException.ProtocolErrorCode,
+                "The name-suggestion response carried no name.",
+                (int)response.StatusCode);
+    }
+
+    public Task<CircuitPage> GetCircuitsAsync(
+        string bearerToken, int limit, string? cursor, CancellationToken cancellationToken)
+    {
+        var query = string.Create(CultureInfo.InvariantCulture, $"api/v1/circuits?limit={limit}");
+        if (cursor is { Length: > 0 })
+        {
+            query += $"&cursor={Uri.EscapeDataString(cursor)}";
+        }
+
+        return GetDataAsync<CircuitPage>(query, bearerToken, cancellationToken);
+    }
+
+    public Task<Circuit> CreateCircuitAsync(
+        string bearerToken, CreateCircuit circuit, CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateCircuit, Circuit>(
+            HttpMethod.Post, "api/v1/circuits", bearerToken, circuit, cancellationToken);
+
+    public Task<Circuit> UpdateCircuitAsync(
+        string bearerToken,
+        string circuitId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<ChangesetBody, Circuit>(
+            HttpMethod.Patch,
+            $"api/v1/circuits/{Uri.EscapeDataString(circuitId)}",
+            bearerToken,
+            new ChangesetBody(baseVersion, changes),
+            cancellationToken);
+
+    public async Task DeleteCircuitAsync(
+        string bearerToken, string circuitId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete, new Uri($"api/v1/circuits/{Uri.EscapeDataString(circuitId)}", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
+    public Task<ClientsSummary> GetClientsAsync(string bearerToken, CancellationToken cancellationToken) =>
+        GetDataAsync<ClientsSummary>("api/v1/clients", bearerToken, cancellationToken);
+
+    public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        GetDataListAsync<NetworkSummary>("api/v1/networks", bearerToken, cancellationToken);
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,
@@ -611,4 +710,7 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
     private sealed record DevicePositionUpdate(double? X, double? Y, double? Z);
 
     private sealed record DeviceIfcLinkUpdate(string? IfcGlobalId);
+
+    /// <summary>The shared optimistic-concurrency PATCH body.</summary>
+    private sealed record ChangesetBody(int BaseVersion, IReadOnlyList<FieldChange> Changes);
 }

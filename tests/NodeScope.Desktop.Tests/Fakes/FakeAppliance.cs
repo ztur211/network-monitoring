@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
@@ -531,6 +532,289 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         BcfTopics.Add(created);
         return Task.FromResult(created);
     }
+
+    // --- inventory CRUD ---------------------------------------------------
+
+    public List<Circuit> Circuits { get; } = [];
+
+    public List<NetworkSummary> Networks { get; } = [];
+
+    public ClientsSummary ClientsToReturn { get; set; } = new(
+        new ClientDevice("NodeScope-Desktop/1.0 (tests)", "Linux", null),
+        new ClientAgentStatus(false, "Desktop Agent coming post-MVP."));
+
+    public string SuggestedName { get; set; } = "Router 1";
+
+    public int CircuitPageSize { get; set; } = 50;
+
+    public Exception? InventoryFailure { get; set; }
+
+    public Exception? MutationFailure { get; set; }
+
+    public List<CreateDevice> CreatedDevices { get; } = [];
+
+    public List<(string DeviceId, int BaseVersion, IReadOnlyList<FieldChange> Changes)> DeviceUpdates { get; } = [];
+
+    public List<string> DeletedDeviceIds { get; } = [];
+
+    public List<CreateCircuit> CreatedCircuits { get; } = [];
+
+    public List<(string CircuitId, int BaseVersion, IReadOnlyList<FieldChange> Changes)> CircuitUpdates { get; } = [];
+
+    public List<string> DeletedCircuitIds { get; } = [];
+
+    public List<string?> CircuitCursorRequests { get; } = [];
+
+    public List<(string PropertyId, string Category)> SuggestionRequests { get; } = [];
+
+    public Task<DevicePage> GetDeviceInventoryAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        LastBearerToken = bearerToken;
+        return InventoryFailure is null
+            ? Task.FromResult(new DevicePage([.. BimDevices], BimDevices.Count))
+            : Task.FromException<DevicePage>(InventoryFailure);
+    }
+
+    public Task<BimDevice> GetDeviceAsync(string bearerToken, string deviceId, CancellationToken cancellationToken)
+    {
+        if (InventoryFailure is not null)
+        {
+            return Task.FromException<BimDevice>(InventoryFailure);
+        }
+
+        var device = BimDevices.Find(candidate => string.Equals(candidate.Id, deviceId, StringComparison.Ordinal));
+        return device is not null
+            ? Task.FromResult(device)
+            : Task.FromException<BimDevice>(new ApplianceApiException("INV_004", "DEVICE_NOT_FOUND", 404));
+    }
+
+    public Task<BimDevice> CreateDeviceAsync(
+        string bearerToken, CreateDevice device, CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException<BimDevice>(MutationFailure);
+        }
+
+        CreatedDevices.Add(device);
+        var created = new BimDevice(
+            Guid.NewGuid().ToString(),
+            device.NetworkId,
+            device.PropertyId,
+            null,
+            "user-1",
+            device.Name,
+            device.Category,
+            device.Latitude,
+            device.Longitude,
+            device.Floor,
+            device.FloorLabel,
+            null,
+            null,
+            null,
+            null,
+            device.IpAddress,
+            device.MacAddress,
+            device.Notes,
+            1,
+            DateTime.UtcNow,
+            DateTime.UtcNow);
+        BimDevices.Add(created);
+        return Task.FromResult(created);
+    }
+
+    public Task<BimDevice> UpdateDeviceAsync(
+        string bearerToken,
+        string deviceId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException<BimDevice>(MutationFailure);
+        }
+
+        DeviceUpdates.Add((deviceId, baseVersion, changes));
+        var index = BimDevices.FindIndex(candidate => string.Equals(candidate.Id, deviceId, StringComparison.Ordinal));
+        if (index < 0)
+        {
+            return Task.FromException<BimDevice>(new ApplianceApiException("INV_004", "DEVICE_NOT_FOUND", 404));
+        }
+
+        if (BimDevices[index].Version != baseVersion)
+        {
+            return Task.FromException<BimDevice>(new ApplianceApiException("SYNC_001", "EDIT_CONFLICT", 409));
+        }
+
+        var updated = BimDevices[index];
+        foreach (var change in changes)
+        {
+            updated = change.Field switch
+            {
+                "name" => updated with { Name = change.NewValue.GetString()! },
+                "category" => updated with { Category = change.NewValue.GetString()! },
+                "floor" => updated with
+                {
+                    Floor = change.NewValue.ValueKind == JsonValueKind.Number ? change.NewValue.GetInt32() : null,
+                },
+                "floorLabel" => updated with { FloorLabel = StringOrNull(change.NewValue) },
+                "ipAddress" => updated with { IpAddress = StringOrNull(change.NewValue) },
+                "macAddress" => updated with { MacAddress = StringOrNull(change.NewValue) },
+                "notes" => updated with { Notes = StringOrNull(change.NewValue) },
+                "latitude" => updated with
+                {
+                    Latitude = change.NewValue.ValueKind == JsonValueKind.Number ? change.NewValue.GetDouble() : null,
+                },
+                "longitude" => updated with
+                {
+                    Longitude = change.NewValue.ValueKind == JsonValueKind.Number ? change.NewValue.GetDouble() : null,
+                },
+                _ => updated,
+            };
+        }
+
+        updated = updated with { Version = updated.Version + 1, UpdatedAt = DateTime.UtcNow };
+        BimDevices[index] = updated;
+        return Task.FromResult(updated);
+    }
+
+    public Task DeleteDeviceAsync(string bearerToken, string deviceId, CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException(MutationFailure);
+        }
+
+        DeletedDeviceIds.Add(deviceId);
+        _ = BimDevices.RemoveAll(candidate => string.Equals(candidate.Id, deviceId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task<string> GetDeviceNameSuggestionAsync(
+        string bearerToken, string propertyId, string category, CancellationToken cancellationToken)
+    {
+        SuggestionRequests.Add((propertyId, category));
+        return InventoryFailure is null
+            ? Task.FromResult(SuggestedName)
+            : Task.FromException<string>(InventoryFailure);
+    }
+
+    public Task<CircuitPage> GetCircuitsAsync(
+        string bearerToken, int limit, string? cursor, CancellationToken cancellationToken)
+    {
+        CircuitCursorRequests.Add(cursor);
+        if (InventoryFailure is not null)
+        {
+            return Task.FromException<CircuitPage>(InventoryFailure);
+        }
+
+        var start = cursor is null ? 0 : int.Parse(cursor, CultureInfo.InvariantCulture);
+        var pageSize = Math.Min(limit, CircuitPageSize);
+        var page = Circuits.Skip(start).Take(pageSize).ToList();
+        var next = start + page.Count < Circuits.Count
+            ? (start + page.Count).ToString(CultureInfo.InvariantCulture)
+            : null;
+        return Task.FromResult(new CircuitPage(page, next, Circuits.Count));
+    }
+
+    public Task<Circuit> CreateCircuitAsync(
+        string bearerToken, CreateCircuit circuit, CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException<Circuit>(MutationFailure);
+        }
+
+        CreatedCircuits.Add(circuit);
+        var created = new Circuit(
+            Guid.NewGuid().ToString(),
+            "user-1",
+            circuit.IspName,
+            circuit.CircuitId,
+            circuit.ServiceType,
+            circuit.Bandwidth,
+            circuit.DeviceId,
+            circuit.Notes,
+            1,
+            DateTime.UtcNow,
+            DateTime.UtcNow);
+        Circuits.Insert(0, created);
+        return Task.FromResult(created);
+    }
+
+    public Task<Circuit> UpdateCircuitAsync(
+        string bearerToken,
+        string circuitId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException<Circuit>(MutationFailure);
+        }
+
+        CircuitUpdates.Add((circuitId, baseVersion, changes));
+        var index = Circuits.FindIndex(candidate => string.Equals(candidate.Id, circuitId, StringComparison.Ordinal));
+        if (index < 0)
+        {
+            return Task.FromException<Circuit>(new ApplianceApiException("LINK_001", "CIRCUIT_NOT_FOUND", 404));
+        }
+
+        if (Circuits[index].Version != baseVersion)
+        {
+            return Task.FromException<Circuit>(new ApplianceApiException("SYNC_001", "EDIT_CONFLICT", 409));
+        }
+
+        var updated = Circuits[index];
+        foreach (var change in changes)
+        {
+            updated = change.Field switch
+            {
+                "ispName" => updated with { IspName = change.NewValue.GetString()! },
+                "serviceType" => updated with { ServiceType = change.NewValue.GetString()! },
+                "circuitId" => updated with { CircuitId = StringOrNull(change.NewValue) },
+                "bandwidth" => updated with
+                {
+                    Bandwidth = change.NewValue.ValueKind == JsonValueKind.Number ? change.NewValue.GetDouble() : null,
+                },
+                "deviceId" => updated with { DeviceId = StringOrNull(change.NewValue) },
+                "notes" => updated with { Notes = StringOrNull(change.NewValue) },
+                _ => updated,
+            };
+        }
+
+        updated = updated with { Version = updated.Version + 1, UpdatedAt = DateTime.UtcNow };
+        Circuits[index] = updated;
+        return Task.FromResult(updated);
+    }
+
+    public Task DeleteCircuitAsync(string bearerToken, string circuitId, CancellationToken cancellationToken)
+    {
+        if (MutationFailure is not null)
+        {
+            return Task.FromException(MutationFailure);
+        }
+
+        DeletedCircuitIds.Add(circuitId);
+        _ = Circuits.RemoveAll(candidate => string.Equals(candidate.Id, circuitId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task<ClientsSummary> GetClientsAsync(string bearerToken, CancellationToken cancellationToken) =>
+        InventoryFailure is null
+            ? Task.FromResult(ClientsToReturn)
+            : Task.FromException<ClientsSummary>(InventoryFailure);
+
+    public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
+        string bearerToken, CancellationToken cancellationToken) =>
+        InventoryFailure is null
+            ? Task.FromResult<IReadOnlyList<NetworkSummary>>([.. Networks])
+            : Task.FromException<IReadOnlyList<NetworkSummary>>(InventoryFailure);
+
+    private static string? StringOrNull(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static async Task<byte[]> ReadAllAsync(
         Stream content,

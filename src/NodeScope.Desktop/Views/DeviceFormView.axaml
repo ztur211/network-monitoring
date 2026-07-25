@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:map="using:NodeScope.Desktop.Map"
+             x:Class="NodeScope.Desktop.Views.DeviceFormView"
+             x:DataType="vm:DeviceFormViewModel">
+
+  <!-- Modal overlay: backdrop + centered card. -->
+  <Panel>
+    <Border Background="#80000000" />
+
+    <Border MaxWidth="520"
+            Margin="24"
+            Padding="20"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            CornerRadius="12"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1">
+      <DockPanel>
+
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+          <Button DockPanel.Dock="Right"
+                  Name="CloseButton"
+                  Command="{Binding CancelCommand}"
+                  Content="✕" />
+          <TextBlock Name="FormTitle"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Text="{Binding Title}" />
+        </DockPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+          <ItemsControl ItemsSource="{Binding ValidationErrors}"
+                        IsVisible="{Binding HasValidationErrors}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Foreground="{DynamicResource SystemErrorTextColor}"
+                           TextWrapping="Wrap"
+                           Text="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Name="SubmitError"
+                     Foreground="{DynamicResource SystemErrorTextColor}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding SubmitError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     Text="{Binding SubmitError}" />
+          <Button Name="SubmitButton"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Center"
+                  Classes="accent"
+                  Command="{Binding SubmitCommand}"
+                  IsEnabled="{Binding !IsSubmitting}"
+                  Content="{Binding SubmitLabel}" />
+        </StackPanel>
+
+        <ScrollViewer MaxHeight="480">
+          <StackPanel Spacing="10">
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Name *" FontWeight="Medium" />
+              <TextBox Name="NameBox"
+                       Watermark="e.g. Core Router"
+                       Text="{Binding Name}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Category *" FontWeight="Medium" />
+              <ComboBox Name="CategoryPicker"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding Categories}"
+                        SelectedItem="{Binding SelectedCategory}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="map:DeviceCategoryInfo">
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="4" IsVisible="{Binding !IsEdit}">
+              <TextBlock Text="Property *" FontWeight="Medium" />
+              <ComboBox Name="PropertyPicker"
+                        HorizontalAlignment="Stretch"
+                        PlaceholderText="Where does this device live?"
+                        ItemsSource="{Binding Properties}"
+                        SelectedItem="{Binding SelectedProperty}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PropertyOption">
+                    <TextBlock Text="{Binding Label}" FontFamily="Consolas,Menlo,monospace" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <DockPanel>
+                <Button DockPanel.Dock="Right"
+                        Name="RelocateButton"
+                        Command="{Binding RequestRelocateCommand}"
+                        IsVisible="{Binding CanRelocate}"
+                        Content="Pick new location" />
+                <TextBlock Text="Location" FontWeight="Medium" VerticalAlignment="Center" />
+              </DockPanel>
+              <Border Padding="8"
+                      CornerRadius="6"
+                      BorderThickness="1"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                <TextBlock Name="CoordinateLine" Opacity="0.8" Text="{Binding CoordinateLine}" />
+              </Border>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,12,*">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Floor" FontWeight="Medium" />
+                <TextBox Name="FloorBox" Watermark="e.g. 1" Text="{Binding Floor}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Floor label" FontWeight="Medium" />
+                <TextBox Name="FloorLabelBox" Watermark="e.g. Main Level" Text="{Binding FloorLabel}" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="IP address" FontWeight="Medium" />
+              <TextBox Name="IpBox" Watermark="e.g. 192.168.1.1" Text="{Binding IpAddress}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="MAC address" FontWeight="Medium" />
+              <TextBox Name="MacBox" Watermark="AA:BB:CC:DD:EE:FF" Text="{Binding MacAddress}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Notes" FontWeight="Medium" />
+              <TextBox Name="NotesBox"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       MinHeight="72"
+                       Watermark="Optional notes..."
+                       Text="{Binding Notes}" />
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+
+      </DockPanel>
+    </Border>
+  </Panel>
+
+</UserControl>

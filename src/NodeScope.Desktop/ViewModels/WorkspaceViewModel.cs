@@ -20,6 +20,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     private readonly DesktopAuthFlow _flow;
     private readonly MapViewModel _map;
     private readonly BimViewerViewModel _bimViewer;
+    private readonly InventoryViewModel _inventory;
 
     [ObservableProperty]
     private WorkspaceSection _selectedSection;
@@ -40,12 +41,13 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             session,
             loggers.CreateLogger<BimViewerViewModel>(),
             tessellator);
+        _inventory = new InventoryViewModel(session, loggers);
 
         Sections =
         [
             new("Map", "The GIS map arrives with the Mapsui + tileserver-gl milestone.", _map),
             new("3D Viewer", "Loading the native BIM viewer.", _bimViewer),
-            new("Inventory", "Devices, networks, circuits and clients arrive with the CRUD milestone."),
+            new("Inventory", "Loading equipment, circuits and clients.", _inventory),
             new("Assistant", "Chat arrives once the client core is in place."),
             new("Settings", "Client settings arrive here; sign-out lives in the header for now."),
         ];
@@ -65,6 +67,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     {
         _map.Dispose();
         _bimViewer.Dispose();
+        _inventory.Dispose();
     }
 
     [RelayCommand]

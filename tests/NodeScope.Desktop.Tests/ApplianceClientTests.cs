@@ -435,6 +435,153 @@ public sealed class ApplianceClientTests : IDisposable
         Assert.Contains("\"title\":\"Inspect wall\"", _lastRequestBody, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Device_inventory_parses_the_items_total_envelope()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """
+            {"success":true,"data":{"items":[{"id":"d1","networkId":"n1","propertyId":"p1","roleCode":null,"userId":"u1","name":"Core Router","category":"ROUTER","latitude":40.7,"longitude":-74.0,"floor":1,"floorLabel":null,"x":null,"y":null,"z":null,"ifcGlobalId":null,"ipAddress":"10.0.0.1","macAddress":null,"notes":null,"version":2,"createdAt":"2026-07-25T12:00:00Z","updatedAt":"2026-07-25T12:00:00Z"}],"total":1},"timestamp":"t"}
+            """);
+
+        var page = await _client.GetDeviceInventoryAsync("tok", TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, page.Total);
+        var device = Assert.Single(page.Items);
+        Assert.Equal("Core Router", device.Name);
+        Assert.Equal(2, device.Version);
+        Assert.EndsWith("/api/v1/devices", _lastRequest!.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Device_create_posts_the_camel_case_body_with_network_and_property()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.Created,
+            """
+            {"success":true,"data":{"id":"d9","networkId":"n1","propertyId":"p1","roleCode":null,"userId":"u1","name":"Switch 1","category":"SWITCH","latitude":null,"longitude":null,"floor":null,"floorLabel":null,"x":null,"y":null,"z":null,"ifcGlobalId":null,"ipAddress":null,"macAddress":null,"notes":null,"version":1,"createdAt":"2026-07-25T12:00:00Z","updatedAt":"2026-07-25T12:00:00Z"},"timestamp":"t"}
+            """);
+
+        var created = await _client.CreateDeviceAsync(
+            "tok",
+            new CreateDevice("Switch 1", "SWITCH", "n1", "p1", null, null, null, null, null, null, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("d9", created.Id);
+        Assert.Equal(HttpMethod.Post, _lastRequest!.Method);
+        Assert.Contains("\"name\":\"Switch 1\"", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"networkId\":\"n1\"", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"propertyId\":\"p1\"", _lastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Device_update_sends_the_shared_changeset_body()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """
+            {"success":true,"data":{"id":"d1","networkId":"n1","propertyId":"p1","roleCode":null,"userId":"u1","name":"Renamed","category":"ROUTER","latitude":null,"longitude":null,"floor":null,"floorLabel":null,"x":null,"y":null,"z":null,"ifcGlobalId":null,"ipAddress":null,"macAddress":null,"notes":null,"version":3,"createdAt":"2026-07-25T12:00:00Z","updatedAt":"2026-07-25T12:00:00Z"},"timestamp":"t"}
+            """);
+
+        var updated = await _client.UpdateDeviceAsync(
+            "tok",
+            "d1",
+            2,
+            [FieldChange.Of("name", "Old", "Renamed"), FieldChange.Of("ipAddress", "10.0.0.1", null)],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, updated.Version);
+        Assert.Equal(HttpMethod.Patch, _lastRequest!.Method);
+        Assert.EndsWith("/api/v1/devices/d1", _lastRequest.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+        Assert.Contains("\"baseVersion\":2", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains(
+            "{\"field\":\"name\",\"oldValue\":\"Old\",\"newValue\":\"Renamed\"}",
+            _lastRequestBody,
+            StringComparison.Ordinal);
+        // A cleared optional rides as an explicit null, never as an absent member.
+        Assert.Contains(
+            "{\"field\":\"ipAddress\",\"oldValue\":\"10.0.0.1\",\"newValue\":null}",
+            _lastRequestBody,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Device_delete_accepts_the_ok_null_envelope()
+    {
+        _respond = _ => Envelope(HttpStatusCode.OK, """{"success":true,"data":null,"timestamp":"t"}""");
+
+        await _client.DeleteDeviceAsync("tok", "d1", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpMethod.Delete, _lastRequest!.Method);
+        Assert.EndsWith("/api/v1/devices/d1", _lastRequest.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Name_suggestion_escapes_the_query_and_reads_the_name()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK, """{"success":true,"data":{"suggestedName":"Router 2"},"timestamp":"t"}""");
+
+        var name = await _client.GetDeviceNameSuggestionAsync(
+            "tok", "p 1", "ROUTER", TestContext.Current.CancellationToken);
+
+        Assert.Equal("Router 2", name);
+        Assert.EndsWith(
+            "/api/v1/devices/name-suggestion?propertyId=p%201&category=ROUTER",
+            _lastRequest!.RequestUri!.AbsoluteUri,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Circuits_page_carries_the_cursor_and_parses_the_page_shape()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """
+            {"success":true,"data":{"items":[{"id":"c1","userId":"u1","ispName":"Comcast","circuitId":"X-1","serviceType":"Fiber","bandwidth":1000,"deviceId":null,"notes":null,"version":1,"createdAt":"2026-07-25T12:00:00Z","updatedAt":"2026-07-25T12:00:00Z"}],"nextCursor":"abc+/=","total":51},"timestamp":"t"}
+            """);
+
+        var page = await _client.GetCircuitsAsync("tok", 50, "abc+/=", TestContext.Current.CancellationToken);
+
+        Assert.Equal(51, page.Total);
+        Assert.Equal("abc+/=", page.NextCursor);
+        Assert.Equal("Comcast", Assert.Single(page.Items).IspName);
+        Assert.EndsWith(
+            "/api/v1/circuits?limit=50&cursor=abc%2B%2F%3D",
+            _lastRequest!.RequestUri!.AbsoluteUri,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Clients_read_maps_the_nested_summary()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """
+            {"success":true,"data":{"currentDevice":{"userAgent":"NodeScope-Desktop/1.0","platform":"Linux","metrics":{"bandwidthDown":120.5,"bandwidthUp":20.1,"latency":8,"connectionQuality":"good","timestamp":"2026-07-25T12:00:00Z"}},"agentStatus":{"available":false,"message":"Post-MVP"}},"timestamp":"t"}
+            """);
+
+        var summary = await _client.GetClientsAsync("tok", TestContext.Current.CancellationToken);
+
+        Assert.Equal("Linux", summary.CurrentDevice.Platform);
+        Assert.Equal(120.5, summary.CurrentDevice.Metrics!.BandwidthDown);
+        Assert.False(summary.AgentStatus.Available);
+    }
+
+    [Fact]
+    public async Task Networks_read_parses_the_bare_array()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.OK,
+            """
+            {"success":true,"data":[{"id":"n1","name":"Home","homeAddress":null,"homeLatitude":null,"homeLongitude":null,"isp":null,"downMbps":null,"upMbps":null,"version":1,"createdAt":"2026-07-25T12:00:00Z","updatedAt":"2026-07-25T12:00:00Z"}],"timestamp":"t"}
+            """);
+
+        var networks = await _client.GetNetworksAsync("tok", TestContext.Current.CancellationToken);
+
+        Assert.Equal("n1", Assert.Single(networks).Id);
+    }
+
     private static HttpResponseMessage Envelope(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

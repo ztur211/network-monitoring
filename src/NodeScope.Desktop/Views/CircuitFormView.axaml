@@ -1,0 +1,128 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             x:Class="NodeScope.Desktop.Views.CircuitFormView"
+             x:DataType="vm:CircuitFormViewModel">
+
+  <Panel>
+    <Border Background="#80000000" />
+
+    <Border MaxWidth="520"
+            Margin="24"
+            Padding="20"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            CornerRadius="12"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1">
+      <DockPanel>
+
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+          <Button DockPanel.Dock="Right"
+                  Name="CloseButton"
+                  Command="{Binding CancelCommand}"
+                  Content="✕" />
+          <TextBlock Name="FormTitle"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Text="{Binding Title}" />
+        </DockPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+          <ItemsControl ItemsSource="{Binding ValidationErrors}"
+                        IsVisible="{Binding HasValidationErrors}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Foreground="{DynamicResource SystemErrorTextColor}"
+                           TextWrapping="Wrap"
+                           Text="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Name="SubmitError"
+                     Foreground="{DynamicResource SystemErrorTextColor}"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding SubmitError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     Text="{Binding SubmitError}" />
+          <Button Name="SubmitButton"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Center"
+                  Classes="accent"
+                  Command="{Binding SubmitCommand}"
+                  IsEnabled="{Binding !IsSubmitting}"
+                  Content="{Binding SubmitLabel}" />
+        </StackPanel>
+
+        <ScrollViewer MaxHeight="480">
+          <StackPanel Spacing="10">
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="ISP name *" FontWeight="Medium" />
+              <TextBox Name="IspNameBox" Watermark="e.g. Comcast Business" Text="{Binding IspName}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Service type *" FontWeight="Medium" />
+              <ItemsControl ItemsSource="{x:Static vm:CircuitFormViewModel.ServiceTypePresets}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <Button Margin="0,0,6,6"
+                            Command="{Binding $parent[UserControl].((vm:CircuitFormViewModel)DataContext).PickPresetCommand}"
+                            CommandParameter="{Binding}"
+                            Content="{Binding}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBox Name="ServiceTypeBox" Watermark="e.g. Fiber" Text="{Binding ServiceType}" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,12,*">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Circuit ID" FontWeight="Medium" />
+                <TextBox Name="CircuitIdBox" Watermark="Provider circuit ID" Text="{Binding CircuitId}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Bandwidth (Mbps)" FontWeight="Medium" />
+                <TextBox Name="BandwidthBox" Watermark="e.g. 1000" Text="{Binding Bandwidth}" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Linked device" FontWeight="Medium" />
+              <ComboBox Name="DevicePicker"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding Devices}"
+                        SelectedItem="{Binding SelectedDevice}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DeviceOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Notes" FontWeight="Medium" />
+              <TextBox Name="NotesBox"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       MinHeight="72"
+                       Watermark="Optional notes..."
+                       Text="{Binding Notes}" />
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+
+      </DockPanel>
+    </Border>
+  </Panel>
+
+</UserControl>

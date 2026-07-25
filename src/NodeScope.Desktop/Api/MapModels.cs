@@ -14,7 +14,8 @@ internal sealed record MapDevice(
     double? Longitude,
     int? Floor,
     string? FloorLabel,
-    string? IpAddress);
+    string? IpAddress,
+    string? PropertyId = null);
 
 /// <summary>
 /// A fiber run as the map needs it: the line geometry is DERIVED by joining

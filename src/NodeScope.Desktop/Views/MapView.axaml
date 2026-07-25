@@ -2,8 +2,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:NodeScope.Desktop.ViewModels"
              xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=Mapsui.UI.Avalonia"
+             xmlns:views="using:NodeScope.Desktop.Views"
              x:Class="NodeScope.Desktop.Views.MapView"
              x:DataType="vm:MapViewModel">
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="{x:Type vm:DeviceFormViewModel}">
+      <views:DeviceFormView />
+    </DataTemplate>
+  </UserControl.DataTemplates>
 
   <Panel>
 
@@ -34,6 +41,40 @@
         <TextBlock Foreground="#991b1b"
                    FontSize="12"
                    Text="{Binding DataError}" />
+      </Border>
+      <Border Name="PlacementBanner"
+              IsVisible="{Binding IsPlacing}"
+              Background="#2563eb"
+              CornerRadius="6"
+              Padding="12,6">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Foreground="White"
+                     FontSize="12"
+                     FontWeight="Medium"
+                     VerticalAlignment="Center"
+                     Text="Click the map to place the device" />
+          <Button Name="CancelPlacementButton"
+                  Command="{Binding CancelPlacementCommand}"
+                  FontSize="12"
+                  Content="Cancel" />
+        </StackPanel>
+      </Border>
+      <Border Name="MapOperationError"
+              IsVisible="{Binding OperationError, Converter={x:Static ObjectConverters.IsNotNull}}"
+              Background="#fef2f2"
+              BorderBrush="#fca5a5"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="12,6">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Foreground="#991b1b"
+                     FontSize="12"
+                     VerticalAlignment="Center"
+                     Text="{Binding OperationError}" />
+          <Button Command="{Binding DismissOperationErrorCommand}"
+                  FontSize="12"
+                  Content="Dismiss" />
+        </StackPanel>
       </Border>
     </StackPanel>
 
@@ -149,8 +190,7 @@
       </StackPanel>
     </Border>
 
-    <!-- Device detail sheet, bottom center (web DeviceDetailPanel parity;
-         edit/delete arrive with the CRUD milestone). -->
+    <!-- Device detail sheet, bottom center (web DeviceDetailPanel parity). -->
     <Border Name="DetailPanel"
             IsVisible="{Binding SelectedDevice, Converter={x:Static ObjectConverters.IsNotNull}}"
             HorizontalAlignment="Center"
@@ -187,9 +227,49 @@
                      IsVisible="{Binding SelectedDeviceFloor, Converter={x:Static ObjectConverters.IsNotNull}}"
                      FontSize="12"
                      Opacity="0.7" />
+          <StackPanel Orientation="Horizontal"
+                      Spacing="6"
+                      Margin="0,8,0,0"
+                      IsVisible="{Binding SelectedDeviceEditable}">
+            <Button Name="DetailEditButton"
+                    Command="{Binding EditSelectedCommand}"
+                    FontSize="12"
+                    Content="Edit" />
+            <Button Name="DetailDeleteButton"
+                    Command="{Binding DeleteSelectedCommand}"
+                    IsVisible="{Binding !ConfirmingSelectedDelete}"
+                    FontSize="12"
+                    Content="Delete" />
+            <Button Classes="accent"
+                    Command="{Binding DeleteSelectedCommand}"
+                    IsVisible="{Binding ConfirmingSelectedDelete}"
+                    FontSize="12"
+                    Content="Confirm delete?" />
+          </StackPanel>
         </StackPanel>
       </DockPanel>
     </Border>
+
+    <!-- Placement FAB, bottom-right (web parity: the "+" that starts placement mode). -->
+    <Button Name="PlaceDeviceButton"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,16,48"
+            Width="48"
+            Height="48"
+            CornerRadius="24"
+            Classes="accent"
+            FontSize="22"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center"
+            IsVisible="{Binding CanConfigure}"
+            IsEnabled="{Binding !IsPlacing}"
+            Command="{Binding StartPlacementCommand}"
+            Content="+" />
+
+    <!-- The device create/edit form, over everything. -->
+    <ContentControl Content="{Binding DeviceForm}"
+                    IsVisible="{Binding DeviceForm, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
     <!-- Required data credit (ODbL + OpenMapTiles CC-BY), bottom-right. -->
     <Border HorizontalAlignment="Right"

@@ -153,6 +153,62 @@ internal interface IApplianceClient : IDisposable
         string deviceId,
         CancellationToken cancellationToken);
 
+    // --- inventory CRUD ---------------------------------------------------
+
+    /// <summary><c>GET /api/v1/devices</c>: the full fleet with every editable field.</summary>
+    public Task<DevicePage> GetDeviceInventoryAsync(string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/devices/{id}</c>: one device, fresh (the map edit flow's read).</summary>
+    public Task<BimDevice> GetDeviceAsync(string bearerToken, string deviceId, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/devices</c>. 422 <c>PROP_007</c> when the property is unchartered.</summary>
+    public Task<BimDevice> CreateDeviceAsync(
+        string bearerToken, CreateDevice device, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>PATCH /api/v1/devices/{id}</c> with the shared changeset body. A stale
+    /// <paramref name="baseVersion"/> is 409 <c>SYNC_001</c>.
+    /// </summary>
+    public Task<BimDevice> UpdateDeviceAsync(
+        string bearerToken,
+        string deviceId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>DELETE /api/v1/devices/{id}</c>.</summary>
+    public Task DeleteDeviceAsync(string bearerToken, string deviceId, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/devices/name-suggestion</c>: the next free "Router 2"-style name.</summary>
+    public Task<string> GetDeviceNameSuggestionAsync(
+        string bearerToken, string propertyId, string category, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/circuits</c>: one page of the cursor-paginated list.</summary>
+    public Task<CircuitPage> GetCircuitsAsync(
+        string bearerToken, int limit, string? cursor, CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/circuits</c>.</summary>
+    public Task<Circuit> CreateCircuitAsync(
+        string bearerToken, CreateCircuit circuit, CancellationToken cancellationToken);
+
+    /// <summary><c>PATCH /api/v1/circuits/{id}</c> with the shared changeset body.</summary>
+    public Task<Circuit> UpdateCircuitAsync(
+        string bearerToken,
+        string circuitId,
+        int baseVersion,
+        IReadOnlyList<FieldChange> changes,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>DELETE /api/v1/circuits/{id}</c>.</summary>
+    public Task DeleteCircuitAsync(string bearerToken, string circuitId, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/clients</c>: the calling client + agent availability.</summary>
+    public Task<ClientsSummary> GetClientsAsync(string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/networks</c>: the org's networks (in practice exactly one).</summary>
+    public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
+        string bearerToken, CancellationToken cancellationToken);
+
     public Task<IReadOnlyList<BcfTopicSummary>> GetBcfTopicsAsync(
         string bearerToken,
         string propertyId,

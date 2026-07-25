@@ -1,0 +1,373 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:views="using:NodeScope.Desktop.Views"
+             x:Class="NodeScope.Desktop.Views.InventoryView"
+             x:DataType="vm:InventoryViewModel">
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="{x:Type vm:DeviceFormViewModel}">
+      <views:DeviceFormView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:CircuitFormViewModel}">
+      <views:CircuitFormView />
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <TabControl Name="InventoryTabs" Margin="8,0,8,8">
+
+    <!-- ============================== Equipment ============================== -->
+    <TabItem Header="Equipment">
+      <Panel Name="EquipmentRoot" DataContext="{Binding Equipment}">
+        <DockPanel>
+
+          <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,8,0,8">
+            <DockPanel>
+              <Button DockPanel.Dock="Right"
+                      Name="AddDeviceButton"
+                      Classes="accent"
+                      IsVisible="{Binding CanAdd}"
+                      Command="{Binding BeginAddCommand}"
+                      Content="+ Add" />
+              <StackPanel>
+                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Equipment" />
+                <TextBlock Name="EquipmentLoadedAt"
+                           Opacity="0.6"
+                           FontSize="12"
+                           IsVisible="{Binding LoadedAtLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Text="{Binding LoadedAtLabel}" />
+              </StackPanel>
+            </DockPanel>
+
+            <TextBox Name="DeviceSearchBox"
+                     Watermark="Search devices..."
+                     Text="{Binding SearchText}" />
+
+            <ItemsControl Name="CategoryChips" ItemsSource="{Binding CategoryChips}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CategoryFilterChip">
+                  <Button Margin="0,0,6,6"
+                          Classes.accent="{Binding IsActive}"
+                          Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).ToggleCategoryChipCommand}"
+                          CommandParameter="{Binding}"
+                          Content="{Binding Label}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ItemsControl Name="FloorChips"
+                          ItemsSource="{Binding FloorChips}"
+                          IsVisible="{Binding HasFloorChips}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FloorFilterChip">
+                  <Button Margin="0,0,6,6"
+                          Classes.accent="{Binding IsActive}"
+                          Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).SelectFloorChipCommand}"
+                          CommandParameter="{Binding}"
+                          Content="{Binding Label}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <Panel>
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                        IsVisible="{Binding IsLoading}">
+              <TextBlock Opacity="0.7" Text="Loading equipment…" />
+            </StackPanel>
+
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                        IsVisible="{Binding LoadError, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Foreground="{DynamicResource SystemErrorTextColor}"
+                         TextWrapping="Wrap"
+                         MaxWidth="420"
+                         Text="{Binding LoadError}" />
+              <Button HorizontalAlignment="Center" Command="{Binding LoadCommand}" Content="Retry" />
+            </StackPanel>
+
+            <TextBlock Name="EquipmentEmpty"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Opacity="0.6"
+                       IsVisible="{Binding IsListEmpty}"
+                       Text="{Binding EmptyMessage}" />
+
+            <DockPanel>
+              <Border DockPanel.Dock="Top"
+                      Name="EquipmentOperationError"
+                      Background="#33DD4444"
+                      CornerRadius="6"
+                      Padding="8"
+                      Margin="0,0,0,8"
+                      IsVisible="{Binding OperationError, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right"
+                          Command="{Binding DismissOperationErrorCommand}"
+                          Content="Dismiss" />
+                  <TextBlock VerticalAlignment="Center"
+                             TextWrapping="Wrap"
+                             Text="{Binding OperationError}" />
+                </DockPanel>
+              </Border>
+
+              <ScrollViewer>
+                <ItemsControl Name="DeviceList" ItemsSource="{Binding Rows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DeviceRow">
+                      <Border Margin="0,0,0,8"
+                              Padding="12"
+                              CornerRadius="10"
+                              BorderThickness="1"
+                              BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                        <DockPanel>
+                          <StackPanel DockPanel.Dock="Right"
+                                      Orientation="Horizontal"
+                                      Spacing="6"
+                                      VerticalAlignment="Top"
+                                      IsVisible="{Binding CanConfigure}">
+                            <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).BeginEditCommand}"
+                                    CommandParameter="{Binding}"
+                                    Content="Edit" />
+                            <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
+                                    CommandParameter="{Binding}"
+                                    IsVisible="{Binding !ConfirmingDelete}"
+                                    Content="Delete" />
+                            <Button Classes="accent"
+                                    Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
+                                    CommandParameter="{Binding}"
+                                    IsVisible="{Binding ConfirmingDelete}"
+                                    Content="Confirm delete?" />
+                          </StackPanel>
+                          <StackPanel Spacing="2">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Device.Name}" />
+                            <TextBlock Opacity="0.7" FontSize="12" Text="{Binding CategoryLine}" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                              <TextBlock Opacity="0.6"
+                                         FontSize="12"
+                                         IsVisible="{Binding Device.IpAddress, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                         Text="{Binding Device.IpAddress}" />
+                              <TextBlock Opacity="0.5"
+                                         FontSize="12"
+                                         IsVisible="{Binding CoordinateLine, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                         Text="{Binding CoordinateLine}" />
+                            </StackPanel>
+                          </StackPanel>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+
+            <ContentControl Content="{Binding Form}"
+                            IsVisible="{Binding Form, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          </Panel>
+
+        </DockPanel>
+      </Panel>
+    </TabItem>
+
+    <!-- ============================== Circuits ============================== -->
+    <TabItem Header="Circuits">
+      <Panel Name="CircuitsRoot" DataContext="{Binding Circuits}">
+        <DockPanel>
+
+          <DockPanel DockPanel.Dock="Top" Margin="0,8,0,8">
+            <Button DockPanel.Dock="Right"
+                    Name="AddCircuitButton"
+                    Classes="accent"
+                    Command="{Binding BeginAddCommand}"
+                    Content="+ Add" />
+            <StackPanel>
+              <TextBlock FontSize="20" FontWeight="SemiBold" Text="Circuits" />
+              <TextBlock Name="CircuitsTotal" Opacity="0.6" FontSize="12" Text="{Binding TotalLabel}" />
+            </StackPanel>
+          </DockPanel>
+
+          <Panel>
+            <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.7"
+                       IsVisible="{Binding IsLoading}"
+                       Text="Loading circuits…" />
+
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                        IsVisible="{Binding LoadError, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Foreground="{DynamicResource SystemErrorTextColor}"
+                         TextWrapping="Wrap"
+                         MaxWidth="420"
+                         Text="{Binding LoadError}" />
+              <Button HorizontalAlignment="Center" Command="{Binding LoadCommand}" Content="Retry" />
+            </StackPanel>
+
+            <StackPanel Name="CircuitsEmpty"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="8"
+                        IsVisible="{Binding IsListEmpty}">
+              <TextBlock HorizontalAlignment="Center" Opacity="0.6" Text="No circuits yet" />
+              <Button HorizontalAlignment="Center"
+                      Classes="accent"
+                      Command="{Binding BeginAddCommand}"
+                      Content="Add first circuit" />
+            </StackPanel>
+
+            <DockPanel>
+              <Border DockPanel.Dock="Top"
+                      Background="#33DD4444"
+                      CornerRadius="6"
+                      Padding="8"
+                      Margin="0,0,0,8"
+                      IsVisible="{Binding OperationError, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right"
+                          Command="{Binding DismissOperationErrorCommand}"
+                          Content="Dismiss" />
+                  <TextBlock VerticalAlignment="Center"
+                             TextWrapping="Wrap"
+                             Text="{Binding OperationError}" />
+                </DockPanel>
+              </Border>
+
+              <ScrollViewer>
+                <StackPanel>
+                  <ItemsControl Name="CircuitList" ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:CircuitRow">
+                        <Border Margin="0,0,0,8"
+                                Padding="12"
+                                CornerRadius="10"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                          <DockPanel>
+                            <StackPanel DockPanel.Dock="Right"
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        VerticalAlignment="Top">
+                              <Button Command="{Binding #CircuitsRoot.((vm:CircuitsViewModel)DataContext).BeginEditCommand}"
+                                      CommandParameter="{Binding}"
+                                      Content="Edit" />
+                              <Button Command="{Binding #CircuitsRoot.((vm:CircuitsViewModel)DataContext).DeleteCommand}"
+                                      CommandParameter="{Binding}"
+                                      IsVisible="{Binding !ConfirmingDelete}"
+                                      Content="Delete" />
+                              <Button Classes="accent"
+                                      Command="{Binding #CircuitsRoot.((vm:CircuitsViewModel)DataContext).DeleteCommand}"
+                                      CommandParameter="{Binding}"
+                                      IsVisible="{Binding ConfirmingDelete}"
+                                      Content="Confirm delete?" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                              <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock FontWeight="SemiBold" Text="{Binding Circuit.IspName}" />
+                                <Border Background="#332563EB"
+                                        CornerRadius="8"
+                                        Padding="6,1"
+                                        IsVisible="{Binding BandwidthLabel, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                  <TextBlock FontSize="11" Text="{Binding BandwidthLabel}" />
+                                </Border>
+                              </StackPanel>
+                              <TextBlock Opacity="0.7" FontSize="12" Text="{Binding Circuit.ServiceType}" />
+                              <TextBlock Opacity="0.6"
+                                         FontSize="12"
+                                         IsVisible="{Binding Circuit.CircuitId, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                         Text="{Binding Circuit.CircuitId}" />
+                              <TextBlock Opacity="0.5"
+                                         FontSize="12"
+                                         TextWrapping="Wrap"
+                                         IsVisible="{Binding Circuit.Notes, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                         Text="{Binding Circuit.Notes}" />
+                            </StackPanel>
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <Button Name="LoadMoreButton"
+                          HorizontalAlignment="Center"
+                          Margin="0,4,0,12"
+                          IsVisible="{Binding HasMore}"
+                          IsEnabled="{Binding !IsLoadingMore}"
+                          Command="{Binding LoadMoreCommand}"
+                          Content="Load more" />
+                </StackPanel>
+              </ScrollViewer>
+            </DockPanel>
+
+            <ContentControl Content="{Binding Form}"
+                            IsVisible="{Binding Form, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          </Panel>
+
+        </DockPanel>
+      </Panel>
+    </TabItem>
+
+    <!-- ============================== Clients ============================== -->
+    <TabItem Header="Clients">
+      <Panel DataContext="{Binding Clients}">
+        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.7"
+                   IsVisible="{Binding IsLoading}"
+                   Text="Loading clients…" />
+
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                    IsVisible="{Binding LoadError, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Foreground="{DynamicResource SystemErrorTextColor}"
+                     TextWrapping="Wrap"
+                     MaxWidth="420"
+                     Text="{Binding LoadError}" />
+          <Button HorizontalAlignment="Center" Command="{Binding LoadCommand}" Content="Retry" />
+        </StackPanel>
+
+        <StackPanel Spacing="12"
+                    Margin="0,8,0,0"
+                    MaxWidth="560"
+                    HorizontalAlignment="Left"
+                    IsVisible="{Binding Summary, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+          <TextBlock FontSize="20" FontWeight="SemiBold" Text="Clients" />
+
+          <Border Padding="12"
+                  CornerRadius="10"
+                  BorderThickness="1"
+                  BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="This device" />
+              <TextBlock Name="ClientPlatform" Opacity="0.8" Text="{Binding PlatformLine}" />
+              <TextBlock Opacity="0.6"
+                         FontSize="12"
+                         TextWrapping="Wrap"
+                         Text="{Binding Summary.CurrentDevice.UserAgent}" />
+              <TextBlock Name="ClientMetrics" Opacity="0.8" Text="{Binding MetricsLine}" />
+            </StackPanel>
+          </Border>
+
+          <Border Padding="12"
+                  CornerRadius="10"
+                  BorderThickness="1"
+                  BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="Client discovery" />
+              <TextBlock Name="AgentStatusMessage"
+                         Opacity="0.7"
+                         TextWrapping="Wrap"
+                         Text="{Binding Summary.AgentStatus.Message}" />
+            </StackPanel>
+          </Border>
+
+        </StackPanel>
+      </Panel>
+    </TabItem>
+
+  </TabControl>
+
+</UserControl>
