@@ -14,7 +14,11 @@ public class DesktopServicesTests
         var scratch = Directory.CreateTempSubdirectory("nodescope-desktop-tests-");
         try
         {
-            using (var provider = DesktopServices.BuildProvider(scratch.FullName))
+            var storage = new DesktopStorage(
+                Path.Combine(scratch.FullName, "logs"),
+                Path.Combine(scratch.FullName, "settings.json"),
+                Path.Combine(scratch.FullName, "vault.json"));
+            using (var provider = DesktopServices.BuildProvider(storage))
             {
                 Assert.NotNull(provider.GetRequiredService<MainWindowViewModel>());
                 Assert.NotNull(provider.GetRequiredService<ILoggerFactory>());

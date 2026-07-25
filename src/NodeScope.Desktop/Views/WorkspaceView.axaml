@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             x:Class="NodeScope.Desktop.Views.WorkspaceView"
+             x:DataType="vm:WorkspaceViewModel">
+
+  <DockPanel>
+
+    <Border DockPanel.Dock="Top" Padding="12,8">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="12">
+          <TextBlock Name="UserChip"
+                     VerticalAlignment="Center"
+                     Opacity="0.8"
+                     Text="{Binding UserLabel}" />
+          <Button Name="SignOutButton"
+                  Command="{Binding SignOutCommand}"
+                  Content="Sign out" />
+        </StackPanel>
+        <TextBlock VerticalAlignment="Center"
+                   FontWeight="SemiBold"
+                   Text="NodeScope" />
+      </DockPanel>
+    </Border>
+
+    <ListBox Name="NavRail"
+             DockPanel.Dock="Left"
+             Width="180"
+             Margin="8,0,0,8"
+             ItemsSource="{Binding Sections}"
+             SelectedItem="{Binding SelectedSection}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:WorkspaceSection">
+          <TextBlock Text="{Binding Title}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <StackPanel HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+      <TextBlock Name="SectionTitle"
+                 HorizontalAlignment="Center"
+                 FontSize="24"
+                 FontWeight="SemiBold"
+                 Text="{Binding SelectedSection.Title}" />
+      <TextBlock HorizontalAlignment="Center"
+                 Opacity="0.7"
+                 TextWrapping="Wrap"
+                 MaxWidth="420"
+                 TextAlignment="Center"
+                 Text="{Binding SelectedSection.Placeholder}" />
+    </StackPanel>
+
+  </DockPanel>
+
+</UserControl>

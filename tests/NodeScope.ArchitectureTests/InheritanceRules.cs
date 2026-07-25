@@ -36,6 +36,7 @@ public class InheritanceRules
         "System.IO.Stream",                                            // streaming decorators; the pipeline takes a Stream, not an interface
         "Avalonia.Application",                                        // the desktop client's App (Decision 14); Avalonia offers no composition seam here
         "Avalonia.Controls.Window",                                    // desktop windows; ditto
+        "Avalonia.Controls.UserControl",                               // desktop views behind DataTemplates; ditto
     };
 
     [Fact]

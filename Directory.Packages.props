@@ -103,6 +103,13 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
 
+    <!--
+      DPAPI for the desktop token vault (Decision 17: OS-keychain behind an
+      interface, DPAPI first). Windows-only at runtime; the Linux dev vault is a
+      0600 plain file until a libsecret implementation is warranted.
+    -->
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
+
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <!--

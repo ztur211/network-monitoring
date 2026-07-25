@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             x:Class="NodeScope.Desktop.Views.SignInView"
+             x:DataType="vm:SignInViewModel">
+
+  <StackPanel HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="400"
+              Spacing="12">
+
+    <TextBlock FontSize="28"
+               FontWeight="SemiBold"
+               HorizontalAlignment="Center"
+               Text="NodeScope" />
+    <TextBlock FontSize="14"
+               Opacity="0.7"
+               HorizontalAlignment="Center"
+               Margin="0,0,0,12"
+               Text="Sign in to your appliance" />
+
+    <TextBox Name="ServerUrlBox"
+             Watermark="https://nodescope.example.com"
+             Text="{Binding ServerUrl}"
+             IsEnabled="{Binding !Busy}" />
+
+    <Button Name="SignInButton"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding SignInCommand}"
+            IsEnabled="{Binding !Busy}"
+            Content="Sign in with browser" />
+
+    <Button Name="RetryButton"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding RetryCommand}"
+            IsVisible="{Binding CanRetry}"
+            Content="Retry connection" />
+
+    <StackPanel Orientation="Horizontal"
+                HorizontalAlignment="Center"
+                Spacing="8"
+                IsVisible="{Binding Busy}">
+      <TextBlock Name="ProgressText"
+                 VerticalAlignment="Center"
+                 Opacity="0.8"
+                 Text="{Binding Progress}" />
+      <Button Command="{Binding CancelCommand}" Content="Cancel" />
+    </StackPanel>
+
+    <TextBlock Name="ErrorText"
+               Foreground="{DynamicResource SystemErrorTextColor}"
+               TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+  </StackPanel>
+
+</UserControl>
