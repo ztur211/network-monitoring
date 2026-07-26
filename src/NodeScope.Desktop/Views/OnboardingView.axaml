@@ -84,7 +84,7 @@
                 <DataTemplate x:DataType="vm:WizardFieldInput">
                   <StackPanel Spacing="4" Margin="0,0,0,6">
                     <TextBlock FontWeight="Medium" FontSize="12" Text="{Binding Field.Label}" />
-                    <TextBox Watermark="{Binding Watermark}" Text="{Binding Text}" />
+                    <TextBox PlaceholderText="{Binding Placeholder}" Text="{Binding Text}" />
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>

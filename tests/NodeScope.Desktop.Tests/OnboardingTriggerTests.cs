@@ -19,6 +19,7 @@ public sealed class OnboardingTriggerTests : IDisposable
     private readonly FakeApplianceClient _client = new(Server);
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-wizard-trigger-");
     private readonly FakeApplianceClientFactory _factory = new();
+    private readonly FakeRealtimeConnection _realtime = new();
     private DesktopAuthFlow? _flow;
     private WorkspaceViewModel? _workspace;
 
@@ -26,6 +27,7 @@ public sealed class OnboardingTriggerTests : IDisposable
     {
         _workspace?.Dispose();
         _flow?.Dispose();
+        _realtime.Dispose();
         _client.Dispose();
         _scratch.Delete(recursive: true);
     }
@@ -46,7 +48,8 @@ public sealed class OnboardingTriggerTests : IDisposable
             new ApplianceSession(_client, "token-1"),
             store,
             NullLoggerFactory.Instance,
-            new FakeIfcTessellator());
+            new FakeIfcTessellator(),
+            _realtime);
         await _workspace.WizardCheck;
         return _workspace;
     }

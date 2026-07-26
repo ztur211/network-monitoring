@@ -30,7 +30,8 @@ public sealed class MainWindowTests : IDisposable
             _flow,
             settings,
             NullLoggerFactory.Instance,
-            new FakeIfcTessellator());
+            new FakeIfcTessellator(),
+            new FakeRealtimeConnectionFactory());
     }
 
     public void Dispose()

@@ -63,7 +63,7 @@
             <StackPanel Spacing="4">
               <TextBlock Text="Name *" FontWeight="Medium" />
               <TextBox Name="NameBox"
-                       Watermark="e.g. Core Router"
+                       PlaceholderText="e.g. Core Router"
                        Text="{Binding Name}" />
             </StackPanel>
 
@@ -116,22 +116,22 @@
             <Grid ColumnDefinitions="*,12,*">
               <StackPanel Grid.Column="0" Spacing="4">
                 <TextBlock Text="Floor" FontWeight="Medium" />
-                <TextBox Name="FloorBox" Watermark="e.g. 1" Text="{Binding Floor}" />
+                <TextBox Name="FloorBox" PlaceholderText="e.g. 1" Text="{Binding Floor}" />
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="4">
                 <TextBlock Text="Floor label" FontWeight="Medium" />
-                <TextBox Name="FloorLabelBox" Watermark="e.g. Main Level" Text="{Binding FloorLabel}" />
+                <TextBox Name="FloorLabelBox" PlaceholderText="e.g. Main Level" Text="{Binding FloorLabel}" />
               </StackPanel>
             </Grid>
 
             <StackPanel Spacing="4">
               <TextBlock Text="IP address" FontWeight="Medium" />
-              <TextBox Name="IpBox" Watermark="e.g. 192.168.1.1" Text="{Binding IpAddress}" />
+              <TextBox Name="IpBox" PlaceholderText="e.g. 192.168.1.1" Text="{Binding IpAddress}" />
             </StackPanel>
 
             <StackPanel Spacing="4">
               <TextBlock Text="MAC address" FontWeight="Medium" />
-              <TextBox Name="MacBox" Watermark="AA:BB:CC:DD:EE:FF" Text="{Binding MacAddress}" />
+              <TextBox Name="MacBox" PlaceholderText="AA:BB:CC:DD:EE:FF" Text="{Binding MacAddress}" />
             </StackPanel>
 
             <StackPanel Spacing="4">
@@ -140,7 +140,7 @@
                        AcceptsReturn="True"
                        TextWrapping="Wrap"
                        MinHeight="72"
-                       Watermark="Optional notes..."
+                       PlaceholderText="Optional notes..."
                        Text="{Binding Notes}" />
             </StackPanel>
 

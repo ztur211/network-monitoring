@@ -994,6 +994,38 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         return Task.FromResult(assignment);
     }
 
+    // --- assistant ----------------------------------------------------------
+
+    public AiUsage UsageToReturn { get; set; } =
+        new(0, 20, 0, 100, 0, 100_000, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc));
+
+    public Exception? AssistantFailure { get; set; }
+
+    public List<string> DeletedConversations { get; } = [];
+
+    public int UsageReads { get; private set; }
+
+    public Task<AiUsage> GetAiUsageAsync(string bearerToken, CancellationToken cancellationToken)
+    {
+        LastBearerToken = bearerToken;
+        UsageReads++;
+        return AssistantFailure is null
+            ? Task.FromResult(UsageToReturn)
+            : Task.FromException<AiUsage>(AssistantFailure);
+    }
+
+    public Task DeleteAiConversationAsync(
+        string bearerToken, string conversationId, CancellationToken cancellationToken)
+    {
+        if (AssistantFailure is not null)
+        {
+            return Task.FromException(AssistantFailure);
+        }
+
+        DeletedConversations.Add(conversationId);
+        return Task.CompletedTask;
+    }
+
     // --- onboarding -------------------------------------------------------
 
     /// <summary>Scripted turns, consumed in order; the last one repeats when exhausted.</summary>

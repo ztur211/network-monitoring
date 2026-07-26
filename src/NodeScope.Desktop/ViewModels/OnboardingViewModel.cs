@@ -24,7 +24,7 @@ internal sealed partial class WizardFieldInput(OnboardingField field)
 
     public bool IsRequired => Field.Required == true;
 
-    public string Watermark => Field.Placeholder ?? "";
+    public string Placeholder => Field.Placeholder ?? "";
 }
 
 /// <summary>

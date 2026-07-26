@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
 using NodeScope.Desktop.Bim;
+using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -20,9 +21,11 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     private readonly DesktopAuthFlow _flow;
     private readonly ApplianceSession _session;
     private readonly ILoggerFactory _loggers;
+    private readonly IRealtimeConnection _realtime;
     private readonly MapViewModel _map;
     private readonly BimViewerViewModel _bimViewer;
     private readonly InventoryViewModel _inventory;
+    private readonly AssistantViewModel _assistant;
     private readonly SettingsViewModel _settings;
     private readonly CancellationTokenSource _lifetime = new();
 
@@ -40,19 +43,23 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         ApplianceSession session,
         SettingsStore settingsStore,
         ILoggerFactory loggers,
-        IIfcTessellator tessellator)
+        IIfcTessellator tessellator,
+        IRealtimeConnection realtime)
     {
         _flow = flow;
         _session = session;
         _loggers = loggers;
         User = user;
         ServerUrl = serverUrl;
+        _realtime = realtime;
         _map = new MapViewModel(session, user, loggers.CreateLogger<MapViewModel>());
         _bimViewer = new BimViewerViewModel(
             session,
             loggers.CreateLogger<BimViewerViewModel>(),
             tessellator);
         _inventory = new InventoryViewModel(session, loggers);
+        _assistant = new AssistantViewModel(
+            session, realtime, loggers.CreateLogger<AssistantViewModel>());
         _settings = new SettingsViewModel(
             session, user, settingsStore, loggers.CreateLogger<SettingsViewModel>());
 
@@ -61,10 +68,12 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             new("Map", "The GIS map arrives with the Mapsui + tileserver-gl milestone.", _map),
             new("3D Viewer", "Loading the native BIM viewer.", _bimViewer),
             new("Inventory", "Loading equipment, circuits and clients.", _inventory),
-            new("Assistant", "Chat arrives once the client core is in place."),
+            new("Assistant", "Loading the assistant.", _assistant),
             new("Settings", "Loading settings.", _settings),
         ];
         _selectedSection = Sections[0];
+        // Web parity: the realtime wire comes up with the workspace, not with a section.
+        realtime.Start();
         WizardCheck = MaybeOpenWizardAsync();
     }
 
@@ -87,7 +96,9 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         _map.Dispose();
         _bimViewer.Dispose();
         _inventory.Dispose();
+        _assistant.Dispose();
         _settings.Dispose();
+        _realtime.Dispose();
         Wizard?.Dispose();
     }
 

@@ -15,6 +15,9 @@
     <DataTemplate DataType="{x:Type vm:InventoryViewModel}">
       <views:InventoryView />
     </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:AssistantViewModel}">
+      <views:AssistantView />
+    </DataTemplate>
     <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
       <views:SettingsView />
     </DataTemplate>

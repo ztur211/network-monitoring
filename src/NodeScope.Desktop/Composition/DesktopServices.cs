@@ -4,6 +4,7 @@ using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
 using NodeScope.Desktop.Bim;
 using NodeScope.Desktop.Logging;
+using NodeScope.Desktop.Realtime;
 using NodeScope.Desktop.ViewModels;
 
 namespace NodeScope.Desktop.Composition;
@@ -35,6 +36,7 @@ internal static class DesktopServices
         });
 
         services.AddSingleton<IApplianceClientFactory, ApplianceClientFactory>();
+        services.AddSingleton<IRealtimeConnectionFactory, RealtimeConnectionFactory>();
         services.AddSingleton(_ => new SettingsStore(storage.SettingsFile));
         // Decision 17: DPAPI where the OS offers it; the 0600 plain file is the dev vault.
         services.AddSingleton<ITokenVault>(_ => OperatingSystem.IsWindows()

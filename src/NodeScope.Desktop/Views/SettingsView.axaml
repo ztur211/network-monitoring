@@ -72,7 +72,7 @@
           <TextBlock Classes="hint"
                      Text="Used as the map's starting point. The appliance geocodes the address; nothing leaves your network except the one lookup to OpenStreetMap." />
           <TextBox Name="AddressBox"
-                   Watermark="e.g. 260 Broadway, New York, NY"
+                   PlaceholderText="e.g. 260 Broadway, New York, NY"
                    Text="{Binding AddressText}" />
           <TextBlock Name="LocationResult"
                      Opacity="0.7"
@@ -184,10 +184,10 @@
           </DockPanel>
 
           <StackPanel Name="CredentialForm" Spacing="6" IsVisible="{Binding CredentialFormOpen}">
-            <TextBox Name="CredentialNameBox" Watermark="Credential name" Text="{Binding CredentialName}" />
+            <TextBox Name="CredentialNameBox" PlaceholderText="Credential name" Text="{Binding CredentialName}" />
             <CheckBox Name="CredentialV3Toggle" IsChecked="{Binding CredentialIsV3}" Content="SNMPv3 (v2c otherwise)" />
             <TextBox Name="CommunityBox"
-                     Watermark="Community string"
+                     PlaceholderText="Community string"
                      PasswordChar="•"
                      Text="{Binding CredentialCommunity}"
                      IsVisible="{Binding !CredentialIsV3}" />
@@ -195,18 +195,18 @@
               <ComboBox HorizontalAlignment="Stretch"
                         ItemsSource="{x:Static vm:SettingsViewModel.SecurityLevels}"
                         SelectedItem="{Binding CredentialSecurityLevel}" />
-              <TextBox Watermark="Security name (user)" Text="{Binding CredentialSecurityName}" />
+              <TextBox PlaceholderText="Security name (user)" Text="{Binding CredentialSecurityName}" />
               <Grid ColumnDefinitions="*,8,*">
                 <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
                           ItemsSource="{x:Static vm:SettingsViewModel.AuthProtocols}"
                           SelectedItem="{Binding CredentialAuthProtocol}" />
-                <TextBox Grid.Column="2" Watermark="Auth key" PasswordChar="•" Text="{Binding CredentialAuthKey}" />
+                <TextBox Grid.Column="2" PlaceholderText="Auth key" PasswordChar="•" Text="{Binding CredentialAuthKey}" />
               </Grid>
               <Grid ColumnDefinitions="*,8,*">
                 <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
                           ItemsSource="{x:Static vm:SettingsViewModel.PrivProtocols}"
                           SelectedItem="{Binding CredentialPrivProtocol}" />
-                <TextBox Grid.Column="2" Watermark="Priv key" PasswordChar="•" Text="{Binding CredentialPrivKey}" />
+                <TextBox Grid.Column="2" PlaceholderText="Priv key" PasswordChar="•" Text="{Binding CredentialPrivKey}" />
               </Grid>
             </StackPanel>
             <Button Name="CreateCredentialButton"
@@ -252,14 +252,14 @@
           </DockPanel>
 
           <StackPanel Name="ProfileForm" Spacing="6" IsVisible="{Binding ProfileFormOpen}">
-            <TextBox Name="ProfileNameFormBox" Watermark="Profile name" Text="{Binding OidProfileName}" />
+            <TextBox Name="ProfileNameFormBox" PlaceholderText="Profile name" Text="{Binding OidProfileName}" />
             <CheckBox IsChecked="{Binding OidProfileInterfaceMetrics}" Content="Include interface metrics" />
             <ItemsControl ItemsSource="{Binding OidEntries}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:OidEntryDraft">
                   <Grid ColumnDefinitions="*,8,*,8,Auto" Margin="0,0,0,6">
-                    <TextBox Grid.Column="0" Watermark="OID (1.3.6.1...)" Text="{Binding Oid}" />
-                    <TextBox Grid.Column="2" Watermark="Metric name" Text="{Binding Metric}" />
+                    <TextBox Grid.Column="0" PlaceholderText="OID (1.3.6.1...)" Text="{Binding Oid}" />
+                    <TextBox Grid.Column="2" PlaceholderText="Metric name" Text="{Binding Metric}" />
                     <Button Grid.Column="4"
                             Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).RemoveOidEntryCommand}"
                             CommandParameter="{Binding}"

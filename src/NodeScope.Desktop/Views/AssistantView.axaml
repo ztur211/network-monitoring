@@ -1,0 +1,211 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             xmlns:sys="using:System"
+             x:Class="NodeScope.Desktop.Views.AssistantView"
+             x:DataType="vm:AssistantViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.banner">
+      <Setter Property="Background" Value="#FFFBEB" />
+      <Setter Property="BorderBrush" Value="#FDE68A" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="16,6" />
+    </Style>
+    <Style Selector="Border.banner TextBlock">
+      <Setter Property="Foreground" Value="#B45309" />
+    </Style>
+    <Style Selector="Border.banner.caution">
+      <Setter Property="Background" Value="#FEFCE8" />
+      <Setter Property="BorderBrush" Value="#FEF08A" />
+    </Style>
+    <Style Selector="Border.banner.caution TextBlock">
+      <Setter Property="Foreground" Value="#A16207" />
+    </Style>
+    <Style Selector="Border.banner.alert">
+      <Setter Property="Background" Value="#FEF2F2" />
+      <Setter Property="BorderBrush" Value="#FECACA" />
+    </Style>
+    <Style Selector="Border.banner.alert TextBlock">
+      <Setter Property="Foreground" Value="#B91C1C" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="{x:Type vm:UserChatEntry}">
+      <StackPanel HorizontalAlignment="Right" Margin="48,0,0,10">
+        <Border MaxWidth="420"
+                Padding="12,8"
+                CornerRadius="12,12,2,12"
+                Background="#2563eb">
+          <TextBlock TextWrapping="Wrap" Foreground="White" Text="{Binding Content}" />
+        </Border>
+        <TextBlock HorizontalAlignment="Right"
+                   Margin="4,2,4,0"
+                   FontSize="11"
+                   Opacity="0.5"
+                   Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" />
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:AssistantChatEntry}">
+      <StackPanel HorizontalAlignment="Left" Margin="0,0,48,10">
+        <Border MaxWidth="420"
+                Padding="12,8"
+                CornerRadius="12,12,12,2"
+                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+          <StackPanel Spacing="4">
+            <TextBlock FontSize="11"
+                       FontWeight="Medium"
+                       Foreground="#B45309"
+                       IsVisible="{Binding ProviderUnavailable}"
+                       Text="AI service unavailable - showing network summary" />
+            <TextBlock TextWrapping="Wrap" Text="{Binding Content}" />
+            <TextBlock FontSize="12"
+                       Opacity="0.5"
+                       IsVisible="{Binding IsStreaming}"
+                       Text="…" />
+            <TextBlock FontSize="11"
+                       Foreground="#B45309"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding UsageWarning, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Text="{Binding UsageWarning}" />
+          </StackPanel>
+        </Border>
+        <TextBlock Margin="4,2,4,0"
+                   FontSize="11"
+                   Opacity="0.5"
+                   Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <DockPanel>
+
+    <!-- Quota / provider banner, worst condition first (web AiStatusBanner). -->
+    <Border DockPanel.Dock="Top"
+            Name="StatusBanner"
+            Classes="banner"
+            Classes.alert="{Binding BannerIsAlert}"
+            Classes.caution="{Binding BannerIsCaution}"
+            IsVisible="{Binding BannerText, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock HorizontalAlignment="Center"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Text="{Binding BannerText}" />
+    </Border>
+
+    <!-- Input bar. -->
+    <Border DockPanel.Dock="Bottom"
+            Padding="16,10"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel Spacing="6">
+        <Button Name="ClearButton"
+                HorizontalAlignment="Right"
+                Padding="4,2"
+                Background="Transparent"
+                FontSize="11"
+                Opacity="0.6"
+                IsVisible="{Binding HasMessages}"
+                IsEnabled="{Binding !IsStreaming}"
+                Command="{Binding ClearConversationCommand}"
+                Content="Clear conversation" />
+        <DockPanel>
+          <Button Name="SendButton"
+                  DockPanel.Dock="Right"
+                  Classes="accent"
+                  Margin="8,0,0,0"
+                  VerticalAlignment="Bottom"
+                  Command="{Binding SendCommand}"
+                  Content="Send" />
+          <TextBox Name="MessageBox"
+                   MaxLength="2000"
+                   TextWrapping="Wrap"
+                   MaxHeight="120"
+                   PlaceholderText="{Binding InputPlaceholder}"
+                   IsEnabled="{Binding CanType}"
+                   Text="{Binding Input}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </DockPanel>
+        <TextBlock Name="UsageLine"
+                   HorizontalAlignment="Center"
+                   FontSize="11"
+                   Opacity="0.5"
+                   IsVisible="{Binding UsageSummary, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding UsageSummary}" />
+      </StackPanel>
+    </Border>
+
+    <Panel>
+
+      <!-- Empty state: title + the four starter prompts (web parity). -->
+      <StackPanel Name="EmptyState"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  MaxWidth="420"
+                  Spacing="8"
+                  IsVisible="{Binding !HasMessages}">
+        <TextBlock HorizontalAlignment="Center"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Text="NodeScope AI Assistant" />
+        <TextBlock HorizontalAlignment="Center"
+                   Margin="0,0,0,16"
+                   FontSize="12"
+                   Opacity="0.6"
+                   TextWrapping="Wrap"
+                   Text="Ask about your network or how to use NodeScope" />
+        <ItemsControl Name="SuggestionList" ItemsSource="{Binding Suggestions}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="sys:String">
+              <Button Margin="0,0,0,8"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Left"
+                      Padding="14,10"
+                      CornerRadius="10"
+                      Command="{Binding $parent[UserControl].((vm:AssistantViewModel)DataContext).AskSuggestionCommand}"
+                      CommandParameter="{Binding}"
+                      Content="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <!-- Transcript. -->
+      <DockPanel IsVisible="{Binding HasMessages}">
+        <Border DockPanel.Dock="Bottom"
+                Name="ErrorRow"
+                Margin="16,0,16,8"
+                Padding="12,8"
+                CornerRadius="10"
+                Background="#FEF2F2"
+                BorderBrush="#FECACA"
+                BorderThickness="1"
+                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <DockPanel>
+            <Button Name="RetryButton"
+                    DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    Command="{Binding RetryCommand}"
+                    Content="Retry" />
+            <TextBlock VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="#B91C1C"
+                       TextWrapping="Wrap"
+                       Text="{Binding Error}" />
+          </DockPanel>
+        </Border>
+        <ScrollViewer Name="TranscriptScroll" Padding="16,12">
+          <ItemsControl Name="TranscriptList" ItemsSource="{Binding Transcript}" />
+        </ScrollViewer>
+      </DockPanel>
+
+    </Panel>
+
+  </DockPanel>
+
+</UserControl>

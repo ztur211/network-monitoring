@@ -659,6 +659,20 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
             HttpMethod.Post, "api/v1/onboarding/turn", bearerToken, body, cancellationToken);
     }
 
+    public Task<AiUsage> GetAiUsageAsync(string bearerToken, CancellationToken cancellationToken) =>
+        GetDataAsync<AiUsage>("api/v1/ai/usage", bearerToken, cancellationToken);
+
+    public async Task DeleteAiConversationAsync(
+        string bearerToken, string conversationId, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete,
+            new Uri($"api/v1/ai/conversation/{Uri.EscapeDataString(conversationId)}", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
     public async Task SkipOnboardingAsync(string bearerToken, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(

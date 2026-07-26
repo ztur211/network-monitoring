@@ -37,6 +37,8 @@
     <PackageReference Include="Xbim.Geometry" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <!-- The realtime wire: assistant chat now, live entity updates with the realtime milestone. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <!-- Decision 17: the Windows token vault wraps the entry with per-user DPAPI. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>

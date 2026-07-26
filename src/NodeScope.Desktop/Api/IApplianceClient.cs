@@ -269,6 +269,18 @@ internal interface IApplianceClient : IDisposable
     public Task<SnmpAssignment> AssignSnmpAsync(
         string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken);
 
+    // --- assistant ----------------------------------------------------------
+
+    /// <summary><c>GET /api/v1/ai/usage</c>: the caller's quota counters and limits.</summary>
+    public Task<AiUsage> GetAiUsageAsync(string bearerToken, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>DELETE /api/v1/ai/conversation/{id}</c>: forgets the server-side transcript.
+    /// An unknown or already-gone conversation is 404 <c>GEN_002</c>.
+    /// </summary>
+    public Task DeleteAiConversationAsync(
+        string bearerToken, string conversationId, CancellationToken cancellationToken);
+
     // --- onboarding -------------------------------------------------------
 
     /// <summary>

@@ -40,7 +40,7 @@
             </DockPanel>
 
             <TextBox Name="DeviceSearchBox"
-                     Watermark="Search devices..."
+                     PlaceholderText="Search devices..."
                      Text="{Binding SearchText}" />
 
             <ItemsControl Name="CategoryChips" ItemsSource="{Binding CategoryChips}">

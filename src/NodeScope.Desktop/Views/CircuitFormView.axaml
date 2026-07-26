@@ -60,7 +60,7 @@
 
             <StackPanel Spacing="4">
               <TextBlock Text="ISP name *" FontWeight="Medium" />
-              <TextBox Name="IspNameBox" Watermark="e.g. Comcast Business" Text="{Binding IspName}" />
+              <TextBox Name="IspNameBox" PlaceholderText="e.g. Comcast Business" Text="{Binding IspName}" />
             </StackPanel>
 
             <StackPanel Spacing="4">
@@ -80,17 +80,17 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-              <TextBox Name="ServiceTypeBox" Watermark="e.g. Fiber" Text="{Binding ServiceType}" />
+              <TextBox Name="ServiceTypeBox" PlaceholderText="e.g. Fiber" Text="{Binding ServiceType}" />
             </StackPanel>
 
             <Grid ColumnDefinitions="*,12,*">
               <StackPanel Grid.Column="0" Spacing="4">
                 <TextBlock Text="Circuit ID" FontWeight="Medium" />
-                <TextBox Name="CircuitIdBox" Watermark="Provider circuit ID" Text="{Binding CircuitId}" />
+                <TextBox Name="CircuitIdBox" PlaceholderText="Provider circuit ID" Text="{Binding CircuitId}" />
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="4">
                 <TextBlock Text="Bandwidth (Mbps)" FontWeight="Medium" />
-                <TextBox Name="BandwidthBox" Watermark="e.g. 1000" Text="{Binding Bandwidth}" />
+                <TextBox Name="BandwidthBox" PlaceholderText="e.g. 1000" Text="{Binding Bandwidth}" />
               </StackPanel>
             </Grid>
 
@@ -114,7 +114,7 @@
                        AcceptsReturn="True"
                        TextWrapping="Wrap"
                        MinHeight="72"
-                       Watermark="Optional notes..."
+                       PlaceholderText="Optional notes..."
                        Text="{Binding Notes}" />
             </StackPanel>
 

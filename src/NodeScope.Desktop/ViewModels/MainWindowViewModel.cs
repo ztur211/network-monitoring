@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Auth;
 using NodeScope.Desktop.Bim;
+using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -28,17 +29,20 @@ internal sealed partial class MainWindowViewModel : IDisposable
     private readonly ILoggerFactory _loggers;
     private readonly IIfcTessellator _tessellator;
     private readonly SettingsStore _settings;
+    private readonly IRealtimeConnectionFactory _realtimeFactory;
 
     public MainWindowViewModel(
         DesktopAuthFlow flow,
         SettingsStore settings,
         ILoggerFactory loggers,
-        IIfcTessellator tessellator)
+        IIfcTessellator tessellator,
+        IRealtimeConnectionFactory realtimeFactory)
     {
         _flow = flow;
         _loggers = loggers;
         _tessellator = tessellator;
         _settings = settings;
+        _realtimeFactory = realtimeFactory;
         SignIn = new SignInViewModel(flow, settings);
         _content = SignIn;
         flow.StateChanged += OnStateChanged;
@@ -70,7 +74,8 @@ internal sealed partial class MainWindowViewModel : IDisposable
                 session,
                 _settings,
                 _loggers,
-                _tessellator);
+                _tessellator,
+                _realtimeFactory.Create(snapshot.ServerUrl, session.Token));
             Content = workspace;
             Status = $"Signed in as {workspace.UserLabel} - {snapshot.ServerUrl.Host}";
             previous?.Dispose();
