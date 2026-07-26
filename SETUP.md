@@ -9,7 +9,6 @@ on Windows, Linux, macOS, or WSLg.
 - .NET 10 SDK
 - Git
 - A desktop session and system browser
-- Node.js 22 and npm 10 or newer only for transition web and Electron work
 
 On Windows, Docker Desktop should use its WSL2 backend.
 
@@ -112,7 +111,8 @@ Launch the native client:
 dotnet run --project src/NodeScope.Desktop
 ```
 
-The transition browser client is available at `http://localhost:8080`.
+The appliance's only browser surface is the sign-in page at
+`http://localhost:8080/login`; everything else is the desktop client.
 
 ## Local map tiles
 

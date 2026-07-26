@@ -19,6 +19,7 @@ namespace NodeScope.Desktop.Tests;
 /// default to the demo owner; override with
 /// <c>NODESCOPE_DESKTOP_INVENTORY_E2E_EMAIL</c>/<c>…_PASSWORD</c>.
 /// </remarks>
+[Collection(LiveApplianceSuite.Name)]
 public sealed class InventoryE2ETests : IDisposable
 {
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-inventory-e2e-");

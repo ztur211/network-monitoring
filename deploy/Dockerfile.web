@@ -1,44 +1,14 @@
 # syntax=docker/dockerfile:1
 #
-# NodeScope web (Expo static export) served by Caddy, which also reverse-proxies
-# /api/* and /socket.io/* to the api service (same-origin model — see
-# deploy/README.md). Build context is the repo ROOT.
-#
-# Note: the Expo/Metro export is memory-hungry; building this image wants ~4 GB
-# RAM. On a smaller box, pre-build `apps/web/dist` on a dev machine and bind-mount
-# it into a plain caddy:2-alpine instead.
+# NodeScope appliance gateway: Caddy routing the same-origin surface - /api + /hubs
+# to the API host, /tiles to tileserver-gl, /agent from the baked agent-release
+# payload, and everything else (the browser auth page at /login) to the API host
+# too. The image kept its historical "web" name through step 6 so existing compose
+# files and pulls keep working; there has been no web app in it since the SPA was
+# demolished. Build context is the repo ROOT (for deploy/ paths only).
 
-FROM node:22-bookworm-slim AS build
-WORKDIR /app
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ openssl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# EXPO_PUBLIC_API_URL is baked into the browser bundle at build time. Default
-# empty so the published appliance image resolves the API at same-origin
-# (window.location.origin) at runtime — the LAN appliance needs no rebuild when
-# its IP changes. A split-origin / dev build can still pass an explicit
-# --build-arg EXPO_PUBLIC_API_URL=https://api.example.com.
-ARG EXPO_PUBLIC_API_URL=
-ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
-
-# Workspace install: the root postinstall runs here, so the patches and the
-# package sources it builds (shared/client; their tsconfigs extend
-# tsconfig.base.json) must be present before npm ci.
-COPY package.json package-lock.json .npmrc tsconfig.base.json ./
-COPY patches ./patches
-COPY packages/shared ./packages/shared
-COPY packages/client ./packages/client
-COPY apps/web/package.json ./apps/web/
-RUN npm ci --legacy-peer-deps
-
-COPY apps/web ./apps/web
-RUN npm run build --workspace=apps/web   # expo export --platform web -> apps/web/dist
-
-# ---------------------------------------------------------------------------
-FROM caddy:2-alpine AS runtime
+FROM caddy:2-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-COPY --from=build /app/apps/web/dist /srv/web
 # Agent distribution payload (Decision 13): binaries + manifest + installers
 # staged by scripts/agent-release/build.sh; served by Caddy at /agent/*.
 # An unstaged (empty) directory just means the update manifest 404s - harmless.

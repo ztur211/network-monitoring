@@ -1,7 +1,6 @@
 # Environment
 .env
 .env.*
-!.env.example
 # The demo env holds only localhost throwaway values (see its header) and is
 # committed on purpose so the 3D demo is turnkey.
 !deploy/.env.demo
@@ -15,7 +14,6 @@ docs/*
 # …and design docs: versioned architecture/decision records belong in the repo.
 !docs/design/
 .claude/
-PROGRESS.md
 
 # Local runtime artifacts (e.g. a Redis server started in-repo drops its dump here)
 *.rdb
@@ -24,21 +22,6 @@ PROGRESS.md
 # copied into the web image by deploy/Dockerfile.web. Never committed.
 deploy/agent-dist/*
 !deploy/agent-dist/.gitkeep
-
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-build/
-.expo/
-web-build/
-
-# TypeScript
-*.tsbuildinfo
-
-# Prisma
-apps/api/prisma/migrations/*.sql.bak
 
 # Logs
 *.log
@@ -52,8 +35,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.suo
-*.ntvs*
-*.njsproj
 # NOTE: `*.sln` used to be ignored here (inherited from the stock Node
 # .gitignore template, back when nothing in this repo was .NET). The C# solution
 # lives at NodeScope.slnx and must be committed, so that entry is gone.

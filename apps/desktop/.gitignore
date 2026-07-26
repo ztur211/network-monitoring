@@ -1,7 +1,0 @@
-node_modules/
-out/
-dist/
-release/
-test-results/
-playwright-report/
-*.log

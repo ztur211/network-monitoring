@@ -21,6 +21,7 @@ namespace NodeScope.Desktop.Tests;
 /// <c>NODESCOPE_DESKTOP_ASSISTANT_E2E_BASE_URL=http://localhost:8080</c> against the
 /// appliance stack + demo seed.
 /// </remarks>
+[Collection(LiveApplianceSuite.Name)]
 public sealed class AssistantE2ETests : IDisposable
 {
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-assistant-e2e-");

@@ -37,32 +37,24 @@
 		file_server
 	}
 
-	# Web SPA: serve the static export; unknown paths fall back to index.html so
-	# expo-router can handle client-side routing.
+	# Everything else → the API host (step 6: the SPA is gone). The host serves the
+	# browser-facing auth page at /login (the desktop-auth bounce target), redirects
+	# / and /register onto it, and answers everything unknown with its JSON 404 -
+	# no catchall HTML exists anymore, which is also what the agent's update check
+	# and the desktop's error mapping want.
 	handle {
-		# Security headers for the SPA responses. (The API responses get their own
-		# from helmet in main.ts; scoping these to the web handle avoids duplicating
-		# or conflicting with those on the proxied /api + /socket.io paths.)
+		# Security headers for the browser-facing page (the desktop client ignores
+		# them; the sign-in page is the one surface a real browser renders).
 		header {
 			Strict-Transport-Security "max-age=31536000; includeSubDomains"
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
 			Referrer-Policy "strict-origin-when-cross-origin"
-			# geolocation is allowed for self — MapView uses navigator.geolocation
-			# for the "you are here" marker; camera/microphone are unused → denied.
-			Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+			# The auth page uses no sensor APIs.
+			Permissions-Policy "geolocation=(), camera=(), microphone=()"
 			# Hide the server banner.
 			-Server
-			# Content-Security-Policy is intentionally left OFF here. A too-strict
-			# CSP can blank the SPA by blocking Expo's bundle/workers, and the deploy
-			# smoke test only checks that HTML is served — not that it renders — so a
-			# broken CSP would pass CI and break the real demo. Enable + verify in a
-			# real browser during host bring-up. Recommended policy (mirrors main.ts
-			# / SAD §12.4); uncomment after browser verification:
-			# Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https://tiles.openfreemap.org; connect-src 'self' https://tiles.openfreemap.org; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'"
 		}
-		root * /srv/web
-		try_files {path} /index.html
-		file_server
+		reverse_proxy {$API_UPSTREAM:api:3000}
 	}
 }

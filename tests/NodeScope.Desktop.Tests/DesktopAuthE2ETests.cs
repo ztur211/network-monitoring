@@ -17,6 +17,7 @@ namespace NodeScope.Desktop.Tests;
 /// (<c>scripts/run-csharp-host.sh</c>) and run with
 /// <c>NODESCOPE_DESKTOP_E2E_BASE_URL=http://127.0.0.1:5199</c>; reported as skipped otherwise.
 /// </remarks>
+[Collection(LiveApplianceSuite.Name)]
 public sealed class DesktopAuthE2ETests : IDisposable
 {
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-e2e-");

@@ -175,9 +175,9 @@ tiles_extract_exists() {
     -e "process.exit(require('fs').existsSync('/data/region.mbtiles') ? 0 : 1)" >/dev/null 2>&1
 }
 
-# End-to-end reachability through the real origin (Caddy -> API / static files) -
-# what the containers' own healthchecks cannot see. curl-only, so the appliance
-# host needs no toolchain. Exits via die on the first failed check.
+# End-to-end reachability through the real origin (Caddy -> API / tiles / agent
+# payload) - what the containers' own healthchecks cannot see. curl-only, so the
+# appliance host needs no toolchain. Exits via die on the first failed check.
 smoke_test() {
   local origin="$1" tiles="${2:-1}"
   local body
@@ -195,13 +195,19 @@ smoke_test() {
     || die "smoke: /api/auth/get-session should return null, got: ${body}"
   log "  ✔ API /api/auth/get-session (unauthenticated)"
 
-  # The web shell and the SPA catchall both serve index.html.
-  curl -fsS "${origin}/" | grep -qi "<html" \
-    || die "smoke: ${origin}/ did not serve the web shell"
-  log "  ✔ Web / (index.html)"
-  curl -fsS "${origin}/__catchall_smoke" | grep -qi "<html" \
-    || die "smoke: SPA catchall did not serve index.html"
-  log "  ✔ Web SPA catchall"
+  # The browser auth page: / redirects onto /login, which the API serves itself
+  # (step 6: no SPA). -L follows the redirect; the page is the desktop-auth
+  # flow's sign-in bounce target, so a broken page strands every new sign-in.
+  curl -fsSL "${origin}/" | grep -q "auth-form" \
+    || die "smoke: ${origin}/ did not serve the auth page"
+  log "  ✔ Auth page / -> /login"
+
+  # No SPA catchall exists anymore: junk paths must be an honest 404 (the agent's
+  # update check and the desktop's error mapping both rely on never seeing HTML
+  # where JSON belongs).
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "${origin}/__catchall_smoke")" = "404" ] \
+    || die "smoke: an unknown path should 404, not serve a catchall"
+  log "  ✔ Unknown paths 404"
 
   # Tileserver alive through the proxy; the style only registers once the
   # region extract exists, so that check is skipped on --no-tiles installs.

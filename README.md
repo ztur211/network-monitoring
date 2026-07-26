@@ -11,7 +11,6 @@ The current product stack is:
 - A native Avalonia desktop client in `src/NodeScope.Desktop`
 - A small NativeAOT monitoring agent in `src/NodeScope.Agent`
 - A single-host Docker appliance under `deploy/`
-- The transition Expo web client in `apps/web`, served same-origin by the appliance
 
 See [docs/PRD.md](docs/PRD.md) for the product requirements and
 [docs/migration/csharp-migration-decisions.md](docs/migration/csharp-migration-decisions.md)
@@ -24,7 +23,6 @@ Requirements:
 - Docker Engine or Docker Desktop with Compose v2
 - .NET 10 SDK
 - A desktop session for Avalonia and browser-based PKCE sign-in
-- Node.js 22 and npm 10 or newer only when building or testing the transition clients
 
 Start the local appliance, seed demo data, and launch the native client:
 
@@ -59,18 +57,11 @@ See [SETUP.md](SETUP.md) for the manual flow and troubleshooting.
 
 ## Development
 
-Restore both toolchains:
+Restore and build:
 
 ```bash
 dotnet restore NodeScope.slnx
-npm ci
-```
-
-Build everything:
-
-```bash
 dotnet build NodeScope.slnx -c Release --no-restore
-npm run build
 ```
 
 Run the native desktop client against an existing appliance:
@@ -107,10 +98,6 @@ for project in \
 do
   dotnet test "$project" -c Release --no-build
 done
-
-npm run lint
-npm test
-npm run build
 ```
 
 The contract suite is intentionally black-box and requires a running API:
@@ -156,10 +143,6 @@ src/
 tests/
   NodeScope.ContractTests/        black-box HTTP and SignalR contract suite
   NodeScope.*.Tests/              unit, architecture, and client tests
-apps/
-  web/                            transition Expo web client
-  desktop/                        transition Electron BIM client
-packages/                         transition TypeScript libraries
 deploy/                           self-hosted appliance and agent installers
 docs/                             product, architecture, and migration decisions
 ```

@@ -23,6 +23,7 @@ namespace NodeScope.Desktop.Tests;
 /// <c>NODESCOPE_DESKTOP_REALTIME_E2E_BASE_URL=http://localhost:8080</c> against the
 /// appliance stack + demo seed.
 /// </remarks>
+[Collection(LiveApplianceSuite.Name)]
 public sealed class RealtimeE2ETests : IDisposable
 {
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-realtime-e2e-");

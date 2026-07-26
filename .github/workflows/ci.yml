@@ -45,15 +45,6 @@ jobs:
             dotnet test "$project" --configuration Release --no-build
           done
 
-      - name: Lint transition clients
-        run: npm run lint
-
-      - name: Test transition clients
-        run: npm test
-
-      - name: Build transition clients
-        run: npm run build
-
   contract:
     name: Black-box API contract
     runs-on: ubuntu-latest
@@ -83,7 +74,9 @@ jobs:
       NODESCOPE_DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
       BETTER_AUTH_SECRET: test-secret-minimum-32-characters-long-aaa
       BETTER_AUTH_URL: http://127.0.0.1:5199
-      FRONTEND_URL: http://localhost:8080
+      # The host serves its own /login since step 6, so the auth-page origin is the
+      # host itself.
+      FRONTEND_URL: http://127.0.0.1:5199
       SECRET_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
       THROTTLE_DEFAULT_LIMIT: "100000"
       THROTTLE_AUTH_LIMIT: "100000"
@@ -160,12 +153,13 @@ jobs:
           NODESCOPE_DESKTOP_ASSISTANT_E2E_BASE_URL: http://127.0.0.1:5199
           NODESCOPE_DESKTOP_INVENTORY_E2E_BASE_URL: http://127.0.0.1:5199
           NODESCOPE_DESKTOP_SETTINGS_E2E_BASE_URL: http://127.0.0.1:5199
+          NODESCOPE_DESKTOP_REALTIME_E2E_BASE_URL: http://127.0.0.1:5199
         run: >-
           dotnet test tests/NodeScope.Desktop.Tests
           --configuration Release
           --no-restore
           --filter
-          "FullyQualifiedName~DesktopAuthE2ETests|FullyQualifiedName~AssistantE2ETests|FullyQualifiedName~InventoryE2ETests|FullyQualifiedName~SettingsE2ETests"
+          "FullyQualifiedName~DesktopAuthE2ETests|FullyQualifiedName~AssistantE2ETests|FullyQualifiedName~InventoryE2ETests|FullyQualifiedName~SettingsE2ETests|FullyQualifiedName~RealtimeE2ETests"
 
       - name: Print API log on failure
         if: failure()

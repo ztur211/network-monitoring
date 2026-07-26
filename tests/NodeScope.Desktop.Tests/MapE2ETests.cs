@@ -27,6 +27,7 @@ namespace NodeScope.Desktop.Tests;
 /// <c>NODESCOPE_DESKTOP_MAP_E2E_EMAIL</c>/<c>…_PASSWORD</c>. Set
 /// <c>NODESCOPE_DESKTOP_MAP_E2E_SHOT=/path/shot.png</c> to keep the rendered frame.
 /// </remarks>
+[Collection(LiveApplianceSuite.Name)]
 public sealed class MapE2ETests : IDisposable
 {
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-map-e2e-");

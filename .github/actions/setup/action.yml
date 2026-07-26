@@ -1,7 +1,7 @@
-# Composite action: .NET and Node setup shared by CI jobs.
+# Composite action: the .NET setup shared by CI jobs.
 # Run AFTER actions/checkout (a local action needs the repo already checked out).
-name: Set up NodeScope toolchains
-description: Set up .NET 10 and Node 22, then restore both dependency graphs.
+name: Set up NodeScope toolchain
+description: Set up .NET 10 and restore the dependency graph.
 runs:
   using: composite
   steps:
@@ -9,13 +9,5 @@ runs:
       with:
         dotnet-version: '10.0.x'
 
-    - uses: actions/setup-node@v6
-      with:
-        node-version: '22'
-        cache: npm
-
     - run: dotnet restore NodeScope.slnx
-      shell: bash
-
-    - run: npm ci --no-audit
       shell: bash

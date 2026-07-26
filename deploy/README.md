@@ -71,7 +71,7 @@ Caddy :80 or :443
   |-- /api/* and /hubs/* -> ASP.NET Core API :3000
   |-- /tiles/*           -> tileserver-gl :8080
   |-- /agent/*           -> signed static agent payloads
-  `-- everything else    -> transition SPA
+  `-- everything else    -> ASP.NET Core API :3000 (serves /login, 404s the rest)
 
 API -> PostgreSQL 16 with TimescaleDB and PostGIS
 API -> local blob volume by default

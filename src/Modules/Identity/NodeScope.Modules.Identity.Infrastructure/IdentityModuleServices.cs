@@ -76,6 +76,7 @@ public static class IdentityModuleServices
     {
         ArgumentNullException.ThrowIfNull(app);
         BetterAuthEndpoints.Map(app);
+        AuthPagesEndpoints.Map(app);
         DesktopAuthEndpoints.Map(app);
         UsersEndpoints.Map(app);
         OrganizationsEndpoints.Map(app);

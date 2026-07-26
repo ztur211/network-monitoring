@@ -170,8 +170,11 @@ services:
       - tiledata:/data
 
   web:
-    # Origin-agnostic image (same-origin at runtime - see apps/web/lib/api-base.ts),
-    # so no PUBLIC_ORIGIN is baked and no rebuild is needed on IP change.
+    # The appliance gateway (Caddy): routes /api + /hubs + everything else (the
+    # browser auth page) to the api service, /tiles to tileserver-gl, and serves
+    # the baked /agent release payload. Origin-agnostic - nothing is baked per
+    # host, so no rebuild is needed on IP change. The service kept its historical
+    # "web" name through step 6; the SPA it once served is gone.
     image: ghcr.io/ztur211/nodescope-web:${NODESCOPE_VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
@@ -180,7 +183,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${WEB_MEMORY_LIMIT:-192m}
+          memory: ${WEB_MEMORY_LIMIT:-128m}
           cpus: "${WEB_CPU_LIMIT:-0.5}"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
