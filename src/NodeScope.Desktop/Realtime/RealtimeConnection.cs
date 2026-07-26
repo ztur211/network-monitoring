@@ -18,6 +18,12 @@ internal sealed class RealtimeConnection : IRealtimeConnection
     /// <summary>The hub method serving <c>v1:ai:message</c> (socket.io events map to methods).</summary>
     private const string AiMessageMethod = "AiMessage";
 
+    /// <summary>The hub method serving <c>v1:metrics:submit</c>.</summary>
+    private const string MetricsSubmitMethod = "MetricsSubmit";
+
+    /// <summary>The hub method serving <c>v1:ping</c>.</summary>
+    private const string PingMethod = "Ping";
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly HubConnection _hub;
@@ -25,6 +31,8 @@ internal sealed class RealtimeConnection : IRealtimeConnection
     private readonly Action<Action> _post;
     private readonly Uri _hubUrl;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly List<Action> _reconnectedHandlers = [];
+    private readonly Lock _reconnectedGate = new();
     private int _started;
 
     public RealtimeConnection(Uri serverUrl, string bearerToken, ILogger logger, Action<Action> post)
@@ -46,6 +54,17 @@ internal sealed class RealtimeConnection : IRealtimeConnection
         _hub.Reconnected += _ =>
         {
             RealtimeLog.Connected(_logger, _hubUrl);
+            Action[] handlers;
+            lock (_reconnectedGate)
+            {
+                handlers = [.. _reconnectedHandlers];
+            }
+
+            foreach (var handler in handlers)
+            {
+                _post(handler);
+            }
+
             return Task.CompletedTask;
         };
     }
@@ -79,6 +98,45 @@ internal sealed class RealtimeConnection : IRealtimeConnection
         }
     }
 
+    public async Task SubmitMetricsAsync(MetricsSubmission metrics, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(metrics);
+        try
+        {
+            await _hub.InvokeAsync(
+                MetricsSubmitMethod,
+                new
+                {
+                    bandwidthDown = metrics.BandwidthDown,
+                    bandwidthUp = metrics.BandwidthUp,
+                    latency = metrics.Latency,
+                    connectionQuality = metrics.ConnectionQuality,
+                },
+                cancellationToken);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new RealtimeUnavailableException(
+                "The realtime channel could not deliver the metrics sample.", failure);
+        }
+    }
+
+    public async Task<TimeSpan> PingAsync(CancellationToken cancellationToken)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            await _hub.InvokeAsync(PingMethod, cancellationToken);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new RealtimeUnavailableException(
+                "The realtime channel could not deliver the ping.", failure);
+        }
+
+        return System.Diagnostics.Stopwatch.GetElapsedTime(started);
+    }
+
     public IDisposable OnAiToken(Action<AiTokenEvent> handler) =>
         Subscribe(WsEvents.AiToken, handler);
 
@@ -87,6 +145,32 @@ internal sealed class RealtimeConnection : IRealtimeConnection
 
     public IDisposable OnError(Action<RealtimeErrorEvent> handler) =>
         Subscribe(WsEvents.Error, handler);
+
+    public IDisposable OnDeviceUpdated(Action<DeviceUpdatedEvent> handler) =>
+        Subscribe(WsEvents.DeviceUpdated, handler);
+
+    public IDisposable OnDeviceDeleted(Action<DeviceDeletedEvent> handler) =>
+        Subscribe(WsEvents.DeviceDeleted, handler);
+
+    public IDisposable OnCircuitUpdated(Action<CircuitUpdatedEvent> handler) =>
+        Subscribe(WsEvents.CircuitUpdated, handler);
+
+    public IDisposable OnCircuitDeleted(Action<CircuitDeletedEvent> handler) =>
+        Subscribe(WsEvents.CircuitDeleted, handler);
+
+    public IDisposable OnMetricsUpdate(Action<MetricsUpdateEvent> handler) =>
+        Subscribe(WsEvents.MetricsUpdate, handler);
+
+    public IDisposable OnReconnected(Action handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        lock (_reconnectedGate)
+        {
+            _reconnectedHandlers.Add(handler);
+        }
+
+        return new ReconnectedSubscription(this, handler);
+    }
 
     public void Dispose()
     {
@@ -162,6 +246,17 @@ internal sealed class RealtimeConnection : IRealtimeConnection
         {
             // Fire-and-forget teardown during sign-out or shutdown: log, never throw.
             RealtimeLog.DisposeFailed(_logger, failure);
+        }
+    }
+
+    private sealed class ReconnectedSubscription(RealtimeConnection owner, Action handler) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (owner._reconnectedGate)
+            {
+                owner._reconnectedHandlers.Remove(handler);
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Map;
+using NodeScope.Desktop.Realtime;
 using Color = Mapsui.Styles.Color;
 
 namespace NodeScope.Desktop.ViewModels;
@@ -77,11 +79,19 @@ internal sealed partial class MapViewModel : IDisposable
     private readonly TileLayer _noBuildingsLayer;
     private readonly MemoryLayer _fiberLayer;
     private readonly MemoryLayer _deviceLayer;
+    private readonly MemoryLayer _liveLayer;
+    private readonly IDisposable _deviceUpdatedSubscription;
+    private readonly IDisposable _deviceDeletedSubscription;
+    private readonly IDisposable _metricsSubscription;
+    private readonly IDisposable _reconnectedSubscription;
 
     /// <summary>Every device ever loaded (fleet seed + viewport merges), like the web store.</summary>
     private readonly Dictionary<string, MapDevice> _devices = new(StringComparer.Ordinal);
 
     private IReadOnlyList<MapFiberRun> _fiberRuns = [];
+
+    /// <summary>The last pushed metrics sample; feeds the live marker's stats badge.</summary>
+    private ClientMetrics? _liveMetrics;
     private CancellationTokenSource? _viewportDebounce;
     private CancellationTokenSource? _viewportLoad;
     private CancellationTokenSource? _preferencesDebounce;
@@ -151,6 +161,7 @@ internal sealed partial class MapViewModel : IDisposable
         ApplianceSession session,
         CurrentUser user,
         ILogger<MapViewModel> logger,
+        IRealtimeConnection realtime,
         TimeProvider? timeProvider = null)
     {
         _session = session;
@@ -173,14 +184,24 @@ internal sealed partial class MapViewModel : IDisposable
             Style = null, // features carry their own styles; no layer default underneath
         };
         _deviceLayer = new MemoryLayer("devices") { Style = null };
+        _liveLayer = new MemoryLayer("live-marker") { Style = null };
 
         SharedMap.Layers.Add(_libertyLayer);
         SharedMap.Layers.Add(_noBuildingsLayer);
         SharedMap.Layers.Add(_fiberLayer);
         SharedMap.Layers.Add(_deviceLayer);
+        SharedMap.Layers.Add(_liveLayer);
 
         SharedMap.Navigator.ViewportChanged += OnViewportChanged;
         SharedMap.Tapped += OnMapTapped;
+
+        _deviceUpdatedSubscription = realtime.OnDeviceUpdated(OnDeviceUpdated);
+        _deviceDeletedSubscription = realtime.OnDeviceDeleted(OnDeviceDeleted);
+        _metricsSubscription = realtime.OnMetricsUpdate(OnMetricsUpdate);
+        // The server replays nothing across a connection gap: rebuild the device cache
+        // from a fresh fleet read (deliberate deviation - the web waited for the next
+        // pan to notice anything it missed).
+        _reconnectedSubscription = realtime.OnReconnected(() => _ = ReloadAfterReconnectAsync());
 
         Categories = [.. DeviceCategories.All.Select(info => new CategoryToggle(info))];
         foreach (var toggle in Categories)
@@ -204,6 +225,8 @@ internal sealed partial class MapViewModel : IDisposable
     internal MemoryLayer DeviceLayer => _deviceLayer;
 
     internal MemoryLayer FiberLayer => _fiberLayer;
+
+    internal MemoryLayer LiveLayer => _liveLayer;
 
     internal TileLayer LibertyLayer => _libertyLayer;
 
@@ -256,6 +279,10 @@ internal sealed partial class MapViewModel : IDisposable
     {
         SharedMap.Navigator.ViewportChanged -= OnViewportChanged;
         SharedMap.Tapped -= OnMapTapped;
+        _deviceUpdatedSubscription.Dispose();
+        _deviceDeletedSubscription.Dispose();
+        _metricsSubscription.Dispose();
+        _reconnectedSubscription.Dispose();
         _lifetime.Cancel();
         _lifetime.Dispose();
         _viewportDebounce?.Dispose();
@@ -265,6 +292,7 @@ internal sealed partial class MapViewModel : IDisposable
         _noBuildingsLayer.Dispose();
         _fiberLayer.Dispose();
         _deviceLayer.Dispose();
+        _liveLayer.Dispose();
         SharedMap.Dispose();
     }
 
@@ -312,6 +340,62 @@ internal sealed partial class MapViewModel : IDisposable
         if (!cancellationToken.IsCancellationRequested)
         {
             RebuildOverlays();
+            RebuildLiveMarker();
+        }
+    }
+
+    /// <summary>
+    /// Web parity for entity deltas: the pushed device wins wholesale, and an unseen id
+    /// merges in (an edit or placement of a device added since our seed).
+    /// </summary>
+    private void OnDeviceUpdated(DeviceUpdatedEvent received)
+    {
+        var mapDevice = ToMapDevice(received.Device);
+        _devices[mapDevice.Id] = mapDevice;
+        FloorOptions = BuildFloorOptions();
+        RebuildOverlays();
+        if (SelectedDevice?.Id == mapDevice.Id)
+        {
+            SelectedDevice = mapDevice; // the open panel shows the pushed state
+        }
+    }
+
+    private void OnDeviceDeleted(DeviceDeletedEvent received)
+    {
+        if (!_devices.Remove(received.DeviceId))
+        {
+            return; // the echo of our own optimistic delete
+        }
+
+        if (SelectedDevice?.Id == received.DeviceId)
+        {
+            SelectedDevice = null;
+        }
+
+        FloorOptions = BuildFloorOptions();
+        RebuildOverlays();
+    }
+
+    private void OnMetricsUpdate(MetricsUpdateEvent received)
+    {
+        _liveMetrics = received.Metrics;
+        RebuildLiveMarker();
+    }
+
+    private async Task ReloadAfterReconnectAsync()
+    {
+        try
+        {
+            var fleet = await _session.Client.GetDevicesAsync(_session.Token, _lifetime.Token);
+            _devices.Clear(); // only after a successful read - a failure keeps the old cache
+            MergeDevices(fleet);
+            await LoadViewportAsync();
+            RebuildOverlays();
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
+        {
+            MapLog.DeviceSeedFailed(_logger, failure.Message);
         }
     }
 
@@ -721,6 +805,86 @@ internal sealed partial class MapViewModel : IDisposable
 
         _fiberLayer.Features = features;
         _fiberLayer.DataHasChanged();
+    }
+
+    /// <summary>
+    /// The web map's live pulse marker, on this client's terms: the position is the
+    /// user's saved geocoded location - a desktop has no browser geolocation, and the
+    /// product's own "where I am" is what the map already centers on - and the badge
+    /// carries the same live stats. The web's 2s CSS pulse ring renders as a static
+    /// halo here: animating it would redraw the raster overlay at frame rate for
+    /// decoration (recorded deviation).
+    /// </summary>
+    private void RebuildLiveMarker()
+    {
+        if (_user is not { HomeLatitude: not null and not 0, HomeLongitude: not null and not 0 })
+        {
+            _liveLayer.Features = [];
+            _liveLayer.DataHasChanged();
+            return;
+        }
+
+        var (x, y) = SphericalMercator.FromLonLat(_user.HomeLongitude.Value, _user.HomeLatitude.Value);
+        var feature = new PointFeature(x, y);
+
+        // Web parity: 44 px halo at rgba(37,99,235,0.3), 16 px #2563eb dot, 3 px white border.
+        feature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 44d / 32d,
+            Fill = new Brush(Color.FromArgb(77, 37, 99, 235)),
+            Outline = null,
+        });
+        feature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 16d / 32d,
+            Fill = new Brush(HexColor("#2563eb")),
+            Outline = new Pen(Color.White, 3),
+        });
+
+        if (FormatLiveStats(_liveMetrics) is { } stats)
+        {
+            // Web parity: the dark stats badge under the dot.
+            feature.Styles.Add(new LabelStyle
+            {
+                Text = stats,
+                ForeColor = Color.White,
+                BackColor = new Brush(Color.FromArgb(217, 15, 23, 42)),
+                Font = new Font { Size = 10 },
+                HorizontalAlignment = LabelStyle.HorizontalAlignmentEnum.Center,
+                VerticalAlignment = LabelStyle.VerticalAlignmentEnum.Top,
+                Offset = new Offset(0, 26),
+            });
+        }
+
+        _liveLayer.Features = [feature];
+        _liveLayer.DataHasChanged();
+    }
+
+    /// <summary>Web parity with LiveMarker's formatStats: absent fields drop out.</summary>
+    internal static string? FormatLiveStats(ClientMetrics? metrics)
+    {
+        if (metrics is null)
+        {
+            return null;
+        }
+
+        var parts = new List<string>(3);
+        if (metrics.Latency is { } latency && double.IsFinite(latency))
+        {
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{Math.Round(latency)} ms"));
+        }
+
+        if (metrics.BandwidthDown is { } down && double.IsFinite(down))
+        {
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"↓{down:0}"));
+        }
+
+        if (metrics.BandwidthUp is { } up && double.IsFinite(up))
+        {
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"↑{up:0}"));
+        }
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
     private void OnMapTapped(object? sender, MapEventArgs e)

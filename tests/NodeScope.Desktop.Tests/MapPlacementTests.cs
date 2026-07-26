@@ -15,6 +15,7 @@ public sealed class MapPlacementTests : IDisposable
     private static readonly Uri Server = new("https://appliance.local/");
 
     private readonly FakeApplianceClient _client = new(Server);
+    private readonly FakeRealtimeConnection _realtime = new();
     private MapViewModel? _viewModel;
 
     public MapPlacementTests()
@@ -28,6 +29,7 @@ public sealed class MapPlacementTests : IDisposable
     {
         _viewModel?.Dispose();
         _client.Dispose();
+        _realtime.Dispose();
     }
 
     private async Task<MapViewModel> CreateAsync()
@@ -36,6 +38,7 @@ public sealed class MapPlacementTests : IDisposable
             new ApplianceSession(_client, "token-1"),
             new CurrentUser("user-1", "owner@acme.test", "Owner"),
             NullLogger<MapViewModel>.Instance,
+            _realtime,
             new ImmediateTimeProvider());
         await _viewModel.Initialization;
         return _viewModel;

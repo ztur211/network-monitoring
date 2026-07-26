@@ -64,8 +64,9 @@ public sealed class MapE2ETests : IDisposable
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         Assert.NotNull(flow.Session);
 
+        using var realtime = new FakeRealtimeConnection();
         using var map = new MapViewModel(
-            flow.Session, flow.Current.User!, NullLogger<MapViewModel>.Instance);
+            flow.Session, flow.Current.User!, NullLogger<MapViewModel>.Instance, realtime);
         await map.Initialization;
 
         // The appliance must serve the rasterized style (region extract built at install).

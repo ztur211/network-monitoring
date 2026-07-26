@@ -340,16 +340,36 @@
                   CornerRadius="10"
                   BorderThickness="1"
                   BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-            <StackPanel Spacing="4">
-              <TextBlock FontWeight="SemiBold" Text="This device" />
+            <!-- Web parity: the card dims while the live sample is missing or stale. -->
+            <StackPanel Spacing="4" Opacity="{Binding CardOpacity}">
+              <DockPanel>
+                <!-- Neutral live-data indicator - PRD §10.1 #1 forbids status colors. -->
+                <Ellipse Name="ClientsLiveDot"
+                         DockPanel.Dock="Right"
+                         Width="10" Height="10"
+                         VerticalAlignment="Center"
+                         Fill="#3b82f6"
+                         IsVisible="{Binding IsLive}" />
+                <TextBlock FontWeight="SemiBold" Text="This device" />
+              </DockPanel>
               <TextBlock Name="ClientPlatform" Opacity="0.8" Text="{Binding PlatformLine}" />
               <TextBlock Opacity="0.6"
                          FontSize="12"
                          TextWrapping="Wrap"
                          Text="{Binding Summary.CurrentDevice.UserAgent}" />
               <TextBlock Name="ClientMetrics" Opacity="0.8" Text="{Binding MetricsLine}" />
+              <TextBlock Name="ClientMetricsUpdated"
+                         Opacity="0.6"
+                         FontSize="12"
+                         Text="{Binding UpdatedLine}"
+                         IsVisible="{Binding UpdatedLine, Converter={x:Static ObjectConverters.IsNotNull}}" />
             </StackPanel>
           </Border>
+
+          <TextBlock Opacity="0.5"
+                     FontSize="12"
+                     HorizontalAlignment="Center"
+                     Text="Metrics collected by this workstation · Updates every 30 seconds" />
 
           <Border Padding="12"
                   CornerRadius="10"

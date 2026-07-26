@@ -55,7 +55,8 @@ public sealed class InventoryE2ETests : IDisposable
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         var session = flow.Session!;
 
-        using var equipment = new EquipmentViewModel(session, NullLogger.Instance);
+        using var equipmentRealtime = new FakeRealtimeConnection();
+        using var equipment = new EquipmentViewModel(session, equipmentRealtime, NullLogger.Instance);
         await equipment.Initialization;
         Assert.Null(equipment.LoadError);
         Assert.True(equipment.CanAdd, "the demo owner should be able to add devices");
@@ -97,7 +98,8 @@ public sealed class InventoryE2ETests : IDisposable
             Assert.Equal(2, updated.Version);
 
             // Circuit: create linked to the new device, then delete it.
-            using var circuits = new CircuitsViewModel(session, NullLogger.Instance);
+            using var circuitsRealtime = new FakeRealtimeConnection();
+            using var circuits = new CircuitsViewModel(session, circuitsRealtime, NullLogger.Instance);
             await circuits.Initialization;
             Assert.Null(circuits.LoadError);
 

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeScope.Desktop.Api;
+using NodeScope.Desktop.Realtime;
 using NodeScope.Desktop.Tests.Fakes;
 using NodeScope.Desktop.ViewModels;
 using Xunit;
@@ -16,6 +17,7 @@ public sealed class EquipmentViewModelTests : IDisposable
     private static readonly Uri Server = new("https://appliance.local/");
 
     private readonly FakeApplianceClient _client = new(Server);
+    private readonly FakeRealtimeConnection _realtime = new();
     private EquipmentViewModel? _viewModel;
 
     public EquipmentViewModelTests()
@@ -29,12 +31,13 @@ public sealed class EquipmentViewModelTests : IDisposable
     {
         _viewModel?.Dispose();
         _client.Dispose();
+        _realtime.Dispose();
     }
 
     private async Task<EquipmentViewModel> CreateAsync()
     {
         _viewModel = new EquipmentViewModel(
-            new ApplianceSession(_client, "token-1"), NullLogger.Instance);
+            new ApplianceSession(_client, "token-1"), _realtime, NullLogger.Instance);
         await _viewModel.Initialization;
         return _viewModel;
     }
@@ -258,5 +261,77 @@ public sealed class EquipmentViewModelTests : IDisposable
         await viewModel.LoadCommand.ExecuteAsync(null);
         Assert.Null(viewModel.LoadError);
         Assert.Single(viewModel.Rows);
+    }
+
+    // --- realtime deltas (web parity: pushed entity wins, no debounce) -----
+
+    [Fact]
+    public async Task A_pushed_device_update_replaces_the_row_in_place()
+    {
+        var original = AddDevice("d1", "Core Router");
+        var viewModel = await CreateAsync();
+
+        _realtime.RaiseDeviceUpdated(new DeviceUpdatedEvent(
+            original with { Name = "Renamed Router", Version = 2 }));
+
+        var row = Assert.Single(viewModel.Rows);
+        Assert.Equal("Renamed Router", row.Device.Name);
+        Assert.Equal(2, row.Device.Version);
+    }
+
+    [Fact]
+    public async Task A_pushed_update_for_an_unseen_device_appends_it()
+    {
+        AddDevice("d1", "Core Router");
+        var viewModel = await CreateAsync();
+
+        // Creates never emit on this host: an unseen id is a device added since our
+        // load whose first edit or placement just happened.
+        var late = new BimDevice(
+            "d2", "n1", "bldg-1", null, "user-2", "Late Switch", "SWITCH", null, null, 1, null,
+            null, null, null, null, null, null, null, 2, DateTime.UtcNow, DateTime.UtcNow);
+        _realtime.RaiseDeviceUpdated(new DeviceUpdatedEvent(late));
+
+        Assert.Equal(2, viewModel.Rows.Count);
+        Assert.Contains(viewModel.Rows, row => row.Device.Name == "Late Switch");
+        // The appended device's floor joins the filter chips like a loaded one.
+        Assert.Contains(viewModel.FloorChips, chip => chip.Floor == 1);
+    }
+
+    [Fact]
+    public async Task A_pushed_delete_removes_the_row_and_an_unknown_id_is_silent()
+    {
+        AddDevice("d1", "Core Router");
+        var viewModel = await CreateAsync();
+
+        _realtime.RaiseDeviceDeleted(new DeviceDeletedEvent("ghost"));
+        Assert.Single(viewModel.Rows);
+
+        _realtime.RaiseDeviceDeleted(new DeviceDeletedEvent("d1"));
+        Assert.Empty(viewModel.Rows);
+    }
+
+    [Fact]
+    public async Task A_reconnect_refetches_the_list()
+    {
+        AddDevice("d1", "Core Router");
+        var viewModel = await CreateAsync();
+        Assert.Single(viewModel.Rows);
+
+        // Deltas lost during the gap are unrecoverable - the reconnect reload is the
+        // deliberate deviation that makes the list consistent again.
+        AddDevice("d2", "Added While Disconnected");
+        _realtime.RaiseReconnected();
+        await WaitForRowsAsync(viewModel, 2);
+    }
+
+    private static async Task WaitForRowsAsync(EquipmentViewModel viewModel, int expected)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (viewModel.Rows.Count != expected)
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"timed out waiting for {expected} rows");
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
     }
 }

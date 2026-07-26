@@ -525,6 +525,40 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
     public Task<ClientsSummary> GetClientsAsync(string bearerToken, CancellationToken cancellationToken) =>
         GetDataAsync<ClientsSummary>("api/v1/clients", bearerToken, cancellationToken);
 
+    public async Task<long> DownloadBandwidthEchoAsync(CancellationToken cancellationToken)
+    {
+        // Raw wire, headers-first: the point is timing the body transfer, so the payload
+        // is drained in chunks and counted, never buffered whole.
+        using var response = await http.GetAsync(
+            new Uri("api/bandwidth/echo", UriKind.Relative),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using (stream.ConfigureAwait(false))
+        {
+            var buffer = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                total += read;
+            }
+
+            return total;
+        }
+    }
+
+    public async Task UploadBandwidthEchoAsync(byte[] payload, CancellationToken cancellationToken)
+    {
+        using var content = new ByteArrayContent(payload);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var response = await http.PostAsync(
+            new Uri("api/bandwidth/echo", UriKind.Relative), content, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
         string bearerToken, CancellationToken cancellationToken) =>
         GetDataListAsync<NetworkSummary>("api/v1/networks", bearerToken, cancellationToken);

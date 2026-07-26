@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Map;
+using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -89,6 +90,9 @@ internal sealed partial class EquipmentViewModel : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<BimDevice> _devices = [];
     private readonly HashSet<string> _categoryFilter = new(StringComparer.Ordinal);
+    private readonly IDisposable _deviceUpdatedSubscription;
+    private readonly IDisposable _deviceDeletedSubscription;
+    private readonly IDisposable _reconnectedSubscription;
 
     private ConfigureScope? _scope;
     private IReadOnlyList<PropertySummary> _properties = [];
@@ -122,13 +126,19 @@ internal sealed partial class EquipmentViewModel : IDisposable
     [ObservableProperty]
     private string? _loadedAtLabel;
 
-    public EquipmentViewModel(ApplianceSession session, ILogger logger, TimeProvider? time = null)
+    public EquipmentViewModel(
+        ApplianceSession session, IRealtimeConnection realtime, ILogger logger, TimeProvider? time = null)
     {
         _session = session;
         _logger = logger;
         Time = time ?? TimeProvider.System;
         CategoryChips = [.. CategoryGroups.Select(group => new CategoryFilterChip(group.Label, group.Categories))];
         CategoryChips[0].IsActive = true;
+        _deviceUpdatedSubscription = realtime.OnDeviceUpdated(OnDeviceUpdated);
+        _deviceDeletedSubscription = realtime.OnDeviceDeleted(OnDeviceDeleted);
+        // The server replays nothing across a connection gap, so a reconnect refetches
+        // the list (deliberate deviation: the web accepted the lost deltas).
+        _reconnectedSubscription = realtime.OnReconnected(() => _ = LoadAsync());
         Initialization = LoadAsync();
     }
 
@@ -155,8 +165,40 @@ internal sealed partial class EquipmentViewModel : IDisposable
 
     public void Dispose()
     {
+        _deviceUpdatedSubscription.Dispose();
+        _deviceDeletedSubscription.Dispose();
+        _reconnectedSubscription.Dispose();
         _lifetime.Cancel();
         _lifetime.Dispose();
+    }
+
+    /// <summary>
+    /// Web parity: the pushed device wins wholesale, no version check. An unseen id
+    /// appends - creates never emit on this host, so that is an edit or placement of a
+    /// device added since our load.
+    /// </summary>
+    private void OnDeviceUpdated(DeviceUpdatedEvent received)
+    {
+        var index = _devices.FindIndex(device => device.Id == received.Device.Id);
+        if (index >= 0)
+        {
+            _devices[index] = received.Device;
+        }
+        else
+        {
+            _devices.Add(received.Device);
+        }
+
+        RebuildRows();
+    }
+
+    private void OnDeviceDeleted(DeviceDeletedEvent received)
+    {
+        // Our own delete already removed the row; the echo finds nothing and stays silent.
+        if (_devices.RemoveAll(device => device.Id == received.DeviceId) > 0)
+        {
+            RebuildRows();
+        }
     }
 
     [RelayCommand]

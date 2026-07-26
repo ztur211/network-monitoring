@@ -22,6 +22,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     private readonly ApplianceSession _session;
     private readonly ILoggerFactory _loggers;
     private readonly IRealtimeConnection _realtime;
+    private readonly WorkstationCollector _collector;
     private readonly MapViewModel _map;
     private readonly BimViewerViewModel _bimViewer;
     private readonly InventoryViewModel _inventory;
@@ -52,12 +53,12 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         User = user;
         ServerUrl = serverUrl;
         _realtime = realtime;
-        _map = new MapViewModel(session, user, loggers.CreateLogger<MapViewModel>());
+        _map = new MapViewModel(session, user, loggers.CreateLogger<MapViewModel>(), realtime);
         _bimViewer = new BimViewerViewModel(
             session,
             loggers.CreateLogger<BimViewerViewModel>(),
             tessellator);
-        _inventory = new InventoryViewModel(session, loggers);
+        _inventory = new InventoryViewModel(session, realtime, loggers);
         _assistant = new AssistantViewModel(
             session, realtime, loggers.CreateLogger<AssistantViewModel>());
         _settings = new SettingsViewModel(
@@ -72,8 +73,12 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             new("Settings", "Loading settings.", _settings),
         ];
         _selectedSection = Sections[0];
-        // Web parity: the realtime wire comes up with the workspace, not with a section.
+        // Web parity: the realtime wire comes up with the workspace, not with a section,
+        // and the metrics collector loops for as long as the workspace lives.
         realtime.Start();
+        _collector = new WorkstationCollector(
+            session, realtime, loggers.CreateLogger<WorkstationCollector>());
+        _collector.Start();
         WizardCheck = MaybeOpenWizardAsync();
     }
 
@@ -93,6 +98,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     {
         _lifetime.Cancel();
         _lifetime.Dispose();
+        _collector.Dispose();
         _map.Dispose();
         _bimViewer.Dispose();
         _inventory.Dispose();

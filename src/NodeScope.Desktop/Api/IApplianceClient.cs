@@ -205,6 +205,15 @@ internal interface IApplianceClient : IDisposable
     /// <summary><c>GET /api/v1/clients</c>: the calling client + agent availability.</summary>
     public Task<ClientsSummary> GetClientsAsync(string bearerToken, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>GET /api/bandwidth/echo</c>: drains the fixed random payload and returns the
+    /// byte count. Raw wire (no envelope, no auth, uncacheable) - a bandwidth probe.
+    /// </summary>
+    public Task<long> DownloadBandwidthEchoAsync(CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/bandwidth/echo</c>: uploads a probe payload; the server drains it.</summary>
+    public Task UploadBandwidthEchoAsync(byte[] payload, CancellationToken cancellationToken);
+
     /// <summary><c>GET /api/v1/networks</c>: the org's networks (in practice exactly one).</summary>
     public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
         string bearerToken, CancellationToken cancellationToken);

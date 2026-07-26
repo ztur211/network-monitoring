@@ -19,6 +19,7 @@ public sealed class InventoryViewTests : IDisposable
     private static readonly Uri Server = new("https://appliance.local/");
 
     private readonly FakeApplianceClient _client = new(Server);
+    private readonly FakeRealtimeConnection _realtime = new();
     private InventoryViewModel? _viewModel;
 
     public InventoryViewTests()
@@ -36,12 +37,13 @@ public sealed class InventoryViewTests : IDisposable
     {
         _viewModel?.Dispose();
         _client.Dispose();
+        _realtime.Dispose();
     }
 
     private async Task<InventoryView> CreateShownViewAsync(int tab = 0)
     {
         _viewModel = new InventoryViewModel(
-            new ApplianceSession(_client, "token-1"), NullLoggerFactory.Instance);
+            new ApplianceSession(_client, "token-1"), _realtime, NullLoggerFactory.Instance);
         await Task.WhenAll(
             _viewModel.Equipment.Initialization,
             _viewModel.Circuits.Initialization,
@@ -120,5 +122,20 @@ public sealed class InventoryViewTests : IDisposable
             "post-MVP",
             view.FindControl<TextBlock>("AgentStatusMessage")!.Text,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
+    public async Task A_metrics_push_lights_the_live_dot_and_fills_the_metrics_line()
+    {
+        var view = await CreateShownViewAsync(tab: 2);
+        Assert.False(view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ClientsLiveDot")!.IsVisible);
+
+        _realtime.RaiseMetricsUpdate(new NodeScope.Desktop.Realtime.MetricsUpdateEvent(
+            new ClientMetrics(250, 25, 12, null, DateTime.UtcNow), ["browser"]));
+        view.UpdateLayout();
+
+        Assert.True(view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ClientsLiveDot")!.IsVisible);
+        Assert.Contains("250", view.FindControl<TextBlock>("ClientMetrics")!.Text, StringComparison.Ordinal);
+        Assert.True(view.FindControl<TextBlock>("ClientMetricsUpdated")!.IsVisible);
     }
 }

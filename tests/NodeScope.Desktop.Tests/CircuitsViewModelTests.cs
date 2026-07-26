@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeScope.Desktop.Api;
+using NodeScope.Desktop.Realtime;
 using NodeScope.Desktop.Tests.Fakes;
 using NodeScope.Desktop.ViewModels;
 using Xunit;
@@ -15,17 +16,20 @@ public sealed class CircuitsViewModelTests : IDisposable
     private static readonly Uri Server = new("https://appliance.local/");
 
     private readonly FakeApplianceClient _client = new(Server);
+    private readonly FakeRealtimeConnection _realtime = new();
     private CircuitsViewModel? _viewModel;
 
     public void Dispose()
     {
         _viewModel?.Dispose();
         _client.Dispose();
+        _realtime.Dispose();
     }
 
     private async Task<CircuitsViewModel> CreateAsync()
     {
-        _viewModel = new CircuitsViewModel(new ApplianceSession(_client, "token-1"), NullLogger.Instance);
+        _viewModel = new CircuitsViewModel(
+            new ApplianceSession(_client, "token-1"), _realtime, NullLogger.Instance);
         await _viewModel.Initialization;
         return _viewModel;
     }
@@ -145,5 +149,76 @@ public sealed class CircuitsViewModelTests : IDisposable
         Assert.NotEmpty(form.ValidationErrors);
         Assert.Empty(_client.CreatedCircuits);
         Assert.NotNull(viewModel.Form);
+    }
+
+    // --- realtime deltas ---------------------------------------------------
+
+    [Fact]
+    public async Task A_pushed_circuit_update_replaces_a_loaded_row_in_place()
+    {
+        var original = AddCircuit("c1", bandwidth: 300);
+        var viewModel = await CreateAsync();
+
+        _realtime.RaiseCircuitUpdated(new CircuitUpdatedEvent(
+            original with { Bandwidth = 1500, Version = 2 }));
+
+        Assert.Equal("1.5 Gbps", Assert.Single(viewModel.Rows).BandwidthLabel);
+    }
+
+    [Fact]
+    public async Task A_pushed_update_for_an_unloaded_circuit_is_ignored()
+    {
+        // 60 circuits, page size 50: c59 exists server-side but is not loaded. Creates
+        // never emit on this host, so an unseen id is always an unloaded page's row -
+        // appending it (the web behavior) would corrupt server page order and Total.
+        for (var i = 0; i < 60; i++)
+        {
+            AddCircuit($"c{i}");
+        }
+
+        var viewModel = await CreateAsync();
+        var unloaded = _client.Circuits[59];
+
+        _realtime.RaiseCircuitUpdated(new CircuitUpdatedEvent(unloaded with { Bandwidth = 999 }));
+
+        Assert.Equal(50, viewModel.Rows.Count);
+        Assert.Equal(60, viewModel.Total);
+    }
+
+    [Fact]
+    public async Task A_pushed_delete_removes_the_loaded_row_and_keeps_total_honest()
+    {
+        AddCircuit("c1");
+        AddCircuit("c2");
+        var viewModel = await CreateAsync();
+
+        _realtime.RaiseCircuitDeleted(new CircuitDeletedEvent("c1"));
+
+        Assert.Single(viewModel.Rows);
+        Assert.Equal(1, viewModel.Total);
+
+        // The echo of a delete we never had - our own optimistic delete, or an
+        // unloaded page's row - must not double-adjust the counter.
+        _realtime.RaiseCircuitDeleted(new CircuitDeletedEvent("ghost"));
+        Assert.Equal(1, viewModel.Total);
+    }
+
+    [Fact]
+    public async Task A_reconnect_refetches_from_the_first_page()
+    {
+        AddCircuit("c1");
+        var viewModel = await CreateAsync();
+
+        AddCircuit("c2", isp: "Added While Disconnected");
+        _realtime.RaiseReconnected();
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (viewModel.Rows.Count != 2)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "timed out waiting for the reconnect reload");
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(2, viewModel.Total);
     }
 }

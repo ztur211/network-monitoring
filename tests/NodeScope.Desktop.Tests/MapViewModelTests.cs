@@ -20,12 +20,14 @@ public sealed class MapViewModelTests : IDisposable
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private readonly FakeApplianceClient _client = new(Server);
+    private readonly FakeRealtimeConnection _realtime = new();
     private MapViewModel? _viewModel;
 
     public void Dispose()
     {
         _viewModel?.Dispose();
         _client.Dispose();
+        _realtime.Dispose();
     }
 
     private async Task<MapViewModel> CreateAsync(CurrentUser? user = null)
@@ -34,6 +36,7 @@ public sealed class MapViewModelTests : IDisposable
             new ApplianceSession(_client, "token-1"),
             user ?? new CurrentUser("user-1", "owner@acme.test", "Owner"),
             NullLogger<MapViewModel>.Instance,
+            _realtime,
             new ImmediateTimeProvider());
         await _viewModel.Initialization;
         return _viewModel;
@@ -263,4 +266,100 @@ public sealed class MapViewModelTests : IDisposable
         Assert.Equal("all", json.GetProperty("floorDisplayMode").GetString());
         Assert.True(json.GetProperty("layerToggles").GetProperty("ROUTER").GetBoolean());
     }
+
+    // --- realtime deltas ---------------------------------------------------
+
+    private static BimDevice PushedDevice(
+        string id, string name, double? lat = 40.7128, double? lon = -74.006, int? floor = null) =>
+        new(id, "n1", "bldg-1", null, null, name, "ROUTER", lat, lon, floor, null,
+            null, null, null, null, null, null, null, 2, DateTime.UtcNow, DateTime.UtcNow);
+
+    [Fact]
+    public async Task A_pushed_device_update_moves_the_marker_and_refreshes_the_selection()
+    {
+        _client.Devices.Add(Device("a", "ROUTER"));
+        var viewModel = await CreateAsync();
+        viewModel.CurrentZoom = 16;
+        viewModel.SelectDeviceById("a");
+
+        _realtime.RaiseDeviceUpdated(new NodeScope.Desktop.Realtime.DeviceUpdatedEvent(
+            PushedDevice("a", "Renamed Router", floor: 3)));
+
+        Assert.Equal("Renamed Router", viewModel.SelectedDevice?.Name);
+        Assert.Contains(viewModel.FloorOptions, option => option.Floor == 3);
+        Assert.Single(viewModel.DeviceLayer.Features);
+    }
+
+    [Fact]
+    public async Task A_pushed_update_for_an_unseen_device_joins_the_cache()
+    {
+        var viewModel = await CreateAsync();
+        viewModel.CurrentZoom = 16;
+
+        _realtime.RaiseDeviceUpdated(new NodeScope.Desktop.Realtime.DeviceUpdatedEvent(
+            PushedDevice("late", "Late Router")));
+
+        Assert.Single(viewModel.DeviceLayer.Features);
+        viewModel.SelectDeviceById("late");
+        Assert.Equal("Late Router", viewModel.SelectedDevice?.Name);
+    }
+
+    [Fact]
+    public async Task A_pushed_delete_drops_the_marker_and_clears_its_selection()
+    {
+        _client.Devices.Add(Device("a", "ROUTER"));
+        var viewModel = await CreateAsync();
+        viewModel.CurrentZoom = 16;
+        viewModel.SelectDeviceById("a");
+
+        _realtime.RaiseDeviceDeleted(new NodeScope.Desktop.Realtime.DeviceDeletedEvent("a"));
+
+        Assert.Null(viewModel.SelectedDevice);
+        Assert.Empty(viewModel.DeviceLayer.Features);
+    }
+
+    // --- live pulse marker -------------------------------------------------
+
+    [Fact]
+    public async Task The_pulse_sits_on_the_users_home_and_needs_one()
+    {
+        var without = await CreateAsync();
+        Assert.Empty(without.LiveLayer.Features);
+        without.Dispose();
+
+        var with = await CreateAsync(
+            new CurrentUser("user-1", "owner@acme.test", "Owner", 40.7128, -74.006));
+        var feature = Assert.Single(with.LiveLayer.Features);
+        // Halo + dot, no badge until a metrics push arrives.
+        Assert.Equal(2, feature.Styles.Count);
+    }
+
+    [Fact]
+    public async Task A_metrics_push_adds_the_stats_badge()
+    {
+        var viewModel = await CreateAsync(
+            new CurrentUser("user-1", "owner@acme.test", "Owner", 40.7128, -74.006));
+
+        _realtime.RaiseMetricsUpdate(new NodeScope.Desktop.Realtime.MetricsUpdateEvent(
+            new ClientMetrics(250.4, 25.6, 17.6, null, DateTime.UtcNow), ["browser"]));
+
+        var feature = Assert.Single(viewModel.LiveLayer.Features);
+        // Mapsui's LabelStyle.Text is write-only; the exact badge text is covered by
+        // the FormatLiveStats theory below - here the badge style must have appeared.
+        Assert.Equal(3, feature.Styles.Count);
+        Assert.IsType<Mapsui.Styles.LabelStyle>(feature.Styles.Last());
+    }
+
+    [Theory]
+    [InlineData(17.6, 250.4, 25.6, "18 ms · ↓250 · ↑26")]
+    [InlineData(null, 250.4, null, "↓250")]
+    [InlineData(12.0, null, null, "12 ms")]
+    public void Live_stats_format_matches_the_web_marker(
+        double? latency, double? down, double? up, string expected) =>
+        Assert.Equal(expected, MapViewModel.FormatLiveStats(
+            new ClientMetrics(down, up, latency, null, DateTime.UtcNow)));
+
+    [Fact]
+    public void Absent_metrics_render_no_badge() =>
+        Assert.Null(MapViewModel.FormatLiveStats(null));
 }

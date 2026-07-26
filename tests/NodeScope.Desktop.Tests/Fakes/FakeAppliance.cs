@@ -545,6 +545,17 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
 
     public string SuggestedName { get; set; } = "Router 1";
 
+    public long DownloadEchoBytes { get; set; } = 1_000_000;
+
+    public Exception? BandwidthEchoFailure { get; set; }
+
+    /// <summary>Runs inside each echo probe - lets a test advance a fake clock mid-transfer.</summary>
+    public Func<CancellationToken, Task>? BandwidthEchoDelay { get; set; }
+
+    public int DownloadEchoCalls { get; private set; }
+
+    public List<int> UploadedEchoPayloads { get; } = [];
+
     public int CircuitPageSize { get; set; } = 50;
 
     public Exception? InventoryFailure { get; set; }
@@ -806,6 +817,36 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         InventoryFailure is null
             ? Task.FromResult(ClientsToReturn)
             : Task.FromException<ClientsSummary>(InventoryFailure);
+
+    public async Task<long> DownloadBandwidthEchoAsync(CancellationToken cancellationToken)
+    {
+        DownloadEchoCalls++;
+        if (BandwidthEchoFailure is not null)
+        {
+            throw BandwidthEchoFailure;
+        }
+
+        if (BandwidthEchoDelay is { } delay)
+        {
+            await delay(cancellationToken);
+        }
+
+        return DownloadEchoBytes;
+    }
+
+    public async Task UploadBandwidthEchoAsync(byte[] payload, CancellationToken cancellationToken)
+    {
+        UploadedEchoPayloads.Add(payload.Length);
+        if (BandwidthEchoFailure is not null)
+        {
+            throw BandwidthEchoFailure;
+        }
+
+        if (BandwidthEchoDelay is { } delay)
+        {
+            await delay(cancellationToken);
+        }
+    }
 
     public Task<IReadOnlyList<NetworkSummary>> GetNetworksAsync(
         string bearerToken, CancellationToken cancellationToken) =>

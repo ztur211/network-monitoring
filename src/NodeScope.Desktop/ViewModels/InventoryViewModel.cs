@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
+using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -12,11 +13,11 @@ namespace NodeScope.Desktop.ViewModels;
 [INotifyPropertyChanged]
 internal sealed partial class InventoryViewModel : IDisposable
 {
-    public InventoryViewModel(ApplianceSession session, ILoggerFactory loggers)
+    public InventoryViewModel(ApplianceSession session, IRealtimeConnection realtime, ILoggerFactory loggers)
     {
-        Equipment = new EquipmentViewModel(session, loggers.CreateLogger<EquipmentViewModel>());
-        Circuits = new CircuitsViewModel(session, loggers.CreateLogger<CircuitsViewModel>());
-        Clients = new ClientsViewModel(session, loggers.CreateLogger<ClientsViewModel>());
+        Equipment = new EquipmentViewModel(session, realtime, loggers.CreateLogger<EquipmentViewModel>());
+        Circuits = new CircuitsViewModel(session, realtime, loggers.CreateLogger<CircuitsViewModel>());
+        Clients = new ClientsViewModel(session, realtime, loggers.CreateLogger<ClientsViewModel>());
     }
 
     public EquipmentViewModel Equipment { get; }

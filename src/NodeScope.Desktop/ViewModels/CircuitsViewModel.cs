@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Map;
+using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
@@ -39,6 +40,9 @@ internal sealed partial class CircuitsViewModel : IDisposable
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<Circuit> _circuits = [];
+    private readonly IDisposable _circuitUpdatedSubscription;
+    private readonly IDisposable _circuitDeletedSubscription;
+    private readonly IDisposable _reconnectedSubscription;
 
     private string? _nextCursor;
 
@@ -66,10 +70,15 @@ internal sealed partial class CircuitsViewModel : IDisposable
     [ObservableProperty]
     private CircuitFormViewModel? _form;
 
-    public CircuitsViewModel(ApplianceSession session, ILogger logger)
+    public CircuitsViewModel(ApplianceSession session, IRealtimeConnection realtime, ILogger logger)
     {
         _session = session;
         _logger = logger;
+        _circuitUpdatedSubscription = realtime.OnCircuitUpdated(OnCircuitUpdated);
+        _circuitDeletedSubscription = realtime.OnCircuitDeleted(OnCircuitDeleted);
+        // A reconnect refetches from the first page - the server replays nothing across
+        // the gap (deliberate deviation: the web accepted the lost deltas).
+        _reconnectedSubscription = realtime.OnReconnected(() => _ = LoadAsync());
         Initialization = LoadAsync();
     }
 
@@ -82,8 +91,45 @@ internal sealed partial class CircuitsViewModel : IDisposable
 
     public void Dispose()
     {
+        _circuitUpdatedSubscription.Dispose();
+        _circuitDeletedSubscription.Dispose();
+        _reconnectedSubscription.Dispose();
         _lifetime.Cancel();
         _lifetime.Dispose();
+    }
+
+    /// <summary>
+    /// The pushed circuit wins in place. An unseen id is ignored - creates never emit on
+    /// this host, so it is an edit of a row on a page we have not loaded; appending it
+    /// (what the web did) would corrupt the server page order and the counters.
+    /// </summary>
+    private void OnCircuitUpdated(CircuitUpdatedEvent received)
+    {
+        var index = _circuits.FindIndex(circuit => circuit.Id == received.Circuit.Id);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _circuits[index] = received.Circuit;
+        RebuildRows();
+    }
+
+    /// <summary>
+    /// Removes a loaded row and keeps <see cref="Total"/> honest (deliberate deviation:
+    /// the web left the counter stale). An unseen id is ignored - it is either the echo
+    /// of our own optimistic delete, which already adjusted the counter, or a row on an
+    /// unloaded page, where the two cases cannot be told apart.
+    /// </summary>
+    private void OnCircuitDeleted(CircuitDeletedEvent received)
+    {
+        if (_circuits.RemoveAll(circuit => circuit.Id == received.CircuitId) == 0)
+        {
+            return;
+        }
+
+        Total = Math.Max(0, Total - 1);
+        RebuildRows();
     }
 
     [RelayCommand]
