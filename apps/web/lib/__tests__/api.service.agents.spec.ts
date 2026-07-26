@@ -7,23 +7,19 @@
  *
  * Component render is NOT tested here — the repo has no RN-component-test
  * infrastructure (no @testing-library/react, no react-test-renderer).
- * This is consistent with the existing jest.config.ts scope (lib/*, store/*)
+ * This is consistent with the Vitest scope (lib/*, store/*)
  * and is noted in phaseD-task-3-report.md.
  */
 
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
-
-const mockGet = jest.fn();
-const mockPost = jest.fn();
+const mockGet = vi.fn();
+const mockPost = vi.fn();
 
 // Mock axios so the `api` instance created inside api.service.ts uses our fns.
-jestEsm.unstable_mockModule('axios', () => {
-  const instance = { get: mockGet, post: mockPost, interceptors: { response: { use: jest.fn() } } };
+vi.doMock('axios', () => {
+  const instance = { get: mockGet, post: mockPost, interceptors: { response: { use: vi.fn() } } };
   const axiosStatic = {
-    create: jest.fn(() => instance),
-    isAxiosError: jest.fn(),
+    create: vi.fn(() => instance),
+    isAxiosError: vi.fn(),
     // default export shape
     default: undefined as unknown,
   };
@@ -35,7 +31,7 @@ const { listAgents, generateAgentCode, revokeAgent } = await import('../api.serv
 
 describe('agent client methods — endpoint + envelope', () => {
   afterEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('listAgents()', () => {

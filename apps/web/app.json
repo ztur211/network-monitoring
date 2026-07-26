@@ -4,6 +4,7 @@
     "slug": "nodescope",
     "version": "0.1.0",
     "scheme": "nodescope",
+    "userInterfaceStyle": "automatic",
     "web": {
       "bundler": "metro",
       "output": "static",

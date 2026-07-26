@@ -1,17 +1,21 @@
-# Composite action: Node setup + dependency install, shared by every CI/CD job.
+# Composite action: .NET and Node setup shared by CI jobs.
 # Run AFTER actions/checkout (a local action needs the repo already checked out).
-# Single source of truth for the Node version and the install command — previously
-# duplicated (setup-node + npm ci) across every job in every workflow.
-name: Setup Node and install
-description: Set up Node with an npm cache and run npm ci.
+name: Set up NodeScope toolchains
+description: Set up .NET 10 and Node 22, then restore both dependency graphs.
 runs:
   using: composite
   steps:
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
     - uses: actions/setup-node@v6
       with:
-        # Kept explicit (not node-version-file: .nvmrc) because .nvmrc currently
-        # pins 22 while CI has run on 20; unifying those is a separate, verified change.
-        node-version: '20'
+        node-version: '22'
         cache: npm
-    - run: npm ci
+
+    - run: dotnet restore NodeScope.slnx
+      shell: bash
+
+    - run: npm ci --no-audit
       shell: bash

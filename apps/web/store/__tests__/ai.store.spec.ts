@@ -10,30 +10,26 @@
  */
 import { WS_EVENTS, AiUsageDto } from '@nodescope/shared';
 
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
+const mockGet = vi.fn();
+const mockDelete = vi.fn();
 
-const mockGet = jest.fn();
-const mockDelete = jest.fn();
-
-jestEsm.unstable_mockModule('axios', () => ({
+vi.doMock('axios', () => ({
   default: {
-    create: jest.fn(() => ({
+    create: vi.fn(() => ({
       get: mockGet,
       delete: mockDelete,
-      post: jest.fn(),
-      patch: jest.fn(),
-      interceptors: { response: { use: jest.fn() } },
+      post: vi.fn(),
+      patch: vi.fn(),
+      interceptors: { response: { use: vi.fn() } },
     })),
-    isAxiosError: jest.fn(() => false),
+    isAxiosError: vi.fn(() => false),
   },
 }));
 
 const { useAiStore, findLastUserContent } = await import('../ai.store');
 const { websocketService } = await import('../../lib/websocket.service');
 
-const emitSpy = jest.spyOn(websocketService, 'emit').mockImplementation(() => undefined);
+const emitSpy = vi.spyOn(websocketService, 'emit').mockImplementation(() => undefined);
 
 function resetStore(): void {
   useAiStore.setState({

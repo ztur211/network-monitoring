@@ -16,7 +16,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
  * auth, the websocket+polling transports a browser needs, capped reconnection, and the bindings that
  * push connection status / latency into the UI store.
  *
- * `io` is imported here and injected so the existing jest mock of `socket.io-client` still intercepts
+ * `io` is imported here and injected so the socket.io-client test mock still intercepts
  * the socket the core creates (the mock can't reach into the built @nodescope/client otherwise).
  */
 export const websocketService = createRealtimeClient({

@@ -9,25 +9,21 @@
  */
 import { DeviceDto } from '@nodescope/shared';
 
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
+const mockGet = vi.fn();
+const mockPost = vi.fn();
+const mockPatch = vi.fn();
+const mockDelete = vi.fn();
 
-const mockGet = jest.fn();
-const mockPost = jest.fn();
-const mockPatch = jest.fn();
-const mockDelete = jest.fn();
-
-jestEsm.unstable_mockModule('axios', () => ({
+vi.doMock('axios', () => ({
   default: {
-    create: jest.fn(() => ({
+    create: vi.fn(() => ({
       get: mockGet,
       post: mockPost,
       patch: mockPatch,
       delete: mockDelete,
-      interceptors: { response: { use: jest.fn() } },
+      interceptors: { response: { use: vi.fn() } },
     })),
-    isAxiosError: jest.fn(() => false),
+    isAxiosError: vi.fn(() => false),
   },
 }));
 

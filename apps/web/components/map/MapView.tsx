@@ -65,6 +65,7 @@ export function MapView({
   const liveMarkerRef = useRef<maplibregl.Marker | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const scheduleViewportLoadRef = useRef<() => void>(() => {});
 
   const [mapReady, setMapReady] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(13);
@@ -76,52 +77,97 @@ export function MapView({
   // Narrow selectors: re-render only when `devices` changes, not on any device-store field.
   const devices = useDeviceStore((s) => s.devices);
   const upsertManyDevices = useDeviceStore((s) => s.upsertManyDevices);
-  const { mapCenter, layerToggles, selectedFloor, floorDisplayMode, buildingsVisible, setMapCenter, setMapZoom } =
-    useUiStore();
-  const user = useAuthStore((s) => s.user);
+  const layerToggles = useUiStore((s) => s.layerToggles);
+  const selectedFloor = useUiStore((s) => s.selectedFloor);
+  const floorDisplayMode = useUiStore((s) => s.floorDisplayMode);
+  const buildingsVisible = useUiStore((s) => s.buildingsVisible);
   const metrics = useRealtimeStore((s) => s.metrics);
+
+  const loadViewport = useCallback(async () => {
+    if (!mapRef.current) return;
+    const bounds = mapRef.current.getBounds();
+    const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    const { signal } = abortRef.current;
+
+    try {
+      const [devRes, fiberRes] = await Promise.all([
+        api.get<{ success: true; data: { items: DeviceDto[] } }>('/map/devices', {
+          params: { bbox, ...(selectedFloor !== null ? { floor: selectedFloor } : {}) },
+          signal,
+        }),
+        api.get<{ success: true; data: { items: FiberRunDto[] } }>('/map/fiber-runs', {
+          params: { bbox },
+          signal,
+        }),
+      ]);
+
+      upsertManyDevices(devRes.data.data.items);
+      setFiberRuns(fiberRes.data.data.items);
+    } catch (err: unknown) {
+      if ((err as { name?: string })?.name === 'CanceledError') return;
+    }
+  }, [selectedFloor, upsertManyDevices]);
+
+  const scheduleViewportLoad = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void loadViewport();
+    }, VIEWPORT_DEBOUNCE_MS);
+  }, [loadViewport]);
+
+  useEffect(() => {
+    scheduleViewportLoadRef.current = scheduleViewportLoad;
+  }, [scheduleViewportLoad]);
 
   // Initialize map
   useEffect(() => {
     const container = document.getElementById(MAP_CONTAINER_ID);
     if (!container || mapRef.current) return;
 
-    const homeCenter = resolveInitialCenter(mapCenter, user);
+    const markers = markersRef.current;
+    const homeCenter = resolveInitialCenter(
+      useUiStore.getState().mapCenter,
+      useAuthStore.getState().user,
+    );
+    let disposed = false;
 
-    mapRef.current = new maplibregl.Map({
+    const map = new maplibregl.Map({
       container,
       style: TILE_STYLE_URL,
       center: homeCenter.center,
       zoom: homeCenter.zoom,
     });
+    mapRef.current = map;
 
-    mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-    mapRef.current.on('load', () => {
+    map.on('load', () => {
       setMapReady(true);
-      const bounds = mapRef.current!.getBounds();
+      const bounds = map.getBounds();
       setMapBounds(bounds);
-      setCurrentZoom(mapRef.current!.getZoom());
-      scheduleViewportLoad();
+      setCurrentZoom(map.getZoom());
     });
 
-    mapRef.current.on('moveend', () => {
-      const m = mapRef.current!;
-      const center = m.getCenter();
-      setMapCenter([center.lng, center.lat]);
-      setMapZoom(m.getZoom());
-      setMapBounds(m.getBounds());
-      scheduleViewportLoad();
+    map.on('moveend', () => {
+      const center = map.getCenter();
+      const ui = useUiStore.getState();
+      ui.setMapCenter([center.lng, center.lat]);
+      ui.setMapZoom(map.getZoom());
+      setMapBounds(map.getBounds());
+      scheduleViewportLoadRef.current();
     });
 
     // Update on zoomEND, not on every zoom frame: `currentZoom` drives marker
     // visibility (visibleDevices) and MapControls, so the per-frame `zoom` event
     // re-rendered the map and recomputed markers continuously during every gesture.
-    mapRef.current.on('zoomend', () => {
-      setCurrentZoom(mapRef.current!.getZoom());
+    map.on('zoomend', () => {
+      setCurrentZoom(map.getZoom());
     });
 
-    mapRef.current.on('error', (e) => {
+    map.on('error', (e) => {
       if (e.error?.message?.includes('Failed to fetch') || (e as { tile?: unknown }).tile) {
         setTileError(true);
       }
@@ -132,20 +178,31 @@ export function MapView({
     // change.
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
-        setLivePosition([pos.coords.longitude, pos.coords.latitude]);
+        if (!disposed) {
+          setLivePosition([pos.coords.longitude, pos.coords.latitude]);
+        }
       });
     }
 
     return () => {
+      disposed = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
-      markersRef.current.forEach(({ marker }) => marker.remove());
-      markersRef.current.clear();
+      markers.forEach(({ marker }) => marker.remove());
+      markers.clear();
       liveMarkerRef.current?.remove();
-      mapRef.current?.remove();
-      mapRef.current = null;
+      map.remove();
+      if (mapRef.current === map) {
+        mapRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (mapReady) {
+      scheduleViewportLoad();
+    }
+  }, [mapReady, scheduleViewportLoad]);
 
   // One-shot fly target. Re-runs whenever `flyTo.key` changes — caller bumps
   // the key to re-fire even if center/zoom would be identical. Skips the
@@ -157,7 +214,7 @@ export function MapView({
       zoom: flyTo.zoom ?? mapRef.current.getZoom(),
       essential: true,
     });
-  }, [mapReady, flyTo?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mapReady, flyTo]);
 
   // Placement-mode click handler. Subscribes to `map.on('click', …)` only
   // while placementMode is true; unsubscribes (and restores the cursor) on
@@ -206,41 +263,6 @@ export function MapView({
       .setLngLat(livePosition)
       .addTo(mapRef.current);
   }, [mapReady, livePosition, metrics]);
-
-  const scheduleViewportLoad = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      void loadViewport();
-    }, VIEWPORT_DEBOUNCE_MS);
-  }, [selectedFloor]);
-
-  const loadViewport = useCallback(async () => {
-    if (!mapRef.current) return;
-    const bounds = mapRef.current.getBounds();
-    const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
-
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-    const { signal } = abortRef.current;
-
-    try {
-      const [devRes, fiberRes] = await Promise.all([
-        api.get<{ success: true; data: { items: DeviceDto[] } }>('/map/devices', {
-          params: { bbox, ...(selectedFloor !== null ? { floor: selectedFloor } : {}) },
-          signal,
-        }),
-        api.get<{ success: true; data: { items: FiberRunDto[] } }>('/map/fiber-runs', {
-          params: { bbox },
-          signal,
-        }),
-      ]);
-
-      upsertManyDevices(devRes.data.data.items);
-      setFiberRuns(fiberRes.data.data.items);
-    } catch (err: unknown) {
-      if ((err as { name?: string })?.name === 'CanceledError') return;
-    }
-  }, [selectedFloor, upsertManyDevices]);
 
   // Compute which devices to display
   const visibleDevices = useMemo(() => {

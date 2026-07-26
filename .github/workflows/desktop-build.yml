@@ -1,25 +1,89 @@
 name: Desktop Build
 
-# On-demand Windows installer build. The Windows NSIS installer is heavy, so it's
-# manual-only here. Tag releases (`v*`) build + attach the installer via release.yml
-# (which also builds the agent binaries and creates the GitHub Release) — keeping
-# the tag trigger here too would double-build it. Unit/lint/e2e run in the main CI.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Optional package version
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  build-windows:
-    name: Package Windows installer
+  linux:
+    name: Native desktop (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test desktop
+        run: dotnet test tests/NodeScope.Desktop.Tests --configuration Release
+
+      - name: Publish desktop
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          version_args=()
+          if [ -n "$VERSION" ]; then
+            version_args+=("-p:Version=$VERSION")
+          fi
+          dotnet publish src/NodeScope.Desktop \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained true \
+            --output out/linux-x64 \
+            -p:ContinuousIntegrationBuild=true \
+            "${version_args[@]}"
+          tar --create --gzip \
+            --file out/nodescope-desktop-linux-x64.tar.gz \
+            --directory out/linux-x64 .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nodescope-desktop-linux-x64
+          path: out/nodescope-desktop-linux-x64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Native desktop (win-x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-dotnet@v6
         with:
-          node-version: 20
-      - run: npm ci
-      - run: npm run package:win --workspace=apps/desktop
-      - uses: actions/upload-artifact@v4
+          dotnet-version: '10.0.x'
+
+      - name: Test desktop
+        run: dotnet test tests/NodeScope.Desktop.Tests --configuration Release
+
+      - name: Publish desktop
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: pwsh
+        run: |
+          $versionArgs = @()
+          if ($env:VERSION) {
+            $versionArgs += "-p:Version=$env:VERSION"
+          }
+          dotnet publish src/NodeScope.Desktop `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output out/win-x64 `
+            -p:ContinuousIntegrationBuild=true `
+            @versionArgs
+          Compress-Archive `
+            -Path out/win-x64/* `
+            -DestinationPath out/nodescope-desktop-win-x64.zip
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: nodescope-desktop-win
-          path: apps/desktop/release/*.exe
+          name: nodescope-desktop-win-x64
+          path: out/nodescope-desktop-win-x64.zip
           if-no-files-found: error

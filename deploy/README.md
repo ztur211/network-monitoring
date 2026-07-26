@@ -1,16 +1,20 @@
-# NodeScope — Self-Hosted Demo Deployment Runbook
+# NodeScope self-hosted appliance
 
-> **Goal:** stand up a functional, production-grade demo of NodeScope on a single
-> Linux machine you control, for **free** (no paid cloud).
->
-> This is a **separate path** from the paid DigitalOcean App Platform deployment
-> documented in [`../README.md` → "Production Deployment"](../README.md). That
-> wiring (`.do/app.yaml`, `.github/workflows/deploy.yml`) stays as the paid
-> reference; **nothing here changes it.**
+The supported deployment is a single Linux host running Docker Compose. Caddy
+serves one public origin and routes the web shell, ASP.NET Core API, SignalR hubs,
+local map tiles, and signed agent downloads.
 
-## Quick start — LAN appliance (one command)
+## Requirements
 
-On any Linux host with Docker + the compose plugin:
+- Linux with Docker Engine and Docker Compose v2
+- At least 4 GB RAM for the running appliance
+- At least 6 GB RAM while building a map region
+- Outbound internet for image pulls and the initial map extract
+- `curl` and `openssl`
+
+No .NET or Node toolchain is required when using published images.
+
+## Install
 
 ```bash
 git clone https://github.com/ztur211/nodescope.git
@@ -18,295 +22,207 @@ cd nodescope
 ./deploy/nodescope.sh install
 ```
 
-`install` generates the secrets, auto-detects this box's LAN IP, pulls the
-prebuilt images from GHCR, brings the stack up, and smoke-tests it. When it
-finishes it prints the URL — open `http://<box-ip>:8080` on any machine on the
-LAN, create the first account, and point the desktop app at
-`http://<box-ip>:8080/api`.
+The installer:
 
-- **The IP changed?** `./deploy/nodescope.sh reconfigure` — no rebuild.
-- **Fixed origin / HTTPS?** `./deploy/nodescope.sh install --origin https://nodescope.example.com`.
-- **Everyday ops:** `./deploy/nodescope.sh status | logs | up | down`.
-- **Map tiles:** install also builds the local basemap for `TILES_AREA`/`TILES_BBOX`
-  (defaults: New York / NYC) so map tiles never leave the box at runtime — see
-  `deploy/tiles/README.md`. Changed the region in `deploy/.env`? Run
-  `./deploy/nodescope.sh tiles --rebuild`. Skip at install with `--no-tiles`.
+1. Generates missing secrets in `deploy/.env`.
+2. Detects the host LAN address and records `PUBLIC_ORIGIN`.
+3. Pulls the versioned API, web, and tiles images.
+4. Builds the configured local map region.
+5. Starts the stack and waits for health checks.
+6. Smoke-tests the real same-origin routes through Caddy.
 
-The sections below cover manual setup, remote access (Tailscale / Cloudflare
-Tunnel), and the optional cloud deploy — none of which a LAN appliance needs.
+Open the printed origin, create the first account, and enter that same origin in
+the native desktop client. Do not append `/api`.
 
----
+Use an explicit origin for a fixed hostname or reverse proxy:
 
-## 0. Why self-host (the binding constraint)
-
-NodeScope's database needs **PostgreSQL 16 with _both_ TimescaleDB _and_ PostGIS**
-(hypertable for `DeviceMetric`, geometry column on `Device`). Practically no free
-managed Postgres offers both:
-
-| Free option | PostGIS | TimescaleDB | Verdict |
-|---|---|---|---|
-| Supabase free | ✅ | ❌ (not offered) | ✗ |
-| Neon free | ✅ | ❌ | ✗ |
-| Railway/Render free PG | ❌ | ❌ | ✗ |
-| **`timescale/timescaledb-ha:pg16` (self-hosted)** | ✅ | ✅ | **✓** |
-
-The repo's own `docker-compose.yml` already uses `timescale/timescaledb-ha:pg16`,
-which bundles both extensions. So the free path is **Docker Compose on your Linux
-box** — reusing that image and adding the API + web on top.
-
----
-
-## 1. Target architecture (recommended)
-
-Single host, **one public origin**, same-origin routing (simplest cookies/CORS/CSP):
-
-```
-                         Internet
-                            │
-                 Cloudflare Tunnel (free TLS + hostname,
-                            │       no inbound port-forward)
-                            ▼
-        ┌─────────────── your Linux box (Docker) ────────────────┐
-        │  caddy ──/api/*, /hubs/*──▶  api  (ASP.NET Core :3000)  │
-        │    │    ──everything else─▶  web static (SPA)           │
-        │    └── serves the static export with index.html fallback│
-        │  api ──▶ db (timescaledb-ha:pg16)                       │
-        └─────────────────────────────────────────────────────────┘
-```
-
-- **One origin** (e.g. `https://nodescope.example.com`) for both the web app and
-  the API. The browser talks to `/api/...` on the same origin it loaded from →
-  **no cross-site cookies, no CORS preflight pain, one TLS cert.**
-- This **diverges** from `.do/app.yaml`'s two-subdomain model
-  (`api.` + `app.nodescope.io`). That two-domain split is correct for the paid
-  load-balanced deployment; for a single-box demo, same-origin is simpler and
-  every existing feature still works (`main.ts` just needs `FRONTEND_URL` set to
-  the one origin, and CORS allowing the same origin is a harmless no-op).
-- **Tailscale Funnel** is the recommended exposure: free on all plans, gives a
-  stable HTTPS `*.ts.net` hostname with a valid cert, needs **no domain** and
-  **no inbound ports**, and has no interstitial warning page. Alternatives:
-  Cloudflare Tunnel + a domain (clean custom hostname, ~$10/yr); Caddy's own
-  Let's Encrypt (a domain + ports 80/443); or a `*.trycloudflare.com` quick
-  tunnel (ephemeral — throwaway only).
-
----
-
-## 2. The one open decision — public hostname & routing
-
-This is the "discuss later" item. Everything domain-dependent
-(`FRONTEND_URL`, `BETTER_AUTH_URL`, the desktop app's server URL) keys off it.
-
-| Option | Hostname | Free? | Effort | Notes |
-|---|---|---|---|---|
-| **A. Tailscale Funnel (recommended)** | `https://<box>.<tailnet>.ts.net` | ✅ free, no domain | low–med | stable, valid HTTPS, no interstitial, no inbound ports; `ts.net`-branded host + fair-use bandwidth cap |
-| B. Cloudflare Tunnel + a domain | `demo.<yourdomain>` | tunnel free, domain ~$10/yr | low | clean custom hostname; needs a domain on Cloudflare |
-| C. Cloudflare quick tunnel | random `*.trycloudflare.com` | ✅ free | lowest | **ephemeral** — URL changes each restart; throwaway only |
-| D. Caddy + Let's Encrypt | a domain you own, ports 80/443 | domain ~$10/yr | medium | needs a public IP + open ports |
-
-**Decision: A — Tailscale Funnel.** Set `PUBLIC_ORIGIN` to your `ts.net` URL and
-`TRUST_PROXY=2` (Funnel + Caddy hops); everything else derives from
-`PUBLIC_ORIGIN`. Steps in D4.
-
----
-
-## 3. Prerequisites (on the host)
-
-- A Linux machine with **Docker Engine + Docker Compose v2** and **≥ 2 GB RAM**
-  (TimescaleDB + the API together want headroom).
-- Outbound internet (Tailscale Funnel / Cloudflare Tunnel need **no inbound** ports).
-- The repo cloned on the box (or built elsewhere and images pushed — the runbook
-  assumes building on the box). No other toolchain: the install and smoke test are
-  plain bash + curl.
-
----
-
-## 4. Steps (sequenced: get it running, then harden)
-
-Owner legend: **[repo]** = changes I make in this repository · **[host]** = you run
-on the box · **[decide]** = a choice you make.
-
-### D0 — Host prep · [host]
-- Install Docker Engine + Compose v2; add your user to the `docker` group.
-- Basic SSH hardening (key-only auth, no root login, a firewall allowing only SSH
-  + outbound).
-
-### D1 — In-repo deploy artifacts · [repo]
-What lives under `deploy/`:
-- **`deploy/Dockerfile.api`** — multi-stage: `dotnet publish src/NodeScope.Api`
-  (Release, warnings-as-errors) → `mcr.microsoft.com/dotnet/aspnet` runtime image
-  running as the non-root `app` user, with a `/api/health` healthcheck. The host
-  applies EF migrations itself on boot (baselining a Prisma-era database), so
-  there is no entrypoint script. The same image runs the demo seed one-shot
-  (`seed` argument).
-- **`deploy/Dockerfile.web`** — builds the web static export; origin-agnostic
-  (same-origin at runtime), so no rebuild on IP change. Also bakes the staged
-  agent binaries + manifest under `/srv/agent` (Decision 13).
-- **`deploy/Caddyfile`** — serves the SPA with `try_files … index.html`
-  (catchall), and `reverse_proxy /api/* /hubs/*` → `api:3000`.
-- **`deploy/docker-compose.prod.yml`** — `db` (timescaledb-ha:pg16, named volume,
-  healthcheck), `api` (waits for `db` healthy; migrates then serves), `caddy`,
-  and optionally `cloudflared`. `restart: unless-stopped` on all.
-- **`deploy/.env.example`** — every var the API/web need (see §5),
-  with `openssl`-based generation notes. The real `.env` is **git-ignored**.
-
-### D2 — Configure secrets · [host] + [repo]
-Copy `deploy/.env.example` → `deploy/.env`, then fill:
-- `BETTER_AUTH_SECRET` — `openssl rand -base64 48`
-- `SECRET_ENCRYPTION_KEY` — `openssl rand -base64 32` (SNMP credential crypto; boot-required)
-- `POSTGRES_PASSWORD` — `openssl rand -base64 24` (and matching `DATABASE_URL`)
-- `SEED_PASSWORD` — for the one-shot demo seed user
-- the single-origin URLs (filled once §2 is decided)
-
-### D3 — Build, bring up, migrate · [host]
 ```bash
-docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
-# the api host applies EF migrations before it serves; confirm:
-docker compose -f deploy/docker-compose.prod.yml logs api | grep -i -e migrat -e baseline
-# (the MonitoringMetric_5m continuous aggregate is ensured idempotently on boot)
+./deploy/nodescope.sh install --origin https://nodescope.example.com
 ```
-On a **fresh** DB the `Initial` migration builds the whole schema (PostGIS
-extension, geometry column + sync trigger, TimescaleDB hypertables, compression
-and retention policies). A database created by the Node-era stack is detected and
-**baselined** — the migration is stamped as applied, the schema untouched. Verify
-extensions: `SELECT postgis_version();` and
-`SELECT extversion FROM pg_extension WHERE extname='timescaledb';`.
 
-Optionally seed demo data with the demo overlay's one-shot (see
-`deploy/docker-compose.demo.yml`), or directly:
-`docker compose … run --rm api seed` (needs `SEED_PASSWORD` in the env).
+Skip the initial map extract when bringing up the rest of the product first:
 
-### D4 — Expose · [host]
-**Tailscale Funnel (recommended).** On the host:
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-# One-time: in the Tailscale admin console, enable Funnel + HTTPS for the tailnet.
-sudo tailscale funnel --bg 8080     # publish Caddy's host port (WEB_PORT) publicly
-tailscale funnel status             # prints your stable https://<box>.<tailnet>.ts.net
+./deploy/nodescope.sh install --no-tiles
 ```
-Then in `deploy/.env` set `PUBLIC_ORIGIN=https://<box>.<tailnet>.ts.net`,
-`TRUST_PROXY=2` (Funnel → Caddy → API), keep `SITE_ADDRESS=:80` (Funnel
-terminates TLS), and re-run `up -d --build` so the web bundle bakes the origin.
 
-Alternatives — **Cloudflare Tunnel**: add `--profile tunnel` + `CLOUDFLARE_TUNNEL_TOKEN`
-and route your CF hostname to `http://web:80`; **Caddy TLS**: set `SITE_ADDRESS`
-to your domain, publish 443, and drop `auto_https off` from the Caddyfile.
-`PUBLIC_ORIGIN` drives `FRONTEND_URL` / `BETTER_AUTH_URL` — no code changes needed.
+## Appliance commands
 
-### D5 — Verify · [host]
-`deploy/nodescope.sh install` runs the smoke test itself (curl-only: API health,
-unauthenticated get-session, web shell, SPA catchall); re-run it any time with a
-plain `curl` against those URLs. Then a manual walkthrough: sign up → set home
-location → add devices on 2 floors → connection + fiber run → circuit → confirm
-device status updates.
+```text
+./deploy/nodescope.sh status
+./deploy/nodescope.sh logs [service]
+./deploy/nodescope.sh up
+./deploy/nodescope.sh down
+./deploy/nodescope.sh smoke [--no-tiles]
+./deploy/nodescope.sh reconfigure [--origin URL]
+./deploy/nodescope.sh tiles [--rebuild]
+```
 
-### D6 — Production hardening (single-host adaptation) · [host] + [repo]
-- **DB backups** — `deploy/backup.sh [out-dir]` writes a timestamped gzipped `pg_dump`; cron it to off-box storage (`0 3 * * * …/deploy/backup.sh /var/backups/nodescope`). (+ volume snapshots.)
-- **Restart & health** — `restart: unless-stopped` + container `healthcheck`s so
-  Docker auto-recovers crashes.
-- **Log rotation** — configured in the compose (`json-file`, `max-size: 10m`, `max-file: 3`) so container logs can't fill the host disk.
-- **`TRUST_PROXY`** — defaults to 1 (the Caddy hop); behind Tunnel→Caddy set 2 so
-  rate limiting keys on the real client, not a shared edge address.
-- **Secrets** — `deploy/.env` is git-ignored; never commit it.
+`reconfigure` changes the public origin without rebuilding images. Run `smoke`
+after proxy, DNS, or firewall changes.
 
----
+## Architecture
 
-## 5. Environment variables (API + web)
+```text
+client
+  |
+  v
+Caddy :80 or :443
+  |-- /api/* and /hubs/* -> ASP.NET Core API :3000
+  |-- /tiles/*           -> tileserver-gl :8080
+  |-- /agent/*           -> signed static agent payloads
+  `-- everything else    -> transition SPA
 
-| Var | Where | Value (single-origin demo) |
-|---|---|---|
-| `NODE_ENV` | api | `production` — still read by the C# host: it gates the production rate limits on the same check the Node stack used |
-| `DATABASE_URL` | api | `postgresql://nodescope:<pw>@db:5432/nodescope` |
-| `SECRET_ENCRYPTION_KEY` | api | `openssl rand -base64 32` (required — API refuses to boot without it) |
-| `STORAGE_DRIVER` | api | `fs` (default; blobs on the blobstore volume) or `s3` |
-| `STORAGE_FS_ROOT` | api | `/data/storage` (set by compose; fs mode only) |
-| `BETTER_AUTH_SECRET` | api | `openssl rand -base64 48` |
-| `BETTER_AUTH_URL` | api | `https://<origin>` |
-| `FRONTEND_URL` | api | `https://<origin>` (required) |
-| `TRUST_PROXY` | api | proxy hops to trust for the client IP; `1` default, `2` behind a tunnel |
-| `GEOCODING_USER_AGENT` | api | `NodeScope/1.0 (you@example.com)` |
-| `SEED_PASSWORD` | seed one-shot | demo user password |
+API -> PostgreSQL 16 with TimescaleDB and PostGIS
+API -> local blob volume by default
+```
 
----
+The API applies pending EF Core migrations before it begins serving. A database
+created by the retired Node stack is detected and baselined before later
+migrations run.
 
-## 6. Mapping to the Phase-9 production checklist
+The default filesystem storage backend writes to the `blobstore` volume. Set
+`STORAGE_DRIVER=s3` and the S3-compatible variables when an external object store
+is required.
 
-How each paid-cloud Phase-9 item is satisfied — or deliberately deferred — for the
-free self-hosted demo:
+## Configuration
 
-| Phase-9 checklist item | Self-hosted demo |
-|---|---|
-| Managed PG (TimescaleDB+PostGIS) | `timescaledb-ha:pg16` container ✓ |
-| App Platform 2× instances, zero-downtime | Single API instance; in-process state (Decision 8) — **deferred to the MSP topology** |
-| PgBouncer pooling (`DATABASE_URL`) | Not needed at demo scale; **deferred** |
-| DO Spaces bucket | Filesystem storage backend (`STORAGE_DRIVER=fs`) ✓ |
-| HTTPS enforced | Cloudflare Tunnel / Caddy TLS ✓ |
-| DO monitoring alerts | Container healthchecks + (optional) Uptime Kuma — **adapted** |
-| Migrations before serving | The host applies EF migrations on boot, before it listens ✓ |
-| Post-deploy smoke test | `deploy/nodescope.sh install` runs its curl smoke test ✓ |
+`deploy/nodescope.sh install` creates `deploy/.env` and never overwrites an
+existing secret. To configure manually:
 
-### Genuinely deferred (require paid infra) — deliberate decisions
-- **True multi-host HA** (a single box is a single point of failure).
-- **Managed connection pooling** (PgBouncer) — unnecessary at demo concurrency.
-- **Hosted object storage** (Spaces/S3) — replaced by the filesystem storage backend
-  (`STORAGE_DRIVER=fs`, blobs on a local volume); S3 remains a config switch away.
-- **Hosted monitoring/alerting** — replaced by lightweight self-hosted health/uptime.
-
-These are fine for a demo; revisit when promoting to real production (at which point
-the existing `.do/app.yaml` paid path becomes the better target).
-
----
-
-## 8. NodeScope Monitoring Agent
-
-The NodeScope Agent is a lightweight background daemon (built in Spec 8) that monitors
-devices assigned to it and pushes reachability checks and latency metrics to the server
-without requiring an open browser tab.
-
-### Installing on a managed host
-
-The appliance serves its own agents (migration Decision 13): binaries, installers, and
-an update manifest are baked into the web image at `/srv/agent` and served by Caddy at
-`/agent/*`. Stage them with `scripts/agent-release/build.sh` before building the image.
-
-Obtain the one-time enrollment code from the web app under **Settings → Agents →
-Generate Code** (the dialog shows this exact command), then on the target host:
-
-**Linux (systemd)**
 ```bash
-curl -fsSL http://<server>/agent/install.sh | sudo bash -s -- --server http://<server> --code <code>
+cp deploy/.env.example deploy/.env
+chmod 600 deploy/.env
 ```
 
-**Windows (elevated PowerShell — startup task)**
+Important values:
+
+| Variable | Purpose |
+| --- | --- |
+| `PUBLIC_ORIGIN` | Exact browser and desktop-facing origin |
+| `POSTGRES_PASSWORD` | Appliance database password |
+| `BETTER_AUTH_SECRET` | Session signing secret |
+| `SECRET_ENCRYPTION_KEY` | Base64 encoding of exactly 32 random bytes |
+| `WEB_PORT` | Host port mapped to Caddy, default 8080 |
+| `TRUST_PROXY` | Number of trusted proxy hops in front of the API |
+| `STORAGE_DRIVER` | `fs` by default, or `s3` |
+| `MONITORING_PROBER_ENABLED` | Enables the embedded single-node prober |
+| `NODESCOPE_VERSION` | Image tag to run, default `latest` |
+| `TILES_AREA` | Geofabrik area slug used by Planetiler |
+| `TILES_BBOX` | Optional region bounding box |
+
+Generate secrets with:
+
+```bash
+openssl rand -base64 24
+openssl rand -base64 48
+openssl rand -base64 32
+```
+
+The third output is suitable for `SECRET_ENCRYPTION_KEY`.
+
+## Map tiles
+
+The desktop map never needs a public tile provider at runtime. Planetiler creates
+`region.mbtiles` on the `tiledata` volume, and tileserver-gl renders the bundled
+NodeScope style from it.
+
+Set the desired region in `deploy/.env`, then run:
+
+```bash
+./deploy/nodescope.sh tiles
+```
+
+Rebuild after changing the area or bounding box:
+
+```bash
+./deploy/nodescope.sh tiles --rebuild
+```
+
+See [tiles/README.md](tiles/README.md) for region selection, storage sizing, and
+asset provenance.
+
+## Backups
+
+Create a compressed PostgreSQL dump:
+
+```bash
+./deploy/backup.sh /var/backups/nodescope
+```
+
+Copy backups off the appliance host and test restores regularly. Database dumps
+do not include the `blobstore` or `tiledata` volumes, so back up required blob
+content separately. The map region can be regenerated.
+
+## Remote access
+
+Keep one canonical `PUBLIC_ORIGIN`. Common choices are:
+
+- A private Tailscale address for trusted operators
+- Tailscale Funnel for a public `*.ts.net` HTTPS origin
+- Cloudflare Tunnel using the optional `cloudflared` Compose profile
+- A separate reverse proxy terminating TLS in front of Caddy
+
+When another proxy is inserted, update `TRUST_PROXY` so rate limits use the real
+client address, then run:
+
+```bash
+./deploy/nodescope.sh reconfigure --origin https://nodescope.example.com
+./deploy/nodescope.sh smoke
+```
+
+## Building images locally
+
+The base Compose file pulls GHCR images. Add the build overlay for repository
+development:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.build.yml \
+  --env-file deploy/.env \
+  up -d --build --wait
+```
+
+The web image includes whatever signed payload is present in
+`deploy/agent-dist/`. Create it before building a release image:
+
+```bash
+scripts/agent-release/build.sh
+```
+
+The signing key defaults to `~/.nodescope/agent-signing.key` and must match the
+public key pinned by the agent and both installers.
+
+## Monitoring agent
+
+Create a one-time enrollment code from Settings in the client.
+
+Linux x64 or arm64:
+
+```bash
+curl -fsSL https://nodescope.example.com/agent/install.sh \
+  | sudo bash -s -- \
+      --server https://nodescope.example.com \
+      --code <enrollment-code>
+```
+
+Windows x64 from elevated PowerShell 7:
+
 ```powershell
-iwr http://<server>/agent/install.ps1 -OutFile install.ps1
-.\install.ps1 -Server http://<server> -Code <code>
+Invoke-WebRequest https://nodescope.example.com/agent/install.ps1 -OutFile install.ps1
+.\install.ps1 -Server https://nodescope.example.com -Code <enrollment-code>
 ```
 
-Both installers:
-1. Download the platform binary from the appliance, then verify its sha256 **and** its
-   ECDSA publisher signature against the pinned NodeScope key before installing.
-2. Run `nodescope-agent enroll --code <code> --url <server>/api` to exchange the code
-   for a per-agent token (sent via the `x-agent-token` header on each request).
-   Re-running without `--code` upgrades the binary and keeps the enrollment.
-3. Register and start the OS service. The Linux unit uses `Restart=always` (and the
-   Windows runner loops) because self-update exits 0 after swapping the binary.
+Both installers verify SHA-256 and an ECDSA P-256 publisher signature before
+installing. The agent pins the same public key for self-updates. Windows
+PowerShell 5.1 is intentionally rejected because it cannot perform the required
+PEM signature verification.
 
-Once enrolled, the agent appears in the **Agents** management list, begins pushing
-device status within one probe interval (default 30 s), and thereafter updates itself:
-it polls `/agent/manifest.json` on its own server hourly, verifies any newer binary
-against the pinned publisher key, swaps in place, and restarts. Opt out per host with
-`NODESCOPE_AGENT_AUTO_UPDATE=off`; the previous binary is kept next to the new one as
-`nodescope-agent.old` for manual rollback.
+## Operational checks
 
-(The legacy Node agent and its DigitalOcean Spaces publishing path were deleted
-with the Node code at the Decision 11 cutover; the agent is the NativeAOT binary
-built from `src/NodeScope.Agent` and staged by `scripts/agent-release/build.sh`.)
-
----
-
-## 7. Tracking
-
-Progress is tracked in the **"Demo Launch (self-hosted)"** GitHub milestone — one
-issue per step above, labelled `deployment`, each marked `[repo]` (I implement) or
-`[host]` (you run). The domain-dependent work (D4) is blocked on the §2 decision.
+- `docker compose ... ps` should show every long-running service healthy.
+- `./deploy/nodescope.sh smoke` should pass through the public origin.
+- Container logs are size-limited by the Compose configuration.
+- Services use `restart: unless-stopped`.
+- Keep `deploy/.env`, signing keys, and backups out of version control.

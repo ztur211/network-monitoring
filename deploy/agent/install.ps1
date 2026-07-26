@@ -4,8 +4,8 @@
 #   iwr http://<server>/agent/install.ps1 -OutFile install.ps1
 #   .\install.ps1 -Server http://<server> -Code <enroll-code>
 #
-# Downloads the agent from the same appliance, verifies sha256 (and the
-# publisher signature where PowerShell 7+ / .NET is available), installs it,
+# Downloads the agent from the same appliance, verifies sha256 and the
+# publisher signature with PowerShell 7+, installs it,
 # enrolls, and registers a startup task that keeps the agent running. The
 # runner loop restarts on ANY exit - the self-updater exits 0 after swapping
 # its binary and relies on that restart, mirroring systemd Restart=always.
@@ -21,6 +21,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Server = $Server.TrimEnd("/")
+
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+  Write-Error "PowerShell 7 or newer is required to verify the agent publisher signature."
+  exit 1
+}
 
 # The NodeScope agent publisher key (must match SelfUpdate.cs).
 $PublicKeyPem = @"
@@ -54,16 +59,9 @@ if ($expected -ne $actual) {
   Write-Error "Checksum mismatch: expected $expected, got $actual"
   exit 1
 }
-$ecdsa = $null
+$ecdsa = [System.Security.Cryptography.ECDsa]::Create()
 try {
-  $ecdsa = [System.Security.Cryptography.ECDsa]::Create()
   $ecdsa.ImportFromPem($PublicKeyPem)
-} catch {
-  # Windows PowerShell 5.1 lacks ImportFromPem; the checksum still gates the install.
-  $ecdsa = $null
-  Write-Warning "Signature check skipped (needs PowerShell 7+); checksum verified."
-}
-if ($null -ne $ecdsa) {
   $payload = [System.IO.File]::ReadAllBytes("$tmp\$file")
   $signature = [System.IO.File]::ReadAllBytes("$tmp\$file.sig")
   $valid = $ecdsa.VerifyData($payload, $signature,
@@ -74,6 +72,8 @@ if ($null -ne $ecdsa) {
     exit 1
   }
   Write-Host "  OK: binary is authentic"
+} finally {
+  $ecdsa.Dispose()
 }
 
 Write-Host "[3/5] Installing $exePath ..."

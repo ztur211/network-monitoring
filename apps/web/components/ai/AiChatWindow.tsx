@@ -37,7 +37,7 @@ export function AiChatWindow() {
 
   useEffect(() => {
     void loadUsage();
-  }, []);
+  }, [loadUsage]);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });

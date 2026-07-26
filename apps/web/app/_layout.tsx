@@ -16,7 +16,7 @@ export default function RootLayout() {
       setUser(null);
       setLoading(false);
     });
-  }, []);
+  }, [setLoading, setUser]);
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }

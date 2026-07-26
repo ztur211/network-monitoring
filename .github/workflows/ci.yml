@@ -1,119 +1,63 @@
 name: CI
 
 on:
-  # Automatic triggers disabled 2026-07-19. The only registered runner
-  # (archlinux-nodescope, self-hosted) went offline on 2026-07-10, so every push
-  # and PR queued a run that sat for 24h and was then cancelled by GitHub - six
-  # dead runs and no signal. Pre-prod and single-developer, so verification runs
-  # locally until the C# cutover needs a parity gate:
-  #
-  #   docker compose -f docker-compose.test.yml up -d
-  #   npm run test:integration && npm run test:e2e
-  #
-  # Restore the push/pull_request triggers below once a reliable runner exists.
-  #   push:
-  #     branches: [main, master]
-  #   pull_request:
-  #     branches: [main, master]
+  # Kept manual while the repository has no funded hosted runner and its
+  # self-hosted runner is offline. The jobs use standard hosted labels so the
+  # workflow is ready to re-enable for push and pull_request.
   workflow_dispatch:
 
-# Cancel an in-progress run when a newer commit lands on the same ref, so a burst of pushes
-# (e.g. merging a stack of PRs) doesn't queue a full CI run per commit - only the latest runs.
-# Keyed by ref, so different branches/PRs never cancel each other.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: [self-hosted, linux, x64]
+  quality:
+    name: Build, lint, and unit tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: npm run lint
 
-  unit:
-    name: Unit Tests
-    runs-on: [self-hosted, linux, x64]
-    needs: lint
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      - run: npm run test:unit
+      - name: Verify .NET formatting
+        run: dotnet format NodeScope.slnx --verify-no-changes --no-restore
 
-  integration:
-    name: Integration Tests
-    runs-on: [self-hosted, linux, x64]
-    needs: lint
-    services:
-      postgres:
-        image: timescale/timescaledb-ha:pg16
-        env:
-          POSTGRES_USER: nodescope
-          POSTGRES_PASSWORD: localdevpassword
-          POSTGRES_DB: nodescope_test
-          # The entrypoint restarts postgres after running init scripts; on a busy
-          # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
-          # timeout, which kills the container mid-init. Give it generous headroom.
-          PGCTLTIMEOUT: "300"
-          # timescaledb-tune sizes shared_buffers etc. to the whole host by default,
-          # which starves the jest workers and app instances sharing this runner
-          # (observed as multi-minute machine-wide stalls in e2e). Cap it to a
-          # CI-appropriate slice of the box.
-          TS_TUNE_MEMORY: 2GB
-          TS_TUNE_NUM_CPUS: "2"
-          # timescaledb-tune derives max_connections from the CPU count, so the pin above
-          # also cuts it 100 → 25 - enough for two jest workers' Prisma pools to exhaust it
-          # ("sorry, too many clients already") on suites that open many concurrent writes.
-          TS_TUNE_MAX_CONNS: "100"
-        ports:
-          - 5433:5432
-        # -h localhost forces the health check over TCP: the temporary init-phase
-        # server only listens on the unix socket, so plain `pg_isready` reports
-        # healthy before initialization has actually finished.
-        options: >-
-          --health-cmd "pg_isready -h localhost -U nodescope -d nodescope_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-          --health-start-period 30s
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6380:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
-      REDIS_URL: redis://localhost:6380
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      # Belt-and-suspenders for the health check above: on a loaded runner the
-      # container can lag behind "Initialize containers", so re-verify over TCP
-      # right before touching the database.
-      - name: Wait for Postgres
+      - name: Build .NET
+        run: >-
+          dotnet build NodeScope.slnx
+          --configuration Release
+          --no-restore
+          -p:ContinuousIntegrationBuild=true
+
+      - name: Run .NET unit and architecture tests
+        shell: bash
         run: |
-          for i in $(seq 1 60); do
-            if docker exec ${{ job.services.postgres.id }} pg_isready -h localhost -U nodescope -d nodescope_test > /dev/null 2>&1; then
-              echo "Postgres ready"; exit 0
-            fi
-            sleep 2
+          projects=(
+            tests/NodeScope.ArchitectureTests/NodeScope.ArchitectureTests.csproj
+            tests/NodeScope.Platform.Tests/NodeScope.Platform.Tests.csproj
+            tests/NodeScope.Monitoring.Tests/NodeScope.Monitoring.Tests.csproj
+            tests/NodeScope.Agent.Tests/NodeScope.Agent.Tests.csproj
+            tests/NodeScope.Desktop.Tests/NodeScope.Desktop.Tests.csproj
+          )
+          for project in "${projects[@]}"; do
+            dotnet test "$project" --configuration Release --no-build
           done
-          echo "Postgres did not become ready in time" >&2; exit 1
-      - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
-        env:
-          DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
-      - run: npm run test:integration
 
-  e2e:
-    name: E2E Tests
-    runs-on: [self-hosted, linux, x64]
-    needs: [unit, integration]
+      - name: Lint transition clients
+        run: npm run lint
+
+      - name: Test transition clients
+        run: npm test
+
+      - name: Build transition clients
+        run: npm run build
+
+  contract:
+    name: Black-box API contract
+    runs-on: ubuntu-latest
+    needs: quality
     services:
       postgres:
         image: timescale/timescaledb-ha:pg16
@@ -121,100 +65,117 @@ jobs:
           POSTGRES_USER: nodescope
           POSTGRES_PASSWORD: localdevpassword
           POSTGRES_DB: nodescope_test
-          # The entrypoint restarts postgres after running init scripts; on a busy
-          # self-hosted box the shutdown checkpoint can exceed pg_ctl's default 60s
-          # timeout, which kills the container mid-init. Give it generous headroom.
           PGCTLTIMEOUT: "300"
-          # timescaledb-tune sizes shared_buffers etc. to the whole host by default,
-          # which starves the jest workers and app instances sharing this runner
-          # (observed as multi-minute machine-wide stalls in e2e). Cap it to a
-          # CI-appropriate slice of the box.
-          TS_TUNE_MEMORY: 2GB
+          TS_TUNE_MEMORY: 1GB
           TS_TUNE_NUM_CPUS: "2"
-          # timescaledb-tune derives max_connections from the CPU count, so the pin above
-          # also cuts it 100 → 25 - enough for two jest workers' Prisma pools to exhaust it
-          # ("sorry, too many clients already") on suites that open many concurrent writes.
           TS_TUNE_MAX_CONNS: "100"
         ports:
           - 5433:5432
-        # -h localhost forces the health check over TCP: the temporary init-phase
-        # server only listens on the unix socket, so plain `pg_isready` reports
-        # healthy before initialization has actually finished.
         options: >-
           --health-cmd "pg_isready -h localhost -U nodescope -d nodescope_test"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 20
+          --health-retries 30
           --health-start-period 30s
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6380:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     env:
-      TEST_DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
-      REDIS_URL: redis://localhost:6380
-      BETTER_AUTH_SECRET: ci-test-secret-minimum-32-characters-long
-      BETTER_AUTH_URL: http://localhost:3000
-      FRONTEND_URL: http://localhost:8081
-      NODE_ENV: test
-      PORT: 3000
-      # StorageService (Spec 1) connects to MinIO at app boot via ensureBucket().
-      # Mirrors jest.e2e.setup.ts defaults and the docker-compose.test.yml minio-test service.
+      ASPNETCORE_URLS: http://127.0.0.1:5199
+      DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
+      NODESCOPE_DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
+      BETTER_AUTH_SECRET: test-secret-minimum-32-characters-long-aaa
+      BETTER_AUTH_URL: http://127.0.0.1:5199
+      FRONTEND_URL: http://localhost:8080
+      SECRET_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+      THROTTLE_DEFAULT_LIMIT: "100000"
+      THROTTLE_AUTH_LIMIT: "100000"
+      REFRESH_INTERVAL_SECONDS: "2"
       STORAGE_ENDPOINT: http://localhost:9100
+      STORAGE_REGION: us-east-1
       STORAGE_BUCKET: nodescope-test
       STORAGE_ACCESS_KEY: minioadmin
       STORAGE_SECRET_KEY: minioadmin
-      # Spec 9 CryptoModule throws at app boot if this is unset / not 32 bytes
-      # base64-decoded; every e2e suite boots AppModule, so without it the whole
-      # tier mass-fails. Test-only value (base64 of a throwaway 32-byte string).
-      SECRET_ENCRYPTION_KEY: Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
+      SEED_PASSWORD: devpassword123
+      NODESCOPE_BASE_URL: http://127.0.0.1:5199
+      NODESCOPE_REALTIME_TRANSPORT: signalr
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      # MinIO can't run as a GitHub service container (the minio/minio image needs the
-      # `server /data` command, which service containers can't supply), so start it as a step.
-      - name: Start MinIO (object storage; StorageService.ensureBucket runs at AppModule boot)
-        run: |
-          # Self-hosted runners are persistent, so a leftover container from a prior run would
-          # collide on --name; remove any stale one first (no-op on a fresh/ephemeral runner).
-          docker rm -f minio 2>/dev/null || true
-          docker run -d --name minio -p 9100:9000 \
-            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9100/minio/health/live > /dev/null; then
-              echo "MinIO ready"; exit 0
-            fi
-            sleep 2
-          done
-          echo "MinIO did not become ready in time" >&2; exit 1
-      # Belt-and-suspenders for the health check above: on a loaded runner the
-      # container can lag behind "Initialize containers", so re-verify over TCP
-      # right before touching the database.
-      - name: Wait for Postgres
-        run: |
-          for i in $(seq 1 60); do
-            if docker exec ${{ job.services.postgres.id }} pg_isready -h localhost -U nodescope -d nodescope_test > /dev/null 2>&1; then
-              echo "Postgres ready"; exit 0
-            fi
-            sleep 2
-          done
-          echo "Postgres did not become ready in time" >&2; exit 1
-      - run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
-        env:
-          DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
-      - run: npm run test:e2e
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
 
-  build:
-    name: Build
-    runs-on: [self-hosted, linux, x64]
-    needs: e2e
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      - run: npm run build
+      - name: Restore .NET
+        run: dotnet restore NodeScope.slnx
+
+      - name: Start MinIO
+        run: |
+          docker run --detach --name nodescope-ci-minio \
+            --publish 9100:9000 \
+            --env MINIO_ROOT_USER=minioadmin \
+            --env MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9100/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO did not become ready" >&2
+          exit 1
+
+      - name: Apply migrations and seed
+        run: >-
+          dotnet run
+          --project src/NodeScope.Api
+          --configuration Release
+          --no-restore
+          --
+          seed
+
+      - name: Start API
+        shell: bash
+        run: |
+          dotnet run \
+            --project src/NodeScope.Api \
+            --configuration Release \
+            --no-restore \
+            >/tmp/nodescope-api.log 2>&1 &
+          echo "$!" >/tmp/nodescope-api.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5199/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/nodescope-api.log
+          exit 1
+
+      - name: Run contract suite
+        run: >-
+          dotnet test tests/NodeScope.ContractTests
+          --configuration Release
+          --no-restore
+
+      - name: Run native-client live flows
+        env:
+          NODESCOPE_DESKTOP_E2E_BASE_URL: http://127.0.0.1:5199
+          NODESCOPE_DESKTOP_ASSISTANT_E2E_BASE_URL: http://127.0.0.1:5199
+          NODESCOPE_DESKTOP_INVENTORY_E2E_BASE_URL: http://127.0.0.1:5199
+          NODESCOPE_DESKTOP_SETTINGS_E2E_BASE_URL: http://127.0.0.1:5199
+        run: >-
+          dotnet test tests/NodeScope.Desktop.Tests
+          --configuration Release
+          --no-restore
+          --filter
+          "FullyQualifiedName~DesktopAuthE2ETests|FullyQualifiedName~AssistantE2ETests|FullyQualifiedName~InventoryE2ETests|FullyQualifiedName~SettingsE2ETests"
+
+      - name: Print API log on failure
+        if: failure()
+        run: cat /tmp/nodescope-api.log
+
+      - name: Stop test processes
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/nodescope-api.pid ]; then
+            kill "$(cat /tmp/nodescope-api.pid)" 2>/dev/null || true
+          fi
+          docker rm --force nodescope-ci-minio 2>/dev/null || true

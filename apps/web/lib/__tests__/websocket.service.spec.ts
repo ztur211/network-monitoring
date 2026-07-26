@@ -13,12 +13,6 @@
  *   - `off` symmetrically routes to the same emitter.
  */
 import { EventEmitter } from 'node:events';
-// `unstable_mockModule` is on @jest/globals but missing from @types/jest's
-// global namespace — cast to access it without losing the looser global types
-// the rest of the suite uses.
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
 
 let mockSocket: ReturnType<typeof makeMockSocket>;
 
@@ -27,24 +21,24 @@ function makeMockSocket() {
   const managerEmitter = new EventEmitter();
   const socket = {
     connected: false,
-    on: jest.fn((event: string, listener: (...args: unknown[]) => void) => {
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       socketEmitter.on(event, listener);
       return socket;
     }),
-    off: jest.fn((event: string, listener: (...args: unknown[]) => void) => {
+    off: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       socketEmitter.off(event, listener);
       return socket;
     }),
-    once: jest.fn(),
-    emit: jest.fn(),
-    connect: jest.fn(),
-    disconnect: jest.fn(),
+    once: vi.fn(),
+    emit: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
     io: {
-      on: jest.fn((event: string, listener: (...args: unknown[]) => void) => {
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
         managerEmitter.on(event, listener);
         return socket.io;
       }),
-      off: jest.fn((event: string, listener: (...args: unknown[]) => void) => {
+      off: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
         managerEmitter.off(event, listener);
         return socket.io;
       }),
@@ -55,15 +49,15 @@ function makeMockSocket() {
   return socket;
 }
 
-jestEsm.unstable_mockModule('socket.io-client', () => ({
-  io: jest.fn(() => {
+vi.doMock('socket.io-client', () => ({
+  io: vi.fn(() => {
     mockSocket = makeMockSocket();
     return mockSocket;
   }),
 }));
 
-// ui.store is stubbed via jest.config moduleNameMapper (see jest.config.ts) —
-// avoids pulling in Zustand/React in this pure-logic test.
+// ui.store is aliased to a small stub by vitest.config.mts so this pure-logic
+// test does not pull in Zustand or React.
 
 const { websocketService } = await import('../websocket.service');
 
@@ -75,11 +69,11 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
   afterEach(() => {
     websocketService.disconnect();
     websocketService.removeAllListeners();
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it("'reconnect' fires when the Manager emits — NOT when Socket does", () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('reconnect', handler);
 
     // Wrong path (what the old dead-code subscription did): Socket emits.
@@ -92,7 +86,7 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
   });
 
   it("'reconnect_failed' fires when the Manager emits", () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('reconnect_failed', handler);
 
     mockSocket.io._emit('reconnect_failed');
@@ -100,7 +94,7 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
   });
 
   it("'connect' still routes to the Socket (not Manager)", () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('connect', handler);
 
     mockSocket._emit('connect');
@@ -111,7 +105,7 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
   });
 
   it("off('reconnect', handler) unsubscribes from the Manager", () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('reconnect', handler);
     websocketService.off('reconnect', handler);
 
@@ -120,7 +114,7 @@ describe('WebSocketService — Manager-vs-Socket event routing', () => {
   });
 
   it("off('connect', handler) unsubscribes from the Socket", () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('connect', handler);
     websocketService.off('connect', handler);
 
@@ -149,11 +143,11 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
     // handlers re-attach), but in tests that means handler closures from
     // earlier tests get re-attached to later tests' fresh mockSockets.
     websocketService.removeAllListeners();
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('Socket subscriptions registered BEFORE connect() fire on emit after connect', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('v1:device:updated', handler);
 
     websocketService.connect();
@@ -163,7 +157,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('Manager subscriptions registered BEFORE connect() fire on Manager emit after connect', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('reconnect', handler);
 
     websocketService.connect();
@@ -173,7 +167,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('off() before connect() cancels a buffered subscription', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('v1:device:updated', handler);
     websocketService.off('v1:device:updated', handler);
 
@@ -184,7 +178,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('subscribe() registers a handler and the returned unsubscribe removes it', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     const unsubscribe = websocketService.subscribe('v1:device:updated', handler);
 
     websocketService.connect();
@@ -197,7 +191,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('subscriptions survive disconnect → connect (re-attach to the new socket)', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('v1:device:updated', handler);
 
     websocketService.connect();
@@ -215,7 +209,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('Manager subscriptions also survive disconnect → connect', () => {
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('reconnect', handler);
 
     websocketService.connect();
@@ -230,7 +224,7 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
 
   it('on(event, handler) called twice with the same handler attaches socket.on only once', () => {
     websocketService.connect();
-    const handler = jest.fn();
+    const handler = vi.fn();
     websocketService.on('v1:device:updated', handler);
     websocketService.on('v1:device:updated', handler);
 
@@ -255,8 +249,8 @@ describe('WebSocketService — subscriber buffering across connect lifecycle', (
   });
 
   it('removeAllListeners() clears Socket and Manager registries; subsequent connect() does not re-attach', () => {
-    const sockHandler = jest.fn();
-    const mgrHandler = jest.fn();
+    const sockHandler = vi.fn();
+    const mgrHandler = vi.fn();
     websocketService.on('v1:device:updated', sockHandler);
     websocketService.on('reconnect', mgrHandler);
 

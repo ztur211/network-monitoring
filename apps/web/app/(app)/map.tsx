@@ -50,7 +50,7 @@ export default function MapScreen() {
 
   useEffect(() => {
     void loadDevices();
-  }, []);
+  }, [loadDevices]);
 
   const handleDeviceClick = useCallback((device: DeviceDto) => {
     setSelectedDevice(device);

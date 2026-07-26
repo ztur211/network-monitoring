@@ -21,7 +21,6 @@
   ],
   "exclude": [
     "**/__tests__/**",
-    "jest.config.ts",
-    "jest.setup.ts"
+    "vitest.config.mts"
   ]
 }

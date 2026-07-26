@@ -111,7 +111,22 @@ export default function AppLayout() {
       websocketService.off('reconnect', handleConnected);
       websocketService.disconnect();
     };
-  }, []);
+  }, [
+    appendTokenToCurrentMessage,
+    completeCurrentMessage,
+    flushCircuits,
+    flushDevices,
+    flushMapPreferences,
+    removeCircuit,
+    removeDevice,
+    router,
+    setAiError,
+    setLoading,
+    setUser,
+    syncPreferencesFromServer,
+    upsertCircuit,
+    upsertDevice,
+  ]);
 
   if (isLoading) {
     return (

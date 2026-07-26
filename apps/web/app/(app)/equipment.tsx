@@ -41,7 +41,7 @@ export default function EquipmentScreen() {
 
   useEffect(() => {
     void loadDevices();
-  }, []);
+  }, [loadDevices]);
 
   const availableFloors = useMemo(() => {
     const floors = new Set<number>();

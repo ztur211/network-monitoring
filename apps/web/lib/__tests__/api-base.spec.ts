@@ -1,6 +1,6 @@
 /**
  * Unit tests for resolveApiBaseUrl — the single source of truth for the web
- * client's API base URL. jest runs in a node env (jest.config.ts:
+ * client's API base URL. Vitest runs in a node environment:
  * testEnvironment 'node'), so `window` is undefined unless we set it, which
  * lets us exercise all three resolution branches explicitly.
  */

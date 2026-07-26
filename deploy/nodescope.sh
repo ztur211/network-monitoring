@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# NodeScope appliance manager — one-command install + lifecycle for the
+# NodeScope appliance manager - one-command install + lifecycle for the
 # self-hosted site server (deploy/docker-compose.prod.yml).
 #
 #   ./deploy/nodescope.sh install       # generate secrets, detect LAN IP, bring the stack up, smoke-test
@@ -9,14 +9,13 @@
 #   ./deploy/nodescope.sh status        # docker compose ps
 #   ./deploy/nodescope.sh logs [svc]    # tail logs
 #   ./deploy/nodescope.sh up | down     # start / stop the stack
+#   ./deploy/nodescope.sh smoke         # verify the running same-origin stack
 #
 # Backup, restore and update land in Phase 2.
 set -euo pipefail
 
 # shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1007 # CDPATH= is an intentional prefix-assignment, not a typo
-REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
 # Overridable so tests can point at a temp env file.
 ENV_FILE="${NODESCOPE_ENV_FILE:-${SCRIPT_DIR}/.env}"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.prod.yml"
@@ -128,7 +127,7 @@ cmd_install() {
   log "running smoke test…"
   smoke_test "${origin_url}" "${tiles}"
   log "NodeScope is up at ${origin_url}"
-  log "create your first account there, then point the desktop app at ${origin_url}/api"
+  log "create your first account there, then enter ${origin_url} in the desktop app"
 }
 
 # Build the map-tile region extract (Decision 15). One-shot planetiler run that
@@ -189,7 +188,10 @@ smoke_test() {
   log "  ✔ API /api/health"
 
   # Unauthenticated get-session must be HTTP 200 with a literal JSON null body.
-  body="$(curl -fsS "${origin}/api/auth/get-session")" && [ "${body}" = "null" ] \
+  if ! body="$(curl -fsS "${origin}/api/auth/get-session")"; then
+    die "smoke: /api/auth/get-session is not answering"
+  fi
+  [ "${body}" = "null" ] \
     || die "smoke: /api/auth/get-session should return null, got: ${body}"
   log "  ✔ API /api/auth/get-session (unauthenticated)"
 
@@ -226,7 +228,27 @@ cmd_reconfigure() {
   set_origin "${origin}"
   log "restarting with the new origin (no rebuild)…"
   compose up -d
-  log "done — reachable at $(get_kv PUBLIC_ORIGIN)"
+  log "done - reachable at $(get_kv PUBLIC_ORIGIN)"
+}
+
+cmd_smoke() {
+  local origin="" tiles=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --origin) [ $# -ge 2 ] || die "--origin requires a value"; origin="$2"; shift 2 ;;
+      --no-tiles) tiles=0; shift ;;
+      *) die "unknown smoke option: $1" ;;
+    esac
+  done
+
+  command -v curl >/dev/null 2>&1 || die "curl is required for the smoke test"
+  if [ -z "${origin}" ]; then
+    [ -f "${ENV_FILE}" ] || die "no ${ENV_FILE}; pass --origin or run 'install' first"
+    origin="$(get_kv PUBLIC_ORIGIN)"
+  fi
+  [ -n "${origin}" ] || die "PUBLIC_ORIGIN is empty; pass --origin"
+  smoke_test "${origin%/}" "${tiles}"
+  log "smoke test passed for ${origin%/}"
 }
 
 cmd_status() { compose ps; }
@@ -242,6 +264,7 @@ main() {
     install)     cmd_install "$@" ;;
     tiles)       cmd_tiles "$@" ;;
     reconfigure) cmd_reconfigure "$@" ;;
+    smoke)       cmd_smoke "$@" ;;
     status)      cmd_status "$@" ;;
     logs)        cmd_logs "$@" ;;
     up)          cmd_up "$@" ;;

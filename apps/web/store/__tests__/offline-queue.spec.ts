@@ -91,9 +91,9 @@ describe('isConflictError', () => {
 
 describe('drainOfflineQueue', () => {
   it('is a no-op when the queue is empty (no clear, no replay)', async () => {
-    const setQueue = jest.fn();
-    const replay = jest.fn();
-    const onGiveUp = jest.fn();
+    const setQueue = vi.fn();
+    const replay = vi.fn();
+    const onGiveUp = vi.fn();
 
     await drainOfflineQueue<Op>(() => [], setQueue, replay, onGiveUp);
 
@@ -133,7 +133,7 @@ describe('drainOfflineQueue', () => {
 
   it('requeues a transiently-failing op with attempts+1 (under the cap)', async () => {
     let queue: Op[] = [{ id: 1, attempts: 0 }];
-    const onGiveUp = jest.fn();
+    const onGiveUp = vi.fn();
 
     await drainOfflineQueue<Op>(
       () => queue,
@@ -189,7 +189,7 @@ describe('drainOfflineQueue', () => {
   });
 
   it('reads the queue snapshot once, up front', async () => {
-    const getQueue = jest.fn(() => [] as Op[]);
+    const getQueue = vi.fn(() => [] as Op[]);
     await drainOfflineQueue<Op>(getQueue, () => {}, async () => {}, () => {});
     expect(getQueue).toHaveBeenCalledTimes(1);
   });

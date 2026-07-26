@@ -1,57 +1,28 @@
 name: Deploy Stack Validation
 
-# Builds and boots the self-hosted demo stack (deploy/docker-compose.prod.yml)
-# on a runner, applies migrations, and runs the post-deploy smoke test — the
-# same flow a host operator runs, but in CI. Proves the Dockerfiles + compose
-# actually build, the API migrates and boots, Caddy serves the SPA + proxies
-# the API, and Socket.io handshakes — without needing a real host or domain.
-#
-# Path-filtered so the heavy docker build only runs when something that affects
-# the image actually changes (keeps normal CI fast / saves Actions minutes).
-
 on:
-  # Automatic triggers disabled 2026-07-19 along with ci.yml - the self-hosted
-  # runner has been offline since 2026-07-10, so the weekly cron and the PR
-  # trigger only produced runs that GitHub cancelled 24h later. Dispatch this
-  # manually before a release, or run the same flow locally:
-  #
-  #   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
-  #   node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
-  #
-  # The path filter below is preserved verbatim: it encodes which files can break
-  # the production image invisibly. Uncomment both blocks to restore automation.
-  #   pull_request:
-  #     paths:
-  #       - 'deploy/**'
-  #       - '!deploy/**.md'          # docs-only edits don't need the full build
-  #       - '.dockerignore'
-  #       - 'scripts/smoke.mjs'
-  #       - '.github/workflows/deploy-validate.yml'
-  #       # Image-build inputs the Dockerfiles COPY before `npm ci` - changes here
-  #       # broke the image invisibly for a month (June-July 2026: postinstall grew
-  #       # workspaces + tsconfigs moved to a shared base, and nothing ran this job).
-  #       - 'package.json'
-  #       - 'tsconfig.base.json'
-  #       - 'patches/**'
-  #   schedule:
-  #     - cron: '0 6 * * 1'
+  # Manual while hosted Actions billing is disabled. This workflow is the
+  # release-time proof that the appliance builds, migrates, routes, and backs up.
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-stack:
-    name: Build + smoke-test the compose stack
-    # Self-hosted: GitHub-hosted Actions billing is unpaid. Runner must have Docker + buildx.
-    runs-on: [self-hosted, linux]
+    name: Build and smoke-test appliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Write a CI .env (test values only — same-origin on localhost:8080)
+      - name: Write test appliance environment
         run: |
-          cat > deploy/.env <<'ENV'
+          cat >deploy/.env <<'ENV'
           PUBLIC_ORIGIN=http://localhost:8080
           POSTGRES_USER=nodescope
           POSTGRES_PASSWORD=ci-test-password
@@ -64,32 +35,55 @@ jobs:
           STORAGE_DRIVER=fs
           ENV
 
-      - name: Validate compose config
+      - name: Validate Compose configuration
+        run: >-
+          docker compose
+          --file deploy/docker-compose.prod.yml
+          --file deploy/docker-compose.build.yml
+          --env-file deploy/.env
+          config
+
+      - name: Build and start appliance
+        run: >-
+          docker compose
+          --file deploy/docker-compose.prod.yml
+          --file deploy/docker-compose.build.yml
+          --env-file deploy/.env
+          up
+          --detach
+          --build
+          --wait
+          --wait-timeout 360
+
+      - name: Smoke-test same-origin routes
+        run: ./deploy/nodescope.sh smoke --origin http://localhost:8080 --no-tiles
+
+      - name: Verify database backup
+        shell: bash
         run: |
-          docker compose -f deploy/docker-compose.prod.yml \
-            -f deploy/docker-compose.build.yml --env-file deploy/.env config >/dev/null
+          backup_dir="$(mktemp -d)"
+          deploy/backup.sh "$backup_dir"
+          backup="$(find "$backup_dir" -maxdepth 1 -name '*.sql.gz' -print -quit)"
+          test -n "$backup"
+          gunzip --stdout "$backup" | grep --quiet "PostgreSQL database dump"
 
-      - name: Build images + bring up the stack (waits for healthchecks)
-        run: |
-          docker compose -f deploy/docker-compose.prod.yml \
-            -f deploy/docker-compose.build.yml --env-file deploy/.env \
-            up -d --build --wait --wait-timeout 360
-
-      - name: Smoke test the running stack
-        run: node scripts/smoke.mjs http://localhost:8080 http://localhost:8080
-
-      - name: Verify the DB backup script
-        run: |
-          deploy/backup.sh /tmp/ns-backups
-          f="$(ls -1 /tmp/ns-backups/*.sql.gz | head -1)"
-          gunzip -c "$f" | grep -q "PostgreSQL database dump" \
-            && echo "backup OK ($f)" \
-            || { echo "backup did not contain a valid pg_dump"; exit 1; }
-
-      - name: Dump container logs on failure
+      - name: Print container logs on failure
         if: failure()
-        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs --no-color --tail 200
+        run: >-
+          docker compose
+          --file deploy/docker-compose.prod.yml
+          --file deploy/docker-compose.build.yml
+          --env-file deploy/.env
+          logs
+          --no-color
+          --tail 200
 
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env down -v
+        run: >-
+          docker compose
+          --file deploy/docker-compose.prod.yml
+          --file deploy/docker-compose.build.yml
+          --env-file deploy/.env
+          down
+          --volumes

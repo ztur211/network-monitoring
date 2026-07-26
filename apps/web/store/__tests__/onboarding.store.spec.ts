@@ -13,28 +13,22 @@
  */
 import { OnboardingTurnResponse } from '@nodescope/shared';
 
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
-
-const mockPost = jest.fn();
+const mockPost = vi.fn();
 const MOCK_BROWSER_DEVICE_ID = 'mock-browser-device-id-1234';
 
-jestEsm.unstable_mockModule('axios', () => ({
+vi.doMock('axios', () => ({
   default: {
-    create: jest.fn(() => ({
+    create: vi.fn(() => ({
       post: mockPost,
-      interceptors: { response: { use: jest.fn() } },
+      interceptors: { response: { use: vi.fn() } },
     })),
-    isAxiosError: jest.fn(() => false),
+    isAxiosError: vi.fn(() => false),
   },
 }));
 
 // browser-device-id reads from localStorage. We seed a known UUID in
 // beforeEach (via a fake Storage) so every sendTurn POST carries a
-// predictable browserDeviceId without having to mock the module itself —
-// jest.unstable_mockModule + relative paths don't compose well in ts-jest
-// ESM mode, but localStorage seeding is just as deterministic.
+// predictable browserDeviceId without having to mock the relative module.
 
 class FakeLocalStorage {
   private store = new Map<string, string>();

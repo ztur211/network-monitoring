@@ -10,8 +10,8 @@
 #
 # The appliance base already runs single-node (no Redis) with fs storage (no
 # MinIO) and the crypto key, so this overlay only adds a one-shot that seeds the
-# demo org/site/building and uploads the sample IFC. Then open the desktop app,
-# point it at http://localhost:8080/api, sign in, and open Main Building.
+# demo org/site/building and uploads the sample IFC. Then open the native desktop
+# client, enter http://localhost:8080, sign in, and open Main Building.
 # See deploy/DEMO.md for the full walkthrough.
 name: nodescope
 

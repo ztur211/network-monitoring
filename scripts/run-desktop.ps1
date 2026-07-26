@@ -1,15 +1,14 @@
 <#
 .SYNOPSIS
-  One command to launch the full NodeScope stack + the 3D desktop app on Windows.
+  Launch the NodeScope appliance and native desktop client on Windows.
 
 .DESCRIPTION
-  PowerShell twin of scripts/run-desktop.sh (see it for the full story). Since the
-  Decision 11 cutover the backend is the self-hosted APPLIANCE compose (C# API +
-  same-origin web through Caddy at :8080); the Electron viewer points at
-  http://localhost:8080/api and PKCE sign-in opens your default browser.
+  PowerShell twin of scripts/run-desktop.sh. The backend is the self-hosted
+  appliance compose (ASP.NET Core API plus same-origin web through Caddy at
+  http://localhost:8080). The foreground app is the Avalonia client.
 
-  Run it from inside the repo. Needs Node 20-22, Docker Desktop (running), and a real
-  display + GPU (native Windows). If PowerShell blocks the script, either run
+  Run it from inside the repo. Needs the .NET 10 SDK, Docker Desktop, and a real
+  display. If PowerShell blocks the script, either run
   'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned' once, or launch it with
   'powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop.ps1'.
 
@@ -81,37 +80,32 @@ if (-not $DesktopOnly) {
         docker @ComposeArgs down -v
     }
 
-    Log 'building + starting the appliance (db -> api -> web) - first build takes a while ...'
+    Log 'building + starting the appliance (db -> api -> web); the first build takes a while ...'
     docker @ComposeArgs up -d --build --wait db api web
     if ($LASTEXITCODE -ne 0) { Fail 'compose up failed' }
 
     Log 'seeding demo data (org, devices, building model, sample model) ...'
-    docker @ComposeArgs up demo-seed --no-log-prefix
+    docker @ComposeArgs run --rm demo-seed
     if ($LASTEXITCODE -ne 0) { Fail 'demo seed failed' }
 
     try { Invoke-RestMethod "$Origin/api/health" | Out-Null }
     catch { Fail "API not healthy at $Origin/api/health" }
-    Log "appliance is up: $Origin (web) - $Origin/api (API)"
+    Log "appliance is up: $Origin (enter this origin in the desktop client)"
 }
 
 if (-not $BackendOnly) {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'Node.js not found (need 20-22 for the Electron dev shell)' }
-    $nodeMajor = [int]((node -v) -replace '^v(\d+).*', '$1')
-    if ($nodeMajor -lt 20 -or $nodeMajor -gt 22) { Fail "Node $nodeMajor detected - this project needs Node 20-22" }
-    if (-not (Test-Path (Join-Path $Root 'node_modules'))) {
-        Log 'installing dependencies (first run - a few minutes) ...'
-        npm install
-        if ($LASTEXITCODE -ne 0) { Fail 'npm install failed' }
-    }
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Fail '.NET 10 SDK not found' }
 
     $seedEmail = if ($env:SEED_EMAIL) { $env:SEED_EMAIL } else { 'owner@acme.test' }
     $seedPassword = if ($env:SEED_PASSWORD) { $env:SEED_PASSWORD } else { 'devpassword123' }
     Write-Host ''
-    Write-Host "-- Server: $Origin/api  -  Sign in: $seedEmail / $seedPassword --" -ForegroundColor Green
-    Write-Host '   Verify in the 3D viewer (open Main Building): no-freeze spinner, element picking, BCF viewpoints.' -ForegroundColor Green
+    Write-Host "Server: $Origin" -ForegroundColor Green
+    Write-Host "Sign in: $seedEmail / $seedPassword" -ForegroundColor Green
+    Write-Host 'Enter the server origin without /api when the client opens.' -ForegroundColor Green
     Write-Host ''
-    Log 'launching desktop (dev:desktop) - close the window or Ctrl-C when done'
-    npm run dev:desktop
+    Log 'launching the native desktop client; close the window or press Ctrl-C when done'
+    dotnet run --project src/NodeScope.Desktop
+    if ($LASTEXITCODE -ne 0) { Fail 'desktop client exited with an error' }
 }
 else {
     Log "backend is up: $Origin - stop it later with:  .\scripts\run-desktop.ps1 -Stop"

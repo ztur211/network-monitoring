@@ -31,8 +31,11 @@ export default function CircuitsScreen() {
 
   useEffect(() => {
     void loadCircuits();
+  }, [loadCircuits]);
+
+  useEffect(() => {
     if (!devicesLoaded) void loadDevices();
-  }, []);
+  }, [devicesLoaded, loadDevices]);
 
   const handleDelete = useCallback(
     async (circuit: CircuitDto) => {

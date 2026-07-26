@@ -7,29 +7,25 @@
  *
  * Component render is NOT tested here — the repo has no RN-component-test
  * infrastructure (no @testing-library/react, no react-test-renderer).
- * This is consistent with the existing jest.config.ts scope (lib/*, store/*)
+ * This is consistent with the Vitest scope (lib/*, store/*)
  * and mirrors api.service.agents.spec.ts.
  */
 
-const jestEsm = jest as typeof jest & {
-  unstable_mockModule: (moduleName: string, factory: () => unknown) => void;
-};
-
-const mockGet = jest.fn();
-const mockPost = jest.fn();
-const mockDelete = jest.fn();
+const mockGet = vi.fn();
+const mockPost = vi.fn();
+const mockDelete = vi.fn();
 
 // Mock axios so the `api` instance created inside api.service.ts uses our fns.
-jestEsm.unstable_mockModule('axios', () => {
+vi.doMock('axios', () => {
   const instance = {
     get: mockGet,
     post: mockPost,
     delete: mockDelete,
-    interceptors: { response: { use: jest.fn() } },
+    interceptors: { response: { use: vi.fn() } },
   };
   const axiosStatic = {
-    create: jest.fn(() => instance),
-    isAxiosError: jest.fn(),
+    create: vi.fn(() => instance),
+    isAxiosError: vi.fn(),
     default: undefined as unknown,
   };
   axiosStatic.default = axiosStatic;
@@ -77,7 +73,7 @@ const stubProfile = {
 
 describe('SNMP client methods — endpoint + envelope', () => {
   afterEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   // ── Credentials ──

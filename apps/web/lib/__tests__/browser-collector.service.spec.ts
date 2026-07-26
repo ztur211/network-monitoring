@@ -10,11 +10,10 @@
  * escape the interval callback, and the reported rates themselves (a failed probe
  * has to report *no* measurement rather than a rate derived from how fast it failed).
  *
- * The collector's collaborators are used for real and spied on, not module-mocked:
- * `jest.unstable_mockModule` resolves its specifier relative to the module owning the
- * `jest` object, which under this suite's ESM setup is jest.setup.ts, not the spec.
+ * The collector's collaborators are used for real and spied on, not module-mocked.
  */
 import { WS_EVENTS } from '@nodescope/shared';
+import type { Mock, MockInstance } from 'vitest';
 
 const COLLECT_INTERVAL_MS = 30_000;
 const BANDWIDTH_TIMEOUT_MS = 10_000;
@@ -25,7 +24,7 @@ const DEVICE_ID = 'browser-device-1';
 interface Harness {
   start: () => void;
   stop: () => void;
-  emit: jest.Mock;
+  emit: Mock;
 }
 
 /**
@@ -35,10 +34,10 @@ interface Harness {
  * the same fresh instance we spy on.
  */
 async function loadCollector(): Promise<Harness> {
-  jest.resetModules();
+  vi.resetModules();
   const { websocketService } = await import('../websocket.service');
   const { browserCollectorService } = await import('../browser-collector.service');
-  const emit = jest.spyOn(websocketService, 'emit').mockImplementation(() => {}) as unknown as jest.Mock;
+  const emit = vi.spyOn(websocketService, 'emit').mockImplementation(() => {}) as unknown as Mock;
   return {
     start: () => browserCollectorService.start(),
     stop: () => browserCollectorService.stop(),
@@ -48,8 +47,8 @@ async function loadCollector(): Promise<Harness> {
 
 /** A fetch that never answers. `honorAbort` distinguishes a server that respects the
  *  AbortController from a hang the guard alone has to contain. */
-function hangingFetch(honorAbort: boolean): jest.Mock {
-  return jest.fn(
+function hangingFetch(honorAbort: boolean): Mock {
+  return vi.fn(
     (_url: string, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
         if (!honorAbort) return;
@@ -68,7 +67,7 @@ function respondAfter(ms: number, response: Response): Promise<Response> {
   return new Promise((resolve) => setTimeout(() => resolve(response), ms));
 }
 
-function lastMetricsPayload(emit: jest.Mock): Record<string, unknown> {
+function lastMetricsPayload(emit: Mock): Record<string, unknown> {
   const submits = emit.mock.calls.filter(([event]) => event === WS_EVENTS.METRICS_SUBMIT);
   return submits[submits.length - 1][1];
 }
@@ -76,23 +75,23 @@ function lastMetricsPayload(emit: jest.Mock): Record<string, unknown> {
 /** Drive one whole cycle: the tick, both bandwidth probes, and the latency ping that
  *  nothing ever pongs. */
 async function runOneCycle(probeMs: number): Promise<void> {
-  await jest.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS);
-  await jest.advanceTimersByTimeAsync(probeMs); // download
-  await jest.advanceTimersByTimeAsync(probeMs); // upload
-  await jest.advanceTimersByTimeAsync(LATENCY_TIMEOUT_MS);
+  await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS);
+  await vi.advanceTimersByTimeAsync(probeMs); // download
+  await vi.advanceTimersByTimeAsync(probeMs); // upload
+  await vi.advanceTimersByTimeAsync(LATENCY_TIMEOUT_MS);
 }
 
 describe('BrowserCollectorService', () => {
   let harness: Harness;
-  let warn: jest.SpyInstance;
+  let warn: MockInstance;
 
   beforeEach(async () => {
-    jest.useFakeTimers();
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     globalThis.document = {
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
       visibilityState: 'visible',
     } as unknown as Document;
 
@@ -107,8 +106,8 @@ describe('BrowserCollectorService', () => {
 
   afterEach(() => {
     harness.stop();
-    jest.useRealTimers();
-    jest.restoreAllMocks();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('skips a tick instead of stacking a second cycle on a stalled one', async () => {
@@ -118,7 +117,7 @@ describe('BrowserCollectorService', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     harness.start();
-    await jest.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS * 3);
+    await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS * 3);
 
     // Three ticks fired, and the first cycle - still in flight - is still the only one
     // holding a connection. Before the guard this was three concurrent cycles.
@@ -144,12 +143,12 @@ describe('BrowserCollectorService', () => {
     // Having finished, the cycle released the guard: the next tick runs rather than
     // being skipped as an overlap.
     const probesSoFar = fetchMock.mock.calls.length;
-    await jest.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS);
     expect(fetchMock.mock.calls.length).toBeGreaterThan(probesSoFar);
   });
 
   it('reports the measured rates when both probes succeed', async () => {
-    const fetchMock = jest.fn((_url: string, init?: RequestInit) =>
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
       respondAfter(50, okResponse(init?.method === 'POST' ? 0 : DOWNLOAD_BYTES)),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -165,7 +164,7 @@ describe('BrowserCollectorService', () => {
   it('reports no upload rate when the upload probe fails', async () => {
     // The old code timed the *failure* and reported it as throughput: a connection
     // refused in 1ms became a ~800 Mbps upload.
-    const fetchMock = jest.fn((_url: string, init?: RequestInit) =>
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
       init?.method === 'POST'
         ? Promise.reject(new TypeError('Failed to fetch'))
         : respondAfter(50, okResponse(DOWNLOAD_BYTES)),
@@ -181,7 +180,7 @@ describe('BrowserCollectorService', () => {
   });
 
   it('contains a rejected cycle and keeps collecting', async () => {
-    const fetchMock = jest.fn(() => respondAfter(50, okResponse(DOWNLOAD_BYTES)));
+    const fetchMock = vi.fn(() => respondAfter(50, okResponse(DOWNLOAD_BYTES)));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     globalThis.localStorage = {
       getItem: () => {

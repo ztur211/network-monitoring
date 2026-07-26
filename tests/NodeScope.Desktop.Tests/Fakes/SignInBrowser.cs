@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using NodeScope.Desktop.Auth;
@@ -12,6 +13,13 @@ namespace NodeScope.Desktop.Tests.Fakes;
 /// </summary>
 internal sealed class SignInBrowser : IBrowserLauncher, IDisposable
 {
+    // The production auth bucket permits five writes per client in 15 minutes.
+    // Four live desktop scenarios all use the same seeded owner, so signing in
+    // once and sharing that browser session keeps the suite representative and
+    // leaves budget for the separate sign-up-driven PKCE test.
+    private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> SessionCookies =
+        new(StringComparer.Ordinal);
+
     private readonly HttpClientHandler _handler = new() { UseCookies = false, AllowAutoRedirect = false };
     private readonly HttpClient _http;
     private string? _cookie;
@@ -32,6 +40,29 @@ internal sealed class SignInBrowser : IBrowserLauncher, IDisposable
 
     public async Task SignInAsync(string email, string password)
     {
+        var cacheKey = $"{_http.BaseAddress}|{email}";
+        var pending = SessionCookies.GetOrAdd(
+            cacheKey,
+            _ => new Lazy<Task<string>>(
+                () => CreateSessionCookieAsync(email, password),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        try
+        {
+            _cookie = await pending.Value;
+        }
+        catch
+        {
+            if (SessionCookies.TryGetValue(cacheKey, out var current) && ReferenceEquals(current, pending))
+            {
+                SessionCookies.TryRemove(cacheKey, out _);
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<string> CreateSessionCookieAsync(string email, string password)
+    {
         using var body = JsonContent.Create(new { email, password });
         using var response = await _http.PostAsync(
             new Uri("api/auth/sign-in/email", UriKind.Relative), body);
@@ -39,7 +70,7 @@ internal sealed class SignInBrowser : IBrowserLauncher, IDisposable
 
         var setCookie = response.Headers.GetValues("Set-Cookie")
             .First(value => value.StartsWith("better-auth.session_token=", StringComparison.Ordinal));
-        _cookie = setCookie[..setCookie.IndexOf(';', StringComparison.Ordinal)];
+        return setCookie[..setCookie.IndexOf(';', StringComparison.Ordinal)];
     }
 
     public async Task<Uri> CompleteAuthorizeAsync()
