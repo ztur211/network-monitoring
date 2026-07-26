@@ -8,14 +8,11 @@ namespace NodeScope.ContractTests.Fixtures;
 /// </summary>
 /// <param name="OrganizationId">The provisioned organization's id.</param>
 /// <param name="Name">The name the org was created with.</param>
-/// <param name="Owner">A signed-up user made OWNER of this org, with both credential forms.</param>
+/// <param name="Owner">A signed-up user made OWNER of this org.</param>
 public sealed record ProvisionedOrg(string OrganizationId, string Name, UserSession Owner)
 {
-    /// <summary>Cookie authentication for the org's owner.</summary>
-    public Auth OwnerCookie => Owner.AsCookie();
-
     /// <summary>Bearer authentication for the org's owner.</summary>
-    public Auth OwnerBearer => Owner.AsBearer();
+    public Auth OwnerAuth => Owner.AsBearer();
 }
 
 /// <summary>
@@ -30,8 +27,7 @@ public static class OrgProvisioning
     /// <summary>
     /// Produces a signed-in super-admin session. Signs up an ordinary user, promotes
     /// it in the database, then signs in <em>afresh</em> so the returned session
-    /// reflects the promotion - Better Auth's <c>cookieCache</c> would otherwise keep
-    /// serving the pre-promotion user from the original sign-up session.
+    /// unambiguously reflects the promotion.
     /// </summary>
     public static async Task<UserSession> BootstrapSuperAdminAsync(
         ApiClient api,
@@ -58,7 +54,7 @@ public static class OrgProvisioning
     {
         name ??= $"Contract Org {Guid.NewGuid():N}";
 
-        var create = await api.PostAsync("v1/admin/organizations", new { name }, superAdmin.AsCookie(), cancellationToken);
+        var create = await api.PostAsync("v1/admin/organizations", new { name }, superAdmin.AsBearer(), cancellationToken);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         var organizationId = create.Data.GetProperty("id").GetString()
             ?? throw new InvalidOperationException("admin create-organization response carried no id");
@@ -70,7 +66,7 @@ public static class OrgProvisioning
         var designate = await api.PostAsync(
             $"v1/admin/organizations/{organizationId}/owner",
             new { email = owner.Email },
-            superAdmin.AsCookie(),
+            superAdmin.AsBearer(),
             cancellationToken);
         Assert.Equal(HttpStatusCode.Created, designate.Status);
 
@@ -96,7 +92,7 @@ public static class OrgProvisioning
         var invite = await api.PostAsync(
             "v1/organizations/me/invitations",
             new { email, role },
-            org.OwnerCookie,
+            org.OwnerAuth,
             cancellationToken);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var token = invite.Data.GetProperty("token").GetString()
@@ -105,7 +101,7 @@ public static class OrgProvisioning
         // The invitee must be a fresh, org-less account whose email matches the invite.
         var member = await AuthWorkflow.SignUpAsync(api, email: email, name: "Contract Org Member", cancellationToken: cancellationToken);
 
-        var accept = await api.PostAsync("v1/invitations/accept", new { token }, member.AsCookie(), cancellationToken);
+        var accept = await api.PostAsync("v1/invitations/accept", new { token }, member.AsBearer(), cancellationToken);
         Assert.Equal(HttpStatusCode.Created, accept.Status);
 
         return member;
@@ -122,7 +118,7 @@ public static class OrgProvisioning
         string userId,
         CancellationToken cancellationToken = default)
     {
-        var list = await api.GetAsync("v1/organizations/me/members", org.OwnerCookie, cancellationToken);
+        var list = await api.GetAsync("v1/organizations/me/members", org.OwnerAuth, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var member = list.Data.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == userId);
         return member.GetProperty("id").GetString()

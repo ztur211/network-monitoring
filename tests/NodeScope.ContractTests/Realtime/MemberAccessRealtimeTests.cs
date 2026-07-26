@@ -27,9 +27,9 @@ public class MemberAccessRealtimeTests
     {
         var (org, _, memberId, siteId) = await OrgWithMemberAndSiteAsync();
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerCookie);
+        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -42,12 +42,12 @@ public class MemberAccessRealtimeTests
     public async Task Owner_socket_receives_member_property_unassigned_when_a_grant_is_revoked()
     {
         var (org, _, memberId, siteId) = await OrgWithMemberAndSiteAsync();
-        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerCookie);
+        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var revoke = await _api.DeleteAsync($"v1/members/{memberId}/properties/{siteId}", org.OwnerCookie);
+        var revoke = await _api.DeleteAsync($"v1/members/{memberId}/properties/{siteId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NoContent, revoke.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -62,9 +62,9 @@ public class MemberAccessRealtimeTests
         var (org, member, memberId, siteId) = await OrgWithMemberAndSiteAsync();
 
         // The MEMBER's socket - access:changed targets the affected user's room.
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(member.AsCookie());
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(member.AsBearer());
 
-        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerCookie);
+        var grant = await _api.PostAsync($"v1/members/{memberId}/properties", new { propertyId = siteId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
 
         var evt = await socket.WaitForEventAsync("v1:access:changed");
@@ -75,13 +75,13 @@ public class MemberAccessRealtimeTests
     public async Task Member_socket_receives_access_changed_when_added_to_a_team()
     {
         var (org, member, memberId, _) = await OrgWithMemberAndSiteAsync();
-        var team = await _api.PostAsync("v1/teams", new { name = $"team-{Guid.NewGuid():N}" }, org.OwnerCookie);
+        var team = await _api.PostAsync("v1/teams", new { name = $"team-{Guid.NewGuid():N}" }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, team.Status);
         var teamId = InventoryScaffold.RequireId(team.Data);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(member.AsCookie());
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(member.AsBearer());
 
-        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerCookie);
+        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, add.Status);
 
         var evt = await socket.WaitForEventAsync("v1:access:changed");
@@ -95,14 +95,14 @@ public class MemberAccessRealtimeTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var memberId = list.Data.EnumerateArray()
                 .Single(m => m.GetProperty("userId").GetString() == member.UserId)
                 .GetProperty("id").GetString()
             ?? throw new InvalidOperationException("members list entry carried no id");
 
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         return (org, member, memberId, InventoryScaffold.RequireId(site));
     }
 }

@@ -19,10 +19,10 @@ public sealed record RawResponse(
 
 /// <summary>
 /// A thin black-box HTTP client for the API under test. It knows the wire - the
-/// standard JSON envelope, cookie/bearer/header auth - and nothing about either
+/// standard JSON envelope, bearer/header auth - and nothing about the
 /// implementation. Request paths are relative to the client's base address, which
 /// the fixture sets to <c>{BASE_URL}/api/</c>, so callers pass <c>v1/users/me</c>,
-/// <c>auth/sign-in/email</c>, <c>health</c>, and so on.
+/// <c>v1/auth/sign-in</c>, <c>health</c>, and so on.
 /// </summary>
 public sealed class ApiClient
 {
@@ -113,11 +113,8 @@ public sealed class ApiClient
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var cookies)
-            ? cookies.ToArray()
-            : [];
 
-        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, setCookies, text);
+        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, text);
     }
 
     /// <summary>
@@ -142,11 +139,8 @@ public sealed class ApiClient
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var cookies)
-            ? cookies.ToArray()
-            : [];
 
-        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, setCookies, text);
+        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, text);
     }
 
     private async Task<ApiResponse> SendAsync(
@@ -168,11 +162,8 @@ public sealed class ApiClient
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var cookies)
-            ? cookies.ToArray()
-            : [];
 
-        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, setCookies, text);
+        return ApiResponse.Capture(response.StatusCode, response.Headers, response.Content.Headers, text);
     }
 
     private static void ApplyAuth(HttpRequestMessage request, Auth? auth)
@@ -185,11 +176,6 @@ public sealed class ApiClient
         if (auth.BearerToken is not null)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
-        }
-
-        if (auth.Cookie is not null)
-        {
-            request.Headers.Add("Cookie", auth.Cookie);
         }
 
         if (auth.Headers is not null)

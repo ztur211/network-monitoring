@@ -9,7 +9,7 @@ using Xunit;
 namespace NodeScope.Desktop.Tests;
 
 /// <summary>
-/// The assistant live, end to end: a real PKCE sign-in, a real SignalR connection to
+/// The assistant live, end to end: a real native sign-in, a real SignalR connection to
 /// <c>/hubs/v1</c>, a question over <c>v1:ai:message</c>, and the host's fallback answer
 /// streaming back as a token then an unavailable completion (Decision 9: the appliance
 /// has no provider, so the graceful-degradation path IS the production path today).
@@ -47,14 +47,10 @@ public sealed class AssistantE2ETests : IDisposable
 
         var vault = new PlainFileTokenVault(Path.Combine(_scratch.FullName, "vault.json"));
         var settingsStore = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        using var browser = new SignInBrowser(server);
         using var factory = new ApplianceClientFactory();
-        using var flow = new DesktopAuthFlow(
-            factory, vault, settingsStore, browser, NullLogger<DesktopAuthFlow>.Instance);
+        using var flow = new DesktopAuthFlow(factory, vault, settingsStore, NullLogger<DesktopAuthFlow>.Instance);
 
-        await browser.SignInAsync(email, password);
-        flow.StartSignIn(server);
-        await flow.HandleCallbackAsync(await browser.CompleteAuthorizeAsync(), CancellationToken.None);
+        await LiveSignIn.RestoreAsync(flow, vault, server, email, password);
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         var session = flow.Session!;
 

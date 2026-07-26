@@ -28,12 +28,12 @@ public class PropertyRealtimeTests
     public async Task Owner_socket_receives_property_updated_when_a_property_is_renamed()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = InventoryScaffold.RequireId(site);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchPropertyAsync(siteId, site.GetProperty("version").GetInt32(), "name", $"rt-{Guid.NewGuid():N}", org.OwnerCookie);
+        await PatchPropertyAsync(siteId, site.GetProperty("version").GetInt32(), "name", $"rt-{Guid.NewGuid():N}", org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync("v1:property:updated", p => IdIs(p, siteId));
         Assert.Equal(siteId, evt.GetProperty("id").GetString());
@@ -44,16 +44,16 @@ public class PropertyRealtimeTests
     public async Task Owner_socket_receives_property_moved_not_updated_when_a_property_is_reparented()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var oldSite = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var oldSite = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var oldSiteId = InventoryScaffold.RequireId(oldSite);
-        var newSite = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var newSite = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var newSiteId = InventoryScaffold.RequireId(newSite);
-        var building = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie, "BUILDING", parentId: oldSiteId);
+        var building = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth, "BUILDING", parentId: oldSiteId);
         var buildingId = InventoryScaffold.RequireId(building);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchPropertyAsync(buildingId, building.GetProperty("version").GetInt32(), "parentId", newSiteId, org.OwnerCookie);
+        await PatchPropertyAsync(buildingId, building.GetProperty("version").GetInt32(), "parentId", newSiteId, org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync("v1:property:moved", p => IdIs(p, buildingId));
         Assert.Equal(buildingId, evt.GetProperty("id").GetString());
@@ -67,12 +67,12 @@ public class PropertyRealtimeTests
     public async Task Owner_socket_receives_property_deleted_when_a_property_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = InventoryScaffold.RequireId(site);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deleted = await _api.DeleteAsync($"v1/properties/{siteId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/properties/{siteId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
 
         var evt = await socket.WaitForEventAsync("v1:property:deleted", p => IdIs(p, siteId));
@@ -83,17 +83,17 @@ public class PropertyRealtimeTests
     public async Task Owner_socket_receives_charter_added_when_a_site_is_chartered()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = InventoryScaffold.RequireId(site);
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var charter = await _api.PostAsync(
             $"v1/networks/{networkId}/properties",
             new { propertyId = siteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, charter.Status);
         var charterId = InventoryScaffold.RequireId(charter.Data);
 
@@ -108,14 +108,14 @@ public class PropertyRealtimeTests
     public async Task Owner_socket_receives_charter_removed_when_a_charter_is_removed()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         // No devices sit under the site, so the charter is removable.
         var remove = await _api.DeleteAsync(
             $"v1/networks/{scaffold.NetworkId}/properties/{scaffold.SiteId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, remove.Status);
 
         var evt = await socket.WaitForEventAsync(

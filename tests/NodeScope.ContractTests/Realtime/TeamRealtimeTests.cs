@@ -26,9 +26,9 @@ public class TeamRealtimeTests
     public async Task Owner_socket_receives_team_created_when_a_team_is_created()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
 
         var evt = await socket.WaitForEventAsync("v1:team:created", p => IdIs(p, teamId));
@@ -43,16 +43,16 @@ public class TeamRealtimeTests
     public async Task Owner_socket_receives_team_updated_when_a_team_is_renamed()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         // Team rename is a flat versioned body, not the changeset envelope entities use.
         var rename = await _api.PatchAsync(
             $"v1/teams/{teamId}",
             new { baseVersion = team.GetProperty("version").GetInt32(), name = $"team-{Guid.NewGuid():N}" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, rename.Status);
 
         var evt = await socket.WaitForEventAsync("v1:team:updated", p => IdIs(p, teamId));
@@ -63,12 +63,12 @@ public class TeamRealtimeTests
     public async Task Owner_socket_receives_team_deleted_when_a_team_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var delete = await _api.DeleteAsync($"v1/teams/{teamId}", org.OwnerCookie);
+        var delete = await _api.DeleteAsync($"v1/teams/{teamId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NoContent, delete.Status);
 
         var evt = await socket.WaitForEventAsync("v1:team:deleted", p => IdIs(p, teamId));
@@ -81,12 +81,12 @@ public class TeamRealtimeTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
         var memberId = await OrgMemberIdAsync(org, member.UserId);
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerCookie);
+        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, add.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -101,14 +101,14 @@ public class TeamRealtimeTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
         var memberId = await OrgMemberIdAsync(org, member.UserId);
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
-        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerCookie);
+        var add = await _api.PostAsync($"v1/teams/{teamId}/members", new { memberId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, add.Status);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var remove = await _api.DeleteAsync($"v1/teams/{teamId}/members/{memberId}", org.OwnerCookie);
+        var remove = await _api.DeleteAsync($"v1/teams/{teamId}/members/{memberId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NoContent, remove.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -121,14 +121,14 @@ public class TeamRealtimeTests
     public async Task Owner_socket_receives_team_property_assigned_when_a_site_is_assigned()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = InventoryScaffold.RequireId(site);
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var assign = await _api.PostAsync($"v1/teams/{teamId}/properties", new { propertyId = siteId }, org.OwnerCookie);
+        var assign = await _api.PostAsync($"v1/teams/{teamId}/properties", new { propertyId = siteId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, assign.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -141,16 +141,16 @@ public class TeamRealtimeTests
     public async Task Owner_socket_receives_team_property_unassigned_when_a_site_is_unassigned()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = InventoryScaffold.RequireId(site);
-        var team = await CreateTeamAsync(org.OwnerCookie);
+        var team = await CreateTeamAsync(org.OwnerAuth);
         var teamId = InventoryScaffold.RequireId(team);
-        var assign = await _api.PostAsync($"v1/teams/{teamId}/properties", new { propertyId = siteId }, org.OwnerCookie);
+        var assign = await _api.PostAsync($"v1/teams/{teamId}/properties", new { propertyId = siteId }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, assign.Status);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var unassign = await _api.DeleteAsync($"v1/teams/{teamId}/properties/{siteId}", org.OwnerCookie);
+        var unassign = await _api.DeleteAsync($"v1/teams/{teamId}/properties/{siteId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NoContent, unassign.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -170,7 +170,7 @@ public class TeamRealtimeTests
     /// the team-membership surface speaks, distinct from the user id.</summary>
     private async Task<string> OrgMemberIdAsync(ProvisionedOrg org, string userId)
     {
-        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var member = list.Data.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == userId);
         return member.GetProperty("id").GetString()

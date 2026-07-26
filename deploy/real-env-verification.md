@@ -2,7 +2,7 @@
 
 Use this checklist on a desktop host before a release. Automated tests cover the
 API contract, domain behavior, and headless client behavior. This pass covers the
-real window system, browser callback, GPU path, local network probing, and external
+real window system, GPU path, local network probing, and external
 BCF interoperability.
 
 ## 1. Start from release-shaped artifacts
@@ -23,14 +23,15 @@ For a local candidate:
 
 Build the map extract separately when validating the complete offline map path.
 
-## 2. Native desktop and browser authentication
+## 2. Native desktop authentication
 
 Run the packaged desktop artifact for the host OS, not `dotnet run`.
 
 - [ ] The app opens without a console or startup error.
 - [ ] The sign-in view accepts the appliance origin without `/api`.
-- [ ] Sign-in opens the system browser at the same appliance origin.
-- [ ] The `nodescope://auth/callback` activation focuses the existing app instance.
+- [ ] Sign-in with email and password completes in the app; no browser opens.
+- [ ] Create-account mode provisions a fresh account and lands signed in.
+- [ ] Wrong credentials surface "Invalid email or password" in the form.
 - [ ] A second app launch focuses the first instance instead of opening another.
 - [ ] The session restores after closing and reopening the app.
 - [ ] Signing out revokes and removes the stored token.

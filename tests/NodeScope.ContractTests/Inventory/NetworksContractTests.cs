@@ -28,7 +28,7 @@ public class NetworksContractTests
         var response = await _api.PostAsync(
             "v1/networks",
             new { name = "Primary WAN", isp = "Acme Fiber", homePublicIp = "203.0.113.7" },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         var network = response.Data;
@@ -42,9 +42,9 @@ public class NetworksContractTests
     public async Task CreateSecondNetwork_exceeds_the_per_org_limit_with_409_NETWORK_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
 
-        var second = await _api.PostAsync("v1/networks", new { name = "Second WAN" }, org.OwnerCookie);
+        var second = await _api.PostAsync("v1/networks", new { name = "Second WAN" }, org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, second.Status);
         Assert.Equal("NETWORK_001", second.ErrorCode);
@@ -57,11 +57,11 @@ public class NetworksContractTests
         var created = await _api.PostAsync(
             "v1/networks",
             new { name = "Summarised", homePublicIp = "198.51.100.4" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, created.Status);
         var networkId = InventoryScaffold.RequireId(created.Data);
 
-        var list = await _api.GetAsync("v1/networks", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/networks", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, list.Status);
         Assert.Equal(JsonValueKind.Array, list.Data.ValueKind);
@@ -70,7 +70,7 @@ public class NetworksContractTests
         // The list is a summary projection: the public IP is only ever revealed on GET :id.
         Assert.False(summary.TryGetProperty("homePublicIp", out _));
 
-        var detail = await _api.GetAsync($"v1/networks/{networkId}", org.OwnerCookie);
+        var detail = await _api.GetAsync($"v1/networks/{networkId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, detail.Status);
         Assert.Equal("198.51.100.4", detail.Data.GetProperty("homePublicIp").GetString());
     }
@@ -80,7 +80,7 @@ public class NetworksContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.GetAsync($"v1/networks/{Guid.NewGuid()}", org.OwnerCookie);
+        var response = await _api.GetAsync($"v1/networks/{Guid.NewGuid()}", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("NETWORK_002", response.ErrorCode);
@@ -90,7 +90,7 @@ public class NetworksContractTests
     public async Task PatchNetwork_renames_and_bumps_the_version()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
         var baseVersion = network.GetProperty("version").GetInt32();
         var newName = $"Renamed {Guid.NewGuid():N}";
@@ -102,7 +102,7 @@ public class NetworksContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = (string?)null, newValue = newName } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal(newName, patch.Data.GetProperty("name").GetString());
@@ -113,7 +113,7 @@ public class NetworksContractTests
     public async Task PatchNetwork_with_a_stale_base_version_is_409_SYNC_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
         var baseVersion = network.GetProperty("version").GetInt32();
 
@@ -124,7 +124,7 @@ public class NetworksContractTests
                 baseVersion,
                 changes = new[] { new { field = "isp", oldValue = (string?)null, newValue = "First ISP" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, first.Status);
 
         var stale = await _api.PatchAsync(
@@ -134,7 +134,7 @@ public class NetworksContractTests
                 baseVersion,
                 changes = new[] { new { field = "isp", oldValue = (string?)null, newValue = "Second ISP" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("SYNC_001", stale.ErrorCode);
@@ -144,10 +144,10 @@ public class NetworksContractTests
     public async Task SetHomeIp_stamps_the_request_ip_onto_the_network()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
 
-        var response = await _api.PostAsync($"v1/networks/{networkId}/set-home-ip", null, org.OwnerCookie);
+        var response = await _api.PostAsync($"v1/networks/{networkId}/set-home-ip", null, org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         // The server derives the IP from the request itself; the contract is that the
@@ -160,14 +160,14 @@ public class NetworksContractTests
     public async Task DeleteNetwork_succeeds_and_a_second_delete_is_404_NETWORK_002()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
 
-        var deleted = await _api.DeleteAsync($"v1/networks/{networkId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/networks/{networkId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
         Assert.Equal(JsonValueKind.Null, deleted.Data.ValueKind);
 
-        var again = await _api.DeleteAsync($"v1/networks/{networkId}", org.OwnerCookie);
+        var again = await _api.DeleteAsync($"v1/networks/{networkId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, again.Status);
         Assert.Equal("NETWORK_002", again.ErrorCode);
     }

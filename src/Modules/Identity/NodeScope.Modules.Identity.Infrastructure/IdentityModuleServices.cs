@@ -30,19 +30,6 @@ public static class IdentityModuleServices
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var secret = configuration["BETTER_AUTH_SECRET"]
-            ?? throw new InvalidOperationException("BETTER_AUTH_SECRET is required (sessions are HMAC-signed)");
-
-        // The desktop-auth redirects are built from absolute URLs, same two env vars the
-        // Node API requires: the web login page and this API's own public base URL.
-        var frontendUrl = configuration["FRONTEND_URL"]
-            ?? throw new InvalidOperationException("FRONTEND_URL is required (desktop-auth login redirect)");
-        var serverUrl = configuration["BETTER_AUTH_URL"]
-            ?? throw new InvalidOperationException("BETTER_AUTH_URL is required (desktop-auth returnTo URL)");
-        services.AddSingleton(new DesktopAuthUrls(
-            frontendUrl.TrimEnd('/'), serverUrl.TrimEnd('/')));
-        services.AddSingleton<DesktopAuthCodeStore>();
-
         services.AddDbContext<IdentityDbContext>((provider, options) =>
             options.UseNpgsql(
                 provider.GetRequiredService<DatabaseConnectionString>().Value,
@@ -65,9 +52,9 @@ public static class IdentityModuleServices
 
         services
             .AddAuthentication(SessionAuthenticationDefaults.SchemeName)
-            .AddScheme<SessionAuthenticationOptions, SessionAuthenticationHandler>(
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, SessionAuthenticationHandler>(
                 SessionAuthenticationDefaults.SchemeName,
-                options => options.Secret = secret);
+                configureOptions: null);
 
         return services;
     }
@@ -75,9 +62,7 @@ public static class IdentityModuleServices
     public static IEndpointRouteBuilder MapIdentityEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
-        BetterAuthEndpoints.Map(app);
-        AuthPagesEndpoints.Map(app);
-        DesktopAuthEndpoints.Map(app);
+        AuthEndpoints.Map(app);
         UsersEndpoints.Map(app);
         OrganizationsEndpoints.Map(app);
         PermissionsEndpoints.Map(app);

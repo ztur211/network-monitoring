@@ -25,17 +25,17 @@ public class ExportContractTests
     public async Task Export_streams_a_step_file_for_a_building()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerCookie, monitored.BuildingId);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerAuth, monitored.BuildingId);
         var place = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/position",
             new { x = 1.0, y = 2.0, z = 3.0 },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, place.Status);
 
         var export = await _api.GetRawAsync(
             $"v1/buildings/{monitored.BuildingId}/export/ifc",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, export.Status);
         Assert.Contains("application/x-step", export.Header("Content-Type"), StringComparison.Ordinal);
@@ -49,16 +49,16 @@ public class ExportContractTests
     public async Task Only_buildings_export_a_site_or_unknown_id_is_404_PROP_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerAuth);
 
         var site = await _api.GetRawAsync(
             $"v1/buildings/{building.SiteId}/export/ifc",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, site.Status);
 
         var unknown = await _api.GetRawAsync(
             $"v1/buildings/{Guid.NewGuid()}/export/ifc",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
     }
 }

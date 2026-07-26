@@ -14,13 +14,15 @@ controller, so the tracker doubles as the port work-list.
 
 ## Identity  (auth, users, orgs, permissions)
 
-**Better Auth**  (`/api/auth/*` - mounted via catch-all, not in the 121)
-- [x] POST `/api/auth/sign-up/email`, `/sign-in/email`, `/sign-out`
-- [x] GET `/api/auth/get-session`
-- [x] POST `/api/auth/request-password-reset`
-- [x] reset-password, update-user, change-password: NOT exercised by any client
-      (repo-wide, the auth client calls only `getSession`/`signUp.email`/`signIn.email`),
-      so they sit outside the parity surface - excluded, not pending
+**Auth** (`/api/v1/auth/*` - the native surface that replaced the Better Auth wire
+shim on 2026-07-26; envelope + raw Bearer token, no cookies)
+- [x] POST `/api/v1/auth/sign-up` (201 `{token}`; taken email `AUTH_005`; short
+      password `GEN_001`)
+- [x] POST `/api/v1/auth/sign-in` (200 `{token}`, fresh session; wrong password and
+      unknown email both `AUTH_001`)
+- [x] POST `/api/v1/auth/sign-out` (204; token dead immediately; repeat is 401 `AUTH_002`)
+- get-session and request-password-reset died with the shim: the desktop reads
+  `/api/v1/users/me` instead, and no email sender exists to make reset real
 
 **users.controller** (6)
 - [x] GET `/api/v1/users/me`
@@ -74,13 +76,10 @@ controller, so the tracker doubles as the port work-list.
       `ORG_001`; ADMIN delegating beyond own scope `PERM_002`; ADMIN touching a privileged
       target `PERM_003`)
 
-**desktop-auth.controller** (3)
-- [x] GET `/api/v1/desktop-auth/authorize` · POST `/token` · POST `/revoke`
-      (`DesktopAuthContractTests`, asserted with redirects unfollowed: wrong redirect_uri
-      `DAUTH_001`; anonymous → 302 to `/login?returnTo=`; with a session → 302 to the app
-      scheme carrying code+state; the full PKCE exchange yields a WORKING Bearer session
-      token and revoke kills it; bad code `DAUTH_002`, wrong verifier `DAUTH_003` - and the
-      failed attempt burns the code, so the retry is `DAUTH_002`)
+**desktop-auth.controller** (0 - DEMOLISHED 2026-07-26)
+- The `/api/v1/desktop-auth/*` PKCE flow and the host-served `/login` page are gone:
+  the desktop signs in natively over the `/api/v1/auth` surface above. The appliance
+  has no browser surface anymore.
 
 ## Inventory  (devices, networks, circuits, fiber, properties, map, spatial, bcf, models)
 

@@ -1,6 +1,3 @@
-using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
@@ -15,18 +12,14 @@ public sealed class DesktopAuthFlowTests : IDisposable
 
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-flow-tests-");
     private readonly FakeApplianceClientFactory _clients = new();
-    private readonly FakeBrowserLauncher _browser = new();
     private readonly InMemoryTokenVault _vault = new();
-    private readonly TestClock _clock = new(new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero));
     private readonly SettingsStore _settings;
     private readonly DesktopAuthFlow _flow;
 
     public DesktopAuthFlowTests()
     {
         _settings = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        _flow = new DesktopAuthFlow(
-            _clients, _vault, _settings, _browser,
-            NullLogger<DesktopAuthFlow>.Instance, _clock);
+        _flow = new DesktopAuthFlow(_clients, _vault, _settings, NullLogger<DesktopAuthFlow>.Instance);
     }
 
     public void Dispose()
@@ -36,83 +29,73 @@ public sealed class DesktopAuthFlowTests : IDisposable
     }
 
     [Fact]
-    public void Start_opens_the_authorize_url_with_the_pkce_challenge_and_saves_the_server()
+    public async Task Sign_in_posts_the_credentials_saves_the_server_and_vaults_the_token()
     {
-        _flow.StartSignIn(Server);
-
-        Assert.Equal(SessionPhase.WaitingForBrowser, _flow.Current.Phase);
-        Assert.Equal(Server, _settings.Load().ApplianceUrl);
-
-        var opened = _browser.LastOpened;
-        Assert.NotNull(opened);
-        Assert.StartsWith("https://appliance.local/api/v1/desktop-auth/authorize?", opened.AbsoluteUri, StringComparison.Ordinal);
-        Assert.Contains("code_challenge=", opened.Query, StringComparison.Ordinal);
-        Assert.Contains("state=", opened.Query, StringComparison.Ordinal);
-        Assert.Contains("redirect_uri=nodescope%3A%2F%2Fauth%2Fcallback", opened.Query, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task The_full_flow_signs_in_saves_the_vault_and_the_challenge_matches_the_verifier()
-    {
-        _flow.StartSignIn(Server);
-        var (challenge, state) = AuthorizeParameters(_browser.LastOpened!);
-
-        await _flow.HandleCallbackAsync(Callback("the-code", state), CancellationToken.None);
+        await _flow.SignInAsync(Server, "owner@acme.test", "devpassword123", CancellationToken.None);
 
         Assert.Equal(SessionPhase.SignedIn, _flow.Current.Phase);
         Assert.Equal("owner@acme.test", _flow.Current.User?.Email);
+        Assert.Equal(Server, _settings.Load().ApplianceUrl);
 
         var client = _clients.Last;
-        Assert.Equal("the-code", client.LastExchangedCode);
-        // The server recomputes S256(verifier) and compares to the challenge from the
-        // authorize URL; assert the same relation holds for what the client sent.
-        var recomputed = Convert.ToBase64String(
-                SHA256.HashData(Encoding.ASCII.GetBytes(client.LastVerifier!)))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        Assert.Equal(challenge, recomputed);
-
+        Assert.Equal(("owner@acme.test", "devpassword123"), client.LastSignIn);
         Assert.Equal(new VaultEntry(Server, "session-token-1"), _vault.Entry);
         Assert.Equal("session-token-1", client.LastBearerToken); // users/me with the new token
+        Assert.Equal("session-token-1", _flow.Session?.Token);
     }
 
     [Fact]
-    public async Task A_callback_with_the_wrong_state_is_rejected_without_an_exchange()
+    public async Task Sign_up_creates_the_account_and_signs_into_its_first_session()
     {
-        _flow.StartSignIn(Server);
+        await _flow.SignUpAsync(Server, "Owner", "owner@acme.test", "devpassword123", CancellationToken.None);
 
-        await _flow.HandleCallbackAsync(Callback("the-code", "not-our-state"), CancellationToken.None);
+        Assert.Equal(SessionPhase.SignedIn, _flow.Current.Phase);
+        Assert.Equal(("Owner", "owner@acme.test", "devpassword123"), _clients.Last.LastSignUp);
+        Assert.Equal(new VaultEntry(Server, "session-token-1"), _vault.Entry);
+    }
+
+    [Fact]
+    public async Task Rejected_credentials_surface_the_server_message_and_stay_signed_out()
+    {
+        _clients.Configure = client =>
+            client.SignInFailure = new ApplianceApiException("AUTH_001", "INVALID_CREDENTIALS", 401);
+
+        await _flow.SignInAsync(Server, "owner@acme.test", "wrong", CancellationToken.None);
 
         Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
-        Assert.NotNull(_flow.Current.Error);
-        Assert.Null(_clients.Last.LastExchangedCode);
+        Assert.Equal("Invalid email or password.", _flow.Current.Error);
+        Assert.Null(_vault.Entry);
+        Assert.Null(_flow.Session);
+    }
+
+    [Fact]
+    public async Task A_transport_failure_reads_as_could_not_reach_the_appliance()
+    {
+        _clients.Configure = client =>
+            client.SignInFailure = new HttpRequestException("connection refused");
+
+        await _flow.SignInAsync(Server, "owner@acme.test", "devpassword123", CancellationToken.None);
+
+        Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
+        Assert.Contains("Could not reach the appliance", _flow.Current.Error, StringComparison.Ordinal);
         Assert.Null(_vault.Entry);
     }
 
     [Fact]
-    public async Task A_callback_after_the_pending_window_expires_is_rejected()
+    public async Task A_second_submit_is_ignored_while_the_first_is_in_flight()
     {
-        _flow.StartSignIn(Server);
-        var (_, state) = AuthorizeParameters(_browser.LastOpened!);
+        var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _clients.Configure = client => client.SignInGate = gate;
 
-        _clock.Now += TimeSpan.FromMinutes(11);
-        await _flow.HandleCallbackAsync(Callback("the-code", state), CancellationToken.None);
+        var first = _flow.SignInAsync(Server, "owner@acme.test", "devpassword123", CancellationToken.None);
+        Assert.Equal(SessionPhase.SigningIn, _flow.Current.Phase);
 
-        Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
-        Assert.Null(_clients.Last.LastExchangedCode);
-    }
+        await _flow.SignInAsync(Server, "owner@acme.test", "devpassword123", CancellationToken.None);
+        Assert.Equal(1, _clients.Last.CredentialPosts);
 
-    [Fact]
-    public async Task An_exchange_rejection_surfaces_the_error_code_and_stays_signed_out()
-    {
-        _flow.StartSignIn(Server);
-        var (_, state) = AuthorizeParameters(_browser.LastOpened!);
-        _clients.Last.ExchangeFailure = new ApplianceApiException("DAUTH_003", "PKCE_VERIFICATION_FAILED", 400);
-
-        await _flow.HandleCallbackAsync(Callback("the-code", state), CancellationToken.None);
-
-        Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
-        Assert.Contains("DAUTH_003", _flow.Current.Error, StringComparison.Ordinal);
-        Assert.Null(_vault.Entry);
+        gate.SetResult("session-token-1");
+        await first;
+        Assert.Equal(SessionPhase.SignedIn, _flow.Current.Phase);
     }
 
     [Fact]
@@ -175,41 +158,7 @@ public sealed class DesktopAuthFlowTests : IDisposable
         await _flow.SignOutAsync(CancellationToken.None);
 
         Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
-        Assert.Equal("vaulted-token", _clients.Last.RevokedToken);
+        Assert.Equal("vaulted-token", _clients.Last.SignedOutToken);
         Assert.Null(_vault.Entry);
-    }
-
-    [Fact]
-    public void Cancel_returns_to_signed_out_and_invalidates_the_pending_state()
-    {
-        _flow.StartSignIn(Server);
-        _flow.CancelSignIn();
-
-        Assert.Equal(SessionPhase.SignedOut, _flow.Current.Phase);
-    }
-
-    private static Uri Callback(string code, string state) =>
-        new($"nodescope://auth/callback?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}");
-
-    private static (string Challenge, string State) AuthorizeParameters(Uri authorizeUrl)
-    {
-        string? challenge = null;
-        string? state = null;
-        foreach (var pair in authorizeUrl.Query.TrimStart('?').Split('&'))
-        {
-            var parts = pair.Split('=', 2);
-            if (parts[0] == "code_challenge")
-            {
-                challenge = Uri.UnescapeDataString(parts[1]);
-            }
-            else if (parts[0] == "state")
-            {
-                state = Uri.UnescapeDataString(parts[1]);
-            }
-        }
-
-        Assert.NotNull(challenge);
-        Assert.NotNull(state);
-        return (challenge, state);
     }
 }

@@ -25,7 +25,7 @@ public class AgentIngestContractTests
     public async Task Enroll_with_a_valid_code_returns_an_agent_id_and_token()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var code = await MonitoringScaffold.GenerateEnrollmentCodeAsync(_api, org.OwnerCookie);
+        var code = await MonitoringScaffold.GenerateEnrollmentCodeAsync(_api, org.OwnerAuth);
 
         var response = await _api.PostAsync(
             "v1/monitoring/agent/enroll",
@@ -51,7 +51,7 @@ public class AgentIngestContractTests
     public async Task Enroll_reusing_a_code_is_401_AGENT_001_the_second_time()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var code = await MonitoringScaffold.GenerateEnrollmentCodeAsync(_api, org.OwnerCookie);
+        var code = await MonitoringScaffold.GenerateEnrollmentCodeAsync(_api, org.OwnerAuth);
         var payload = new { code, name = "single-use", platform = "linux", version = "1.0.0" };
 
         var first = await _api.PostAsync("v1/monitoring/agent/enroll", payload);
@@ -66,11 +66,11 @@ public class AgentIngestContractTests
     public async Task Devices_lists_only_the_orgs_ip_bearing_devices_for_a_valid_agent_token()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
         // A second device with no IP - nothing an agent can probe, so it must be omitted.
-        var noIp = await MonitoringScaffold.CreateDeviceAsync(_api, org.OwnerCookie, monitored.NetworkId, monitored.BuildingId);
+        var noIp = await MonitoringScaffold.CreateDeviceAsync(_api, org.OwnerAuth, monitored.NetworkId, monitored.BuildingId);
         var noIpId = MonitoringScaffold.RequireId(noIp);
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
         var response = await _api.GetAsync("v1/monitoring/agent/devices", agent.AsAgentToken());
 
@@ -106,7 +106,7 @@ public class AgentIngestContractTests
     public async Task Heartbeat_with_a_valid_token_is_204_with_no_body()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
         var response = await _api.PostAsync("v1/monitoring/agent/heartbeat", auth: agent.AsAgentToken());
 

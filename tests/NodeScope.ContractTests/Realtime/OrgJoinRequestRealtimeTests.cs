@@ -27,9 +27,9 @@ public class OrgJoinRequestRealtimeTests
     public async Task Owner_socket_receives_join_request_created_when_a_user_requests_to_join()
     {
         var (org, requester) = await OrgWithDomainRequesterAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, submit.Status);
 
         var evt = await socket.WaitForEventAsync("v1:org:joinRequest:created", p => UserIdIs(p, requester.UserId));
@@ -44,13 +44,13 @@ public class OrgJoinRequestRealtimeTests
     public async Task Approving_a_join_request_emits_decided_and_member_added()
     {
         var (org, requester) = await OrgWithDomainRequesterAsync();
-        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, submit.Status);
         var requestId = await PendingRequestIdAsync(org, requester.UserId);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var approve = await _api.PostAsync($"v1/organizations/me/join-requests/{requestId}/approve", auth: org.OwnerCookie);
+        var approve = await _api.PostAsync($"v1/organizations/me/join-requests/{requestId}/approve", auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, approve.Status);
 
         var decided = await socket.WaitForEventAsync("v1:org:joinRequest:decided", p => IdIs(p, requestId));
@@ -66,13 +66,13 @@ public class OrgJoinRequestRealtimeTests
     public async Task Denying_a_join_request_emits_decided_without_member_added()
     {
         var (org, requester) = await OrgWithDomainRequesterAsync();
-        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, submit.Status);
         var requestId = await PendingRequestIdAsync(org, requester.UserId);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deny = await _api.PostAsync($"v1/organizations/me/join-requests/{requestId}/deny", auth: org.OwnerCookie);
+        var deny = await _api.PostAsync($"v1/organizations/me/join-requests/{requestId}/deny", auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, deny.Status);
 
         var decided = await socket.WaitForEventAsync("v1:org:joinRequest:decided", p => IdIs(p, requestId));
@@ -95,7 +95,7 @@ public class OrgJoinRequestRealtimeTests
         var claim = await _api.PostAsync(
             $"v1/admin/organizations/{org.OrganizationId}/domains",
             new { domain },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
         Assert.Equal(HttpStatusCode.Created, claim.Status);
 
         var requester = await AuthWorkflow.SignUpAsync(
@@ -107,7 +107,7 @@ public class OrgJoinRequestRealtimeTests
 
     private async Task<string> PendingRequestIdAsync(ProvisionedOrg org, string userId)
     {
-        var list = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var request = list.Data.EnumerateArray().Single(r => r.GetProperty("userId").GetString() == userId);
         Assert.Equal("PENDING", request.GetProperty("status").GetString());

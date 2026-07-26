@@ -44,11 +44,6 @@ public sealed class SignalRRealtimeClient : IRealtimeClient
                 // WebSockets only: the parity tests are about the realtime path, and a silent
                 // fall back to long polling would test something else.
                 options.Transports = HttpTransportType.WebSockets;
-                if (auth?.Cookie is { } cookie)
-                {
-                    options.Headers["Cookie"] = cookie;
-                }
-
                 if (auth?.BearerToken is { } bearer)
                 {
                     options.Headers["Authorization"] = $"Bearer {bearer}";

@@ -22,9 +22,9 @@ public class OnboardingRealtimeTests
     public async Task Org_room_receives_onboarding_turn_when_the_owner_advances_onboarding()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var turn = await _api.PostAsync("v1/onboarding/turn", new { }, org.OwnerCookie);
+        var turn = await _api.PostAsync("v1/onboarding/turn", new { }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, turn.Status);
         var stepId = turn.Data.GetProperty("stepId").GetString();
         Assert.False(string.IsNullOrEmpty(stepId));

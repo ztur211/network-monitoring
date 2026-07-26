@@ -25,7 +25,6 @@ internal sealed class IdentityDbContext : DbContext
 
     public DbSet<AccountRow> Accounts => Set<AccountRow>();
 
-    public DbSet<VerificationRow> Verifications => Set<VerificationRow>();
 
     public DbSet<OrganizationRow> Organizations => Set<OrganizationRow>();
 
@@ -71,12 +70,6 @@ internal sealed class IdentityDbContext : DbContext
             entity.ToTable("Account");
             entity.HasKey(row => row.Id);
             entity.HasOne<UserRow>().WithMany().HasForeignKey(row => row.UserId);
-        });
-
-        modelBuilder.Entity<VerificationRow>(entity =>
-        {
-            entity.ToTable("Verification");
-            entity.HasKey(row => row.Id);
         });
 
         modelBuilder.Entity<OrganizationRow>(entity =>
@@ -145,7 +138,7 @@ internal sealed class IdentityDbContext : DbContext
     }
 }
 
-/// <summary>A row of <c>Session</c> (Better Auth's table; minted and read by the Decision 7 shim).</summary>
+/// <summary>A row of <c>Session</c> (minted by the native auth endpoints, read per request).</summary>
 internal sealed class SessionRow
 {
     public string Id { get; set; } = null!;
@@ -209,25 +202,6 @@ internal sealed class AccountRow
     public string ProviderId { get; set; } = null!;
 
     public string? Password { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>
-/// A <c>Verification</c> row. The shim writes <c>reset-password:&lt;token&gt;</c> rows exactly as
-/// Better Auth does, so password reset becomes real by adding an email sender, not a schema.
-/// </summary>
-internal sealed class VerificationRow
-{
-    public string Id { get; set; } = null!;
-
-    public string Identifier { get; set; } = null!;
-
-    public string Value { get; set; } = null!;
-
-    public DateTime ExpiresAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Argon2id verification for the Better Auth wire shim (Decision 7). -->
+    <!-- Argon2id hashing/verification for the native auth endpoints (Decision 7). -->
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
   </ItemGroup>
 

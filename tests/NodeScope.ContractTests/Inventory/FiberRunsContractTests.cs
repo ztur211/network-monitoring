@@ -25,7 +25,7 @@ public class FiberRunsContractTests
     {
         var (org, site, deviceAId, deviceBId) = await TwoDevicesAsync();
         var deviceCId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, site.NetworkId, site.SiteId));
+            await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, site.NetworkId, site.SiteId));
 
         var create = await _api.PostAsync(
             "v1/fiber-runs",
@@ -37,7 +37,7 @@ public class FiberRunsContractTests
                 cableType = "OS2",
                 lengthMeters = 120.5,
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, create.Status);
         Assert.Equal("Backbone A-B", create.Data.GetProperty("name").GetString());
@@ -48,7 +48,7 @@ public class FiberRunsContractTests
         Assert.Equal(1, create.Data.GetProperty("version").GetInt32());
         var runId = create.Data.GetProperty("id").GetString();
 
-        var list = await _api.GetAsync("v1/fiber-runs", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/fiber-runs", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         Assert.Contains(
             list.Data.GetProperty("items").EnumerateArray(),
@@ -56,13 +56,13 @@ public class FiberRunsContractTests
         Assert.True(list.Data.GetProperty("total").GetInt32() >= 1);
 
         // Filtered by an uninvolved device the run must vanish.
-        var filtered = await _api.GetAsync($"v1/fiber-runs?deviceId={deviceCId}", org.OwnerCookie);
+        var filtered = await _api.GetAsync($"v1/fiber-runs?deviceId={deviceCId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, filtered.Status);
         Assert.DoesNotContain(
             filtered.Data.GetProperty("items").EnumerateArray(),
             r => r.GetProperty("id").GetString() == runId);
 
-        var involving = await _api.GetAsync($"v1/fiber-runs?deviceId={deviceAId}", org.OwnerCookie);
+        var involving = await _api.GetAsync($"v1/fiber-runs?deviceId={deviceAId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, involving.Status);
         Assert.Contains(
             involving.Data.GetProperty("items").EnumerateArray(),
@@ -74,7 +74,7 @@ public class FiberRunsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.GetAsync("v1/fiber-runs?deviceId=not-a-uuid", org.OwnerCookie);
+        var response = await _api.GetAsync("v1/fiber-runs?deviceId=not-a-uuid", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("GEN_001", response.ErrorCode);
@@ -88,14 +88,14 @@ public class FiberRunsContractTests
         var same = await _api.PostAsync(
             "v1/fiber-runs",
             new { name = "Loop", startDeviceId = deviceAId, endDeviceId = deviceAId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, same.Status);
         Assert.Equal("FIBER_002", same.ErrorCode);
 
         var missing = await _api.PostAsync(
             "v1/fiber-runs",
             new { name = "Dangling", startDeviceId = deviceAId, endDeviceId = Guid.NewGuid().ToString() },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, missing.Status);
         Assert.Equal("DEVICE_001", missing.ErrorCode);
     }
@@ -105,13 +105,13 @@ public class FiberRunsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var unknown = await _api.GetAsync($"v1/fiber-runs/{Guid.NewGuid()}", org.OwnerCookie);
+        var unknown = await _api.GetAsync($"v1/fiber-runs/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("FIBER_001", unknown.ErrorCode);
 
         var (orgB, runBId) = await OrgWithRunAsync();
         _ = orgB;
-        var foreign = await _api.GetAsync($"v1/fiber-runs/{runBId}", org.OwnerCookie);
+        var foreign = await _api.GetAsync($"v1/fiber-runs/{runBId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
         Assert.Equal("FIBER_001", foreign.ErrorCode);
     }
@@ -121,7 +121,7 @@ public class FiberRunsContractTests
     {
         var (org, runId) = await OrgWithRunAsync();
 
-        var get = await _api.GetAsync($"v1/fiber-runs/{runId}", org.OwnerCookie);
+        var get = await _api.GetAsync($"v1/fiber-runs/{runId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, get.Status);
         var baseVersion = get.Data.GetProperty("version").GetInt32();
 
@@ -132,7 +132,7 @@ public class FiberRunsContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "Spliced at MDF" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal("Spliced at MDF", patch.Data.GetProperty("notes").GetString());
         Assert.Equal(baseVersion + 1, patch.Data.GetProperty("version").GetInt32());
@@ -144,7 +144,7 @@ public class FiberRunsContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "Stale" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("SYNC_001", stale.ErrorCode);
     }
@@ -154,11 +154,11 @@ public class FiberRunsContractTests
     {
         var (org, runId) = await OrgWithRunAsync();
 
-        var delete = await _api.DeleteAsync($"v1/fiber-runs/{runId}", org.OwnerCookie);
+        var delete = await _api.DeleteAsync($"v1/fiber-runs/{runId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, delete.Status);
         Assert.Equal(JsonValueKind.Null, delete.Data.ValueKind);
 
-        var gone = await _api.GetAsync($"v1/fiber-runs/{runId}", org.OwnerCookie);
+        var gone = await _api.GetAsync($"v1/fiber-runs/{runId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, gone.Status);
         Assert.Equal("FIBER_001", gone.ErrorCode);
     }
@@ -167,9 +167,9 @@ public class FiberRunsContractTests
     private async Task<(ProvisionedOrg Org, InventoryScaffold.CharteredSite Site, string DeviceAId, string DeviceBId)> TwoDevicesAsync()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, site.NetworkId, site.SiteId);
-        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, site.NetworkId, site.SiteId);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, site.NetworkId, site.SiteId);
+        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, site.NetworkId, site.SiteId);
         return (org, site, InventoryScaffold.RequireId(deviceA), InventoryScaffold.RequireId(deviceB));
     }
 
@@ -179,7 +179,7 @@ public class FiberRunsContractTests
         var create = await _api.PostAsync(
             "v1/fiber-runs",
             new { name = $"run-{Guid.NewGuid():N}", startDeviceId = deviceAId, endDeviceId = deviceBId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         return (org, InventoryScaffold.RequireId(create.Data));
     }

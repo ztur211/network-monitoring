@@ -29,7 +29,7 @@ public class IngestContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.PostAsync("v1/monitoring/ingest-token", auth: org.OwnerCookie);
+        var response = await _api.PostAsync("v1/monitoring/ingest-token", auth: org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         Assert.False(string.IsNullOrEmpty(response.Data.GetProperty("token").GetString()));
@@ -41,7 +41,7 @@ public class IngestContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        var response = await _api.PostAsync("v1/monitoring/ingest-token", auth: member.AsCookie());
+        var response = await _api.PostAsync("v1/monitoring/ingest-token", auth: member.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_003", response.ErrorCode);
@@ -60,8 +60,8 @@ public class IngestContractTests
     public async Task Ingest_with_an_org_token_is_accepted_and_reflected_in_device_status()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
         var ingest = await _api.PostAsync(
             "v1/monitoring/ingest",
@@ -72,7 +72,7 @@ public class IngestContractTests
         Assert.Equal(1, ingest.Data.GetProperty("accepted").GetInt32());
 
         // The write is observable through the owner's device-status read: the device is UP.
-        var status = await _api.GetAsync($"v1/buildings/{monitored.BuildingId}/device-status", org.OwnerCookie);
+        var status = await _api.GetAsync($"v1/buildings/{monitored.BuildingId}/device-status", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, status.Status);
         var row = Assert.Single(
             status.Data.EnumerateArray(), d => d.GetProperty("deviceId").GetString() == monitored.DeviceId);
@@ -83,8 +83,8 @@ public class IngestContractTests
     public async Task Ingest_accepts_the_org_token_as_a_bearer_credential()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
         // The ingest guard falls back to Authorization: Bearer for the org token.
         var ingest = await _api.PostAsync(
@@ -100,8 +100,8 @@ public class IngestContractTests
     public async Task Ingest_with_an_agent_token_is_accepted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
         var ingest = await _api.PostAsync(
             "v1/monitoring/ingest",
@@ -140,11 +140,11 @@ public class IngestContractTests
     public async Task Ingest_of_a_device_in_another_org_is_404_ORG_008()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
         // A device that belongs to a different org - the token must not be able to write it.
         var foreign = await _fixture.ProvisionOrgAsync();
-        var foreignDevice = await MonitoringScaffold.MonitoredDeviceAsync(_api, foreign.OwnerCookie);
+        var foreignDevice = await MonitoringScaffold.MonitoredDeviceAsync(_api, foreign.OwnerAuth);
 
         var response = await _api.PostAsync(
             "v1/monitoring/ingest",
@@ -159,7 +159,7 @@ public class IngestContractTests
     public async Task Ingest_over_the_batch_cap_is_413_GEN_005()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
         // 1001 > INGEST_MAX_CHECKS_PER_BATCH (1000). The batch-size guard runs before the
         // validation pipe, so an over-cap batch is a retryable 413 (split and retry), never
@@ -182,7 +182,7 @@ public class IngestContractTests
     public async Task Ingest_with_a_malformed_item_is_400_GEN_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
         // `ok` must be a boolean; a within-cap but malformed batch is a 400 (drop), the
         // deliberate counterpart to the over-cap 413 (retry).

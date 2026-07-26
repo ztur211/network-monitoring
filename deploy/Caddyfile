@@ -37,20 +37,18 @@
 		file_server
 	}
 
-	# Everything else → the API host (step 6: the SPA is gone). The host serves the
-	# browser-facing auth page at /login (the desktop-auth bounce target), redirects
-	# / and /register onto it, and answers everything unknown with its JSON 404 -
-	# no catchall HTML exists anymore, which is also what the agent's update check
-	# and the desktop's error mapping want.
+	# Everything else → the API host, which answers with its JSON 404: no browser
+	# surface exists (the desktop signs in natively against /api/auth), and no
+	# catchall HTML either - which is also what the agent's update check and the
+	# desktop's error mapping want.
 	handle {
-		# Security headers for the browser-facing page (the desktop client ignores
-		# them; the sign-in page is the one surface a real browser renders).
+		# Hardening headers for anything a stray browser hits; the desktop client
+		# ignores them.
 		header {
 			Strict-Transport-Security "max-age=31536000; includeSubDomains"
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
 			Referrer-Policy "strict-origin-when-cross-origin"
-			# The auth page uses no sensor APIs.
 			Permissions-Policy "geolocation=(), camera=(), microphone=()"
 			# Hide the server banner.
 			-Server

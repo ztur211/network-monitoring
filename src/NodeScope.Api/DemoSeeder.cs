@@ -118,8 +118,8 @@ internal static partial class DemoSeeder
     }
 
     /// <summary>
-    /// Signs the owner up through the live auth shim (the one step that needs argon2 and
-    /// Better Auth's row shapes), then reads the id back like any other row.
+    /// Signs the owner up through the live auth surface (the one step that needs argon2
+    /// and the credential row shapes), then reads the id back like any other row.
     /// </summary>
     private static async Task<string> EnsureOwnerAsync(
         MigrationsDbContext db, HttpClient http, string email, string password, ILogger logger)
@@ -131,8 +131,8 @@ internal static partial class DemoSeeder
             return existing.Id;
         }
 
-        using var body = JsonContent.Create(new { email, password, name = "Acme Owner" });
-        using var response = await http.PostAsync(new Uri("/api/auth/sign-up/email", UriKind.Relative), body).ConfigureAwait(false);
+        using var body = JsonContent.Create(new { name = "Acme Owner", email, password });
+        using var response = await http.PostAsync(new Uri("/api/v1/auth/sign-up", UriKind.Relative), body).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
@@ -381,13 +381,17 @@ internal static partial class DemoSeeder
 
         using var signInBody = JsonContent.Create(new { email, password });
         using var signIn = await http.PostAsync(
-            new Uri("/api/auth/sign-in/email", UriKind.Relative), signInBody).ConfigureAwait(false);
-        if (!signIn.IsSuccessStatusCode || !signIn.Headers.TryGetValues("set-auth-token", out var tokens))
+            new Uri("/api/v1/auth/sign-in", UriKind.Relative), signInBody).ConfigureAwait(false);
+        if (!signIn.IsSuccessStatusCode)
         {
             throw new InvalidOperationException($"Sample-model sign-in failed: HTTP {(int)signIn.StatusCode}");
         }
 
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.First());
+        using var signInJson = JsonDocument.Parse(await signIn.Content.ReadAsStringAsync().ConfigureAwait(false));
+        var sessionToken = signInJson.RootElement.GetProperty("data").GetProperty("token").GetString()
+            ?? throw new InvalidOperationException("Sample-model sign-in returned no session token");
+
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sessionToken);
 
         using var propertiesResponse = await http.GetAsync(new Uri("/api/v1/properties", UriKind.Relative)).ConfigureAwait(false);
         propertiesResponse.EnsureSuccessStatusCode();

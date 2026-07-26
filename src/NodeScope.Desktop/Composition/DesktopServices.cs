@@ -42,7 +42,6 @@ internal static class DesktopServices
         services.AddSingleton<ITokenVault>(_ => OperatingSystem.IsWindows()
             ? new DpapiTokenVault(storage.VaultFile)
             : new PlainFileTokenVault(storage.VaultFile));
-        services.AddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
         services.AddSingleton<IIfcTessellator, XbimIfcTessellator>();
         services.AddSingleton<DesktopAuthFlow>();
 

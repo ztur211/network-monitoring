@@ -14,27 +14,40 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
 
     public CurrentUser UserToReturn { get; set; } = new("user-1", "owner@acme.test", "Owner");
 
-    public Exception? ExchangeFailure { get; set; }
+    public Exception? SignInFailure { get; set; }
 
     public Exception? CurrentUserFailure { get; set; }
 
-    public string? LastExchangedCode { get; private set; }
+    /// <summary>When set, sign-in/sign-up park on this instead of completing immediately.</summary>
+    public TaskCompletionSource<string>? SignInGate { get; set; }
 
-    public string? LastVerifier { get; private set; }
+    public int CredentialPosts { get; private set; }
+
+    public (string Email, string Password)? LastSignIn { get; private set; }
+
+    public (string Name, string Email, string Password)? LastSignUp { get; private set; }
 
     public string? LastBearerToken { get; private set; }
 
-    public string? RevokedToken { get; private set; }
+    public string? SignedOutToken { get; private set; }
 
     public void Dispose()
     {
     }
 
-    public Task<string> ExchangeDesktopCodeAsync(string code, string codeVerifier, CancellationToken cancellationToken)
+    public Task<string> SignInAsync(string email, string password, CancellationToken cancellationToken)
     {
-        LastExchangedCode = code;
-        LastVerifier = codeVerifier;
-        return ExchangeFailure is null ? Task.FromResult(TokenToReturn) : Task.FromException<string>(ExchangeFailure);
+        CredentialPosts++;
+        LastSignIn = (email, password);
+        return CredentialResult();
+    }
+
+    public Task<string> SignUpAsync(
+        string name, string email, string password, CancellationToken cancellationToken)
+    {
+        CredentialPosts++;
+        LastSignUp = (name, email, password);
+        return CredentialResult();
     }
 
     public Task<CurrentUser> GetCurrentUserAsync(string bearerToken, CancellationToken cancellationToken)
@@ -45,10 +58,20 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
             : Task.FromException<CurrentUser>(CurrentUserFailure);
     }
 
-    public Task RevokeAsync(string bearerToken, CancellationToken cancellationToken)
+    public Task SignOutAsync(string bearerToken, CancellationToken cancellationToken)
     {
-        RevokedToken = bearerToken;
+        SignedOutToken = bearerToken;
         return Task.CompletedTask;
+    }
+
+    private Task<string> CredentialResult()
+    {
+        if (SignInGate is not null)
+        {
+            return SignInGate.Task;
+        }
+
+        return SignInFailure is null ? Task.FromResult(TokenToReturn) : Task.FromException<string>(SignInFailure);
     }
 
     // --- map surface -------------------------------------------------------
@@ -1133,22 +1156,21 @@ internal sealed class FakeApplianceClientFactory : IApplianceClientFactory
 {
     public List<FakeApplianceClient> Created { get; } = [];
 
+    /// <summary>
+    /// Applied to every client as it is created - the seam for scripting failures on a
+    /// client the flow constructs and uses within one call (credential sign-in).
+    /// </summary>
+    public Action<FakeApplianceClient>? Configure { get; set; }
+
     public IApplianceClient Create(Uri baseUrl)
     {
         var client = new FakeApplianceClient(baseUrl);
+        Configure?.Invoke(client);
         Created.Add(client);
         return client;
     }
 
     public FakeApplianceClient Last => Created[^1];
-}
-
-/// <summary>Records the authorize URL instead of opening a browser.</summary>
-internal sealed class FakeBrowserLauncher : IBrowserLauncher
-{
-    public Uri? LastOpened { get; private set; }
-
-    public void Open(Uri url) => LastOpened = url;
 }
 
 /// <summary>An in-memory vault.</summary>

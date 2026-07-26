@@ -21,9 +21,7 @@ docker compose -f docker-compose.test.yml up -d
 #    the full schema); then the one-time seed (see "Seeding" below)
 scripts/run-csharp-host.sh &
 DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test \
-  BETTER_AUTH_SECRET=test-secret-minimum-32-characters-long-aaa \
   SECRET_ENCRYPTION_KEY=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE= \
-  FRONTEND_URL=http://localhost:8081 BETTER_AUTH_URL=http://127.0.0.1:5198 \
   ASPNETCORE_URLS=http://127.0.0.1:5198 \
   SEED_PASSWORD=devpassword123 \
   STORAGE_ENDPOINT=http://localhost:9100 STORAGE_BUCKET=nodescope-test \
@@ -48,20 +46,20 @@ designation. That keeps arrange-time bugs in scope and the suite
 implementation-agnostic.
 
 Any test needing an isolated org calls `fixture.ProvisionOrgAsync()` and gets a
-`ProvisionedOrg` - a fresh organization with a brand-new OWNER
-(`org.OwnerCookie` / `org.OwnerBearer`) that works for org-scoped calls immediately.
+`ProvisionedOrg` - a fresh organization with a brand-new OWNER (`org.OwnerAuth`)
+that works for org-scoped calls immediately.
 Under the hood (`Fixtures/OrgProvisioning.cs`) the shared super-admin creates the
 org, a new user signs up, and the super-admin designates them owner - exactly the
 operator flow. The super-admin is bootstrapped once per run and cached on the
 fixture (`SuperAdminAsync`).
 
 There is exactly **one** thing the API cannot do over HTTP, by deliberate design:
-grant super-admin. `isSuperAdmin` was `input: false` in the Node era's Better
-Auth config and the C# auth shim keeps that posture, so it is settable only in
-the database. `Fixtures/SuperAdminGrant.cs` owns that single
+grant super-admin. `isSuperAdmin` was `input: false` in the Node era and the
+native auth surface keeps that posture, so it is settable only in the database.
+`Fixtures/SuperAdminGrant.cs` owns that single
 non-HTTP step - a lone parameterized `UPDATE "User" SET "isSuperAdmin" = true` - and
-signs in *afresh* afterward so the session reflects the promotion (Better Auth's
-`cookieCache` otherwise serves the pre-promotion user). It connects with
+signs in *afresh* afterward so the session unambiguously reflects the promotion.
+It connects with
 `NODESCOPE_DATABASE_URL` (a libpq URL or a native Npgsql string; default is the
 contract-test DB, `postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test`)
 - this **must** name the same database the target under test writes to.
@@ -87,9 +85,9 @@ MinIO reachable at the seed's `STORAGE_ENDPOINT`; it is non-fatal if absent.
 Fixtures/
   TestConfig.cs          BASE_URL + seed-principal resolution from env
   ApiClient.cs           HTTP verbs + auth application, relative to {BASE_URL}/api/
-  ApiResponse.cs         captured status/headers/cookies + parsed JSON, envelope helpers
-  Auth.cs                cookie | bearer | header credential descriptor
-  AuthWorkflow.cs        sign-up / sign-in helpers -> UserSession (both credential forms)
+  ApiResponse.cs         captured status/headers + parsed JSON, envelope helpers
+  Auth.cs                bearer | header credential descriptor
+  AuthWorkflow.cs        sign-up / sign-in helpers -> UserSession (bearer session token)
   OrgProvisioning.cs     super-admin bootstrap + per-test org (-> ProvisionedOrg)
   SuperAdminGrant.cs     the one non-HTTP step: the super-admin DB grant (Npgsql)
   ContractApiFixture.cs  shared client + health gate + run-scoped super-admin (collection "Contract")

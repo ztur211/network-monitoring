@@ -27,9 +27,9 @@ public class MonitoringReadContractTests
     public async Task DeviceStatus_reports_UNKNOWN_with_null_fields_for_a_never_probed_device()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
 
-        var status = await _api.GetAsync($"v1/buildings/{monitored.BuildingId}/device-status", org.OwnerCookie);
+        var status = await _api.GetAsync($"v1/buildings/{monitored.BuildingId}/device-status", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, status.Status);
         var row = Assert.Single(status.Data.EnumerateArray());
@@ -50,7 +50,7 @@ public class MonitoringReadContractTests
         // Default window (last hour) and bucket (5 minutes): the fresh sample must land.
         var reachable = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, reachable.Status);
         var row = Assert.Single(reachable.Data.EnumerateArray());
         Assert.Equal(1, row.GetProperty("avg").GetDouble());
@@ -60,7 +60,7 @@ public class MonitoringReadContractTests
         // A check carrying latencyMs also writes the latency_ms series.
         var latency = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=latency_ms",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, latency.Status);
         var latencyRow = Assert.Single(latency.Data.EnumerateArray());
         Assert.Equal(42, latencyRow.GetProperty("avg").GetDouble());
@@ -72,7 +72,7 @@ public class MonitoringReadContractTests
         var (org, monitored, token) = await IngestedDeviceAsync();
         await IngestCheckAsync(monitored.DeviceId, ok: true, token, latencyMs: 42);
 
-        var names = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/metric-names", org.OwnerCookie);
+        var names = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/metric-names", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, names.Status);
         var list = names.Data.EnumerateArray().Select(n => n.GetString()).ToList();
@@ -92,7 +92,7 @@ public class MonitoringReadContractTests
         await IngestCheckAsync(monitored.DeviceId, ok: false, token);
         await IngestCheckAsync(monitored.DeviceId, ok: false, token);
 
-        var events = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/status-events", org.OwnerCookie);
+        var events = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/status-events", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, events.Status);
         var states = events.Data.EnumerateArray().Select(e => e.GetProperty("state").GetString()).ToList();
         Assert.Equal(["DOWN", "WARNING", "UP"], states);
@@ -102,7 +102,7 @@ public class MonitoringReadContractTests
             Assert.False(string.IsNullOrEmpty(evt.GetProperty("source").GetString()));
         }
 
-        var limited = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/status-events?limit=2", org.OwnerCookie);
+        var limited = await _api.GetAsync($"v1/devices/{monitored.DeviceId}/status-events?limit=2", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, limited.Status);
         Assert.Equal(2, limited.Data.GetArrayLength());
     }
@@ -115,7 +115,7 @@ public class MonitoringReadContractTests
         var response = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable" +
             "&from=2026-01-02T00:00:00.000Z&to=2026-01-01T00:00:00.000Z",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("MON_001", response.ErrorCode);
@@ -130,7 +130,7 @@ public class MonitoringReadContractTests
         var response = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable" +
             "&from=2026-01-01T00:00:00.000Z&to=2026-03-01T00:00:00.000Z&bucket=30 seconds",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("MON_002", response.ErrorCode);
@@ -145,7 +145,7 @@ public class MonitoringReadContractTests
         // (GEN_001, not MON_00x) - and before any device lookup.
         var response = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable&bucket=1 second",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("GEN_001", response.ErrorCode);
@@ -158,16 +158,16 @@ public class MonitoringReadContractTests
 
         var unknown = await _api.GetAsync(
             $"v1/devices/{Guid.NewGuid()}/metrics?metric=reachable",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("DEVICE_001", unknown.ErrorCode);
 
         // A real device in another org must be indistinguishable from a missing one.
         var orgB = await _fixture.ProvisionOrgAsync();
-        var monitoredB = await MonitoringScaffold.MonitoredDeviceAsync(_api, orgB.OwnerCookie);
+        var monitoredB = await MonitoringScaffold.MonitoredDeviceAsync(_api, orgB.OwnerAuth);
         var foreign = await _api.GetAsync(
             $"v1/devices/{monitoredB.DeviceId}/metrics?metric=reachable",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
         Assert.Equal("DEVICE_001", foreign.ErrorCode);
     }
@@ -183,7 +183,7 @@ public class MonitoringReadContractTests
         // F3: a MEMBER with no site grant cannot see the device - 404, not 403.
         var invisible = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable",
-            member.AsCookie());
+            member.AsBearer());
         Assert.Equal(HttpStatusCode.NotFound, invisible.Status);
         Assert.Equal("DEVICE_001", invisible.ErrorCode);
 
@@ -191,12 +191,12 @@ public class MonitoringReadContractTests
         var grant = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId = monitored.SiteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
 
         var visible = await _api.GetAsync(
             $"v1/devices/{monitored.DeviceId}/metrics?metric=reachable",
-            member.AsCookie());
+            member.AsBearer());
         Assert.Equal(HttpStatusCode.OK, visible.Status);
         Assert.Single(visible.Data.EnumerateArray());
     }
@@ -206,8 +206,8 @@ public class MonitoringReadContractTests
     private async Task<(ProvisionedOrg Org, MonitoringScaffold.MonitoredDevice Device, string Token)> IngestedDeviceAsync()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
         return (org, monitored, token);
     }
 

@@ -25,7 +25,7 @@ public class OrganizationsContractTests
     {
         var owner = await AuthWorkflow.SignInAsSeedOwnerAsync(_api);
 
-        var response = await _api.GetAsync("v1/organizations/me", owner.AsCookie());
+        var response = await _api.GetAsync("v1/organizations/me", owner.AsBearer());
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         Assert.True(response.Json.GetProperty("success").GetBoolean());
@@ -38,7 +38,7 @@ public class OrganizationsContractTests
     {
         var owner = await AuthWorkflow.SignInAsSeedOwnerAsync(_api);
 
-        var response = await _api.GetAsync("v1/organizations/me/members", owner.AsCookie());
+        var response = await _api.GetAsync("v1/organizations/me/members", owner.AsBearer());
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         var members = response.Data;
@@ -66,7 +66,7 @@ public class OrganizationsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var before = await _api.GetAsync("v1/organizations/me", org.OwnerCookie);
+        var before = await _api.GetAsync("v1/organizations/me", org.OwnerAuth);
         var baseVersion = before.Data.GetProperty("version").GetInt32();
         var currentName = before.Data.GetProperty("name").GetString();
         var newName = $"Renamed {Guid.NewGuid():N}";
@@ -78,7 +78,7 @@ public class OrganizationsContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = currentName, newValue = newName } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal(newName, patch.Data.GetProperty("name").GetString());
@@ -90,7 +90,7 @@ public class OrganizationsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var before = await _api.GetAsync("v1/organizations/me", org.OwnerCookie);
+        var before = await _api.GetAsync("v1/organizations/me", org.OwnerAuth);
         var baseVersion = before.Data.GetProperty("version").GetInt32();
 
         // First rename lands, advancing the version past baseVersion.
@@ -101,7 +101,7 @@ public class OrganizationsContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = (string?)null, newValue = "First" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, first.Status);
 
         // Replaying the same baseVersion is now stale.
@@ -112,7 +112,7 @@ public class OrganizationsContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = (string?)null, newValue = "Second" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("SYNC_001", stale.ErrorCode);

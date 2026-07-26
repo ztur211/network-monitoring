@@ -30,12 +30,12 @@ public class MembersContractTests
         var patch = await _api.PatchAsync(
             $"v1/organizations/me/members/{member.UserId}",
             new { role = "ADMIN" },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal(JsonValueKind.Null, patch.Data.ValueKind);
 
-        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/members", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var row = list.Data.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == member.UserId);
         Assert.Equal("ADMIN", row.GetProperty("role").GetString());
@@ -49,7 +49,7 @@ public class MembersContractTests
         var response = await _api.PatchAsync(
             $"v1/organizations/me/members/{Guid.NewGuid()}",
             new { role = "ADMIN" },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("ORG_002", response.ErrorCode);
@@ -63,13 +63,13 @@ public class MembersContractTests
         var demote = await _api.PatchAsync(
             $"v1/organizations/me/members/{org.Owner.UserId}",
             new { role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, demote.Status);
         Assert.Equal("ORG_013", demote.ErrorCode);
 
         var remove = await _api.DeleteAsync(
             $"v1/organizations/me/members/{org.Owner.UserId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, remove.Status);
         Assert.Equal("ORG_013", remove.ErrorCode);
     }
@@ -86,21 +86,21 @@ public class MembersContractTests
         var promote = await _api.PatchAsync(
             $"v1/organizations/me/members/{member.UserId}",
             new { role = "ADMIN" },
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, promote.Status);
         Assert.Equal("ORG_003", promote.ErrorCode);
 
         // Another ADMIN is a privileged target.
         var removeAdmin = await _api.DeleteAsync(
             $"v1/organizations/me/members/{otherAdmin.UserId}",
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, removeAdmin.Status);
         Assert.Equal("ORG_003", removeAdmin.ErrorCode);
 
         // A plain MEMBER is manageable.
         var removeMember = await _api.DeleteAsync(
             $"v1/organizations/me/members/{member.UserId}",
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.OK, removeMember.Status);
     }
 
@@ -110,16 +110,16 @@ public class MembersContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        var before = await _api.GetAsync("v1/organizations/me", member.AsCookie());
+        var before = await _api.GetAsync("v1/organizations/me", member.AsBearer());
         Assert.Equal(HttpStatusCode.OK, before.Status);
 
         var remove = await _api.DeleteAsync(
             $"v1/organizations/me/members/{member.UserId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, remove.Status);
         Assert.Equal(JsonValueKind.Null, remove.Data.ValueKind);
 
-        var after = await _api.GetAsync("v1/organizations/me", member.AsCookie());
+        var after = await _api.GetAsync("v1/organizations/me", member.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, after.Status);
         Assert.Equal("ORG_002", after.ErrorCode);
     }
@@ -133,7 +133,7 @@ public class MembersContractTests
 
         var response = await _api.DeleteAsync(
             $"v1/organizations/me/members/{other.UserId}",
-            member.AsCookie());
+            member.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_003", response.ErrorCode);

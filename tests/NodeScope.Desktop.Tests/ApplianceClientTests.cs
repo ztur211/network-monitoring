@@ -33,32 +33,59 @@ public sealed class ApplianceClientTests : IDisposable
     }
 
     [Fact]
-    public async Task Exchange_posts_the_snake_case_body_and_returns_the_token()
+    public async Task Sign_in_posts_the_credentials_and_returns_the_enveloped_token()
     {
-        _respond = _ => Envelope(HttpStatusCode.Created,
+        _respond = _ => Envelope(HttpStatusCode.OK,
             """{"success":true,"data":{"token":"tok-123"},"timestamp":"t"}""");
 
-        var token = await _client.ExchangeDesktopCodeAsync("the-code", "the-verifier", CancellationToken.None);
+        var token = await _client.SignInAsync("o@a.test", "pw-1", CancellationToken.None);
 
         Assert.Equal("tok-123", token);
         // The base URL's own path segment must survive relative composition.
-        Assert.Equal("https://host.example/sub/api/v1/desktop-auth/token", _lastRequest!.RequestUri!.AbsoluteUri);
-        Assert.Contains("\"code\":\"the-code\"", _lastRequestBody, StringComparison.Ordinal);
-        Assert.Contains("\"code_verifier\":\"the-verifier\"", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Equal("https://host.example/sub/api/v1/auth/sign-in", _lastRequest!.RequestUri!.AbsoluteUri);
+        Assert.Contains("\"email\":\"o@a.test\"", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"password\":\"pw-1\"", _lastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sign_up_posts_the_name_too_and_returns_the_first_session_token()
+    {
+        _respond = _ => Envelope(HttpStatusCode.Created,
+            """{"success":true,"data":{"token":"tok-124"},"timestamp":"t"}""");
+
+        var token = await _client.SignUpAsync("Owner", "o@a.test", "pw-1", CancellationToken.None);
+
+        Assert.Equal("tok-124", token);
+        Assert.Equal("https://host.example/sub/api/v1/auth/sign-up", _lastRequest!.RequestUri!.AbsoluteUri);
+        Assert.Contains("\"name\":\"Owner\"", _lastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rejected_credentials_become_a_typed_exception()
+    {
+        _respond = _ => Envelope(HttpStatusCode.Unauthorized,
+            """{"success":false,"error":{"code":"AUTH_001","message":"INVALID_CREDENTIALS"},"timestamp":"t"}""");
+
+        var failure = await Assert.ThrowsAsync<ApplianceApiException>(
+            () => _client.SignInAsync("o@a.test", "wrong", CancellationToken.None));
+
+        Assert.Equal("AUTH_001", failure.Code);
+        Assert.Equal(401, failure.Status);
+        Assert.Equal("INVALID_CREDENTIALS", failure.Message);
     }
 
     [Fact]
     public async Task An_error_envelope_becomes_a_typed_exception()
     {
-        _respond = _ => Envelope(HttpStatusCode.BadRequest,
-            """{"success":false,"error":{"code":"DAUTH_002","message":"CODE_INVALID_OR_EXPIRED"},"timestamp":"t"}""");
+        _respond = _ => Envelope(HttpStatusCode.NotFound,
+            """{"success":false,"error":{"code":"GEN_002","message":"NOT_FOUND"},"timestamp":"t"}""");
 
         var failure = await Assert.ThrowsAsync<ApplianceApiException>(
-            () => _client.ExchangeDesktopCodeAsync("x", "y", CancellationToken.None));
+            () => _client.GetCurrentUserAsync("tok", CancellationToken.None));
 
-        Assert.Equal("DAUTH_002", failure.Code);
-        Assert.Equal(400, failure.Status);
-        Assert.Equal("CODE_INVALID_OR_EXPIRED", failure.Message);
+        Assert.Equal("GEN_002", failure.Code);
+        Assert.Equal(404, failure.Status);
+        Assert.Equal("NOT_FOUND", failure.Message);
     }
 
     [Fact]
@@ -89,13 +116,14 @@ public sealed class ApplianceClientTests : IDisposable
     }
 
     [Fact]
-    public async Task Revoke_accepts_the_bare_204()
+    public async Task Sign_out_sends_the_bearer_and_accepts_the_bare_204()
     {
         _respond = _ => new HttpResponseMessage(HttpStatusCode.NoContent);
 
-        await _client.RevokeAsync("tok-9", CancellationToken.None);
+        await _client.SignOutAsync("tok-9", CancellationToken.None);
 
-        Assert.Equal("https://host.example/sub/api/v1/desktop-auth/revoke", _lastRequest!.RequestUri!.AbsoluteUri);
+        Assert.Equal("https://host.example/sub/api/v1/auth/sign-out", _lastRequest!.RequestUri!.AbsoluteUri);
+        Assert.Equal("Bearer tok-9", _lastRequest.Headers.Authorization!.ToString());
     }
 
     [Fact]

@@ -71,7 +71,7 @@ Caddy :80 or :443
   |-- /api/* and /hubs/* -> ASP.NET Core API :3000
   |-- /tiles/*           -> tileserver-gl :8080
   |-- /agent/*           -> signed static agent payloads
-  `-- everything else    -> ASP.NET Core API :3000 (serves /login, 404s the rest)
+  `-- everything else    -> ASP.NET Core API :3000 (404s: there is no browser surface)
 
 API -> PostgreSQL 16 with TimescaleDB and PostGIS
 API -> local blob volume by default
@@ -99,9 +99,8 @@ Important values:
 
 | Variable | Purpose |
 | --- | --- |
-| `PUBLIC_ORIGIN` | Exact browser and desktop-facing origin |
+| `PUBLIC_ORIGIN` | Exact desktop-facing origin |
 | `POSTGRES_PASSWORD` | Appliance database password |
-| `BETTER_AUTH_SECRET` | Session signing secret |
 | `SECRET_ENCRYPTION_KEY` | Base64 encoding of exactly 32 random bytes |
 | `WEB_PORT` | Host port mapped to Caddy, default 8080 |
 | `TRUST_PROXY` | Number of trusted proxy hops in front of the API |

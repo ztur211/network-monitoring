@@ -53,7 +53,6 @@ ensure_env() {
   [ -n "$(get_kv POSTGRES_USER)" ]         || set_kv POSTGRES_USER nodescope
   [ -n "$(get_kv POSTGRES_DB)" ]           || set_kv POSTGRES_DB nodescope
   [ -n "$(get_kv POSTGRES_PASSWORD)" ]     || set_kv POSTGRES_PASSWORD "$(gen_secret 24)"
-  [ -n "$(get_kv BETTER_AUTH_SECRET)" ]    || set_kv BETTER_AUTH_SECRET "$(gen_secret 48)"
   [ -n "$(get_kv SECRET_ENCRYPTION_KEY)" ] || set_kv SECRET_ENCRYPTION_KEY "$(gen_secret 32)"
   [ -n "$(get_kv STORAGE_DRIVER)" ]        || set_kv STORAGE_DRIVER fs
   [ -n "$(get_kv NODESCOPE_VERSION)" ]     || set_kv NODESCOPE_VERSION latest
@@ -187,24 +186,21 @@ smoke_test() {
     || die "smoke: ${origin}/api/health is not answering"
   log "  ✔ API /api/health"
 
-  # Unauthenticated get-session must be HTTP 200 with a literal JSON null body.
-  if ! body="$(curl -fsS "${origin}/api/auth/get-session")"; then
-    die "smoke: /api/auth/get-session is not answering"
-  fi
-  [ "${body}" = "null" ] \
-    || die "smoke: /api/auth/get-session should return null, got: ${body}"
-  log "  ✔ API /api/auth/get-session (unauthenticated)"
+  # The auth stack answers anonymous callers with the enveloped 401 (AUTH_002),
+  # which proves the whole session pipeline is wired without needing credentials.
+  body="$(curl -s "${origin}/api/v1/users/me")"
+  printf '%s' "${body}" | grep -q "AUTH_002" \
+    || die "smoke: unauthenticated /api/v1/users/me should be the AUTH_002 envelope, got: ${body}"
+  log "  ✔ API auth stack (anonymous 401 envelope)"
 
-  # The browser auth page: / redirects onto /login, which the API serves itself
-  # (step 6: no SPA). -L follows the redirect; the page is the desktop-auth
-  # flow's sign-in bounce target, so a broken page strands every new sign-in.
-  curl -fsSL "${origin}/" | grep -q "auth-form" \
-    || die "smoke: ${origin}/ did not serve the auth page"
-  log "  ✔ Auth page / -> /login"
-
-  # No SPA catchall exists anymore: junk paths must be an honest 404 (the agent's
+  # No browser surface exists: the desktop signs in natively against /api/auth,
+  # so the root - like every junk path - must be an honest 404 (the agent's
   # update check and the desktop's error mapping both rely on never seeing HTML
   # where JSON belongs).
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "${origin}/")" = "404" ] \
+    || die "smoke: ${origin}/ should 404 - no browser surface exists"
+  log "  ✔ Root serves no browser surface (404)"
+
   [ "$(curl -s -o /dev/null -w '%{http_code}' "${origin}/__catchall_smoke")" = "404" ] \
     || die "smoke: an unknown path should 404, not serve a catchall"
   log "  ✔ Unknown paths 404"

@@ -20,13 +20,10 @@ internal static partial class AuthLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not confirm the stored session with {ServerUrl}: {Reason}")]
     public static partial void RestoreUnreachable(ILogger logger, Uri serverUrl, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Auth callback rejected: {Reason}")]
-    public static partial void CallbackRejected(ILogger logger, string reason);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sign-in failed ({Code}): {Reason}")]
+    public static partial void SignInFailed(ILogger logger, string code, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Token exchange failed ({Code}): {Reason}")]
-    public static partial void ExchangeFailed(ILogger logger, string code, string reason);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Server-side revoke failed; signing out locally anyway: {Reason}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server-side sign-out failed; signing out locally anyway: {Reason}")]
     public static partial void RevokeFailed(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Signed out")]

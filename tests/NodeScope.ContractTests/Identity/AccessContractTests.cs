@@ -23,7 +23,7 @@ public class AccessContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.GetAsync("v1/access/me", org.OwnerCookie);
+        var response = await _api.GetAsync("v1/access/me", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         Assert.Equal("OWNER", response.Data.GetProperty("role").GetString());
@@ -35,12 +35,12 @@ public class AccessContractTests
     public async Task Member_reports_exactly_the_granted_roots()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await Inventory.InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await Inventory.InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var siteId = Inventory.InventoryScaffold.RequireId(site);
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
         // Before any grant: scoped, but to nothing.
-        var before = await _api.GetAsync("v1/access/me", member.AsCookie());
+        var before = await _api.GetAsync("v1/access/me", member.AsBearer());
         Assert.Equal(HttpStatusCode.OK, before.Status);
         Assert.Equal("MEMBER", before.Data.GetProperty("role").GetString());
         Assert.False(before.Data.GetProperty("unscoped").GetBoolean());
@@ -50,10 +50,10 @@ public class AccessContractTests
         var grant = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId = siteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
 
-        var after = await _api.GetAsync("v1/access/me", member.AsCookie());
+        var after = await _api.GetAsync("v1/access/me", member.AsBearer());
         Assert.Equal(HttpStatusCode.OK, after.Status);
         var roots = after.Data.GetProperty("assignedRootPropertyIds").EnumerateArray()
             .Select(r => r.GetString()).ToList();
@@ -65,7 +65,7 @@ public class AccessContractTests
     {
         var orgless = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.GetAsync("v1/access/me", orgless.AsCookie());
+        var response = await _api.GetAsync("v1/access/me", orgless.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_002", response.ErrorCode);

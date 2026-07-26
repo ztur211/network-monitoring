@@ -6,8 +6,8 @@ Reference `/home/zachp/dotfiles/AGENTS.md` when coding.
 
 NodeScope is a local-first network infrastructure platform. The product is a .NET 10
 modular monolith with an ASP.NET Core API, an Avalonia desktop client, and a NativeAOT
-monitoring agent. The appliance's only browser surface is the host-served sign-in page
-at `/login` (the desktop-auth bounce target); there is no web app.
+monitoring agent. There is no web app and no browser surface: the desktop client signs
+in natively against `/api/v1/auth`.
 
 ## Build, test, and run
 
@@ -31,8 +31,8 @@ at `/login` (the desktop-auth bounce target); there is no web app.
 - Keep desktop client code behind appliance API and platform seams. Do not reference
   server implementation projects.
 - Treat warnings as failures. The .NET build configuration enforces this.
-- Preserve same-origin appliance behavior under `/api`, `/hubs`, `/tiles`, `/agent`,
-  and `/login`.
+- Preserve same-origin appliance behavior under `/api`, `/hubs`, `/tiles`, and
+  `/agent`.
 
 ## Boundaries
 

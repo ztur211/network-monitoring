@@ -72,11 +72,6 @@ jobs:
       ASPNETCORE_URLS: http://127.0.0.1:5199
       DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
       NODESCOPE_DATABASE_URL: postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test
-      BETTER_AUTH_SECRET: test-secret-minimum-32-characters-long-aaa
-      BETTER_AUTH_URL: http://127.0.0.1:5199
-      # The host serves its own /login since step 6, so the auth-page origin is the
-      # host itself.
-      FRONTEND_URL: http://127.0.0.1:5199
       SECRET_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
       THROTTLE_DEFAULT_LIMIT: "100000"
       THROTTLE_AUTH_LIMIT: "100000"

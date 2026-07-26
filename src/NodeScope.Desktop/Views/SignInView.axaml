@@ -13,23 +13,42 @@
                FontWeight="SemiBold"
                HorizontalAlignment="Center"
                Text="NodeScope" />
-    <TextBlock FontSize="14"
+    <TextBlock Name="TitleText"
+               FontSize="14"
                Opacity="0.7"
                HorizontalAlignment="Center"
                Margin="0,0,0,12"
-               Text="Sign in to your appliance" />
+               Text="{Binding Title}" />
 
     <TextBox Name="ServerUrlBox"
              PlaceholderText="https://nodescope.example.com"
              Text="{Binding ServerUrl}"
              IsEnabled="{Binding !Busy}" />
 
-    <Button Name="SignInButton"
+    <TextBox Name="NameBox"
+             PlaceholderText="Name"
+             Text="{Binding Name}"
+             IsVisible="{Binding CreatingAccount}"
+             IsEnabled="{Binding !Busy}" />
+
+    <TextBox Name="EmailBox"
+             PlaceholderText="Email"
+             Text="{Binding Email}"
+             IsEnabled="{Binding !Busy}" />
+
+    <TextBox Name="PasswordBox"
+             PlaceholderText="Password"
+             PasswordChar="•"
+             Text="{Binding Password}"
+             IsEnabled="{Binding !Busy}" />
+
+    <Button Name="SubmitButton"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Center"
-            Command="{Binding SignInCommand}"
+            Command="{Binding SubmitCommand}"
+            IsDefault="True"
             IsEnabled="{Binding !Busy}"
-            Content="Sign in with browser" />
+            Content="{Binding SubmitLabel}" />
 
     <Button Name="RetryButton"
             HorizontalAlignment="Stretch"
@@ -42,11 +61,11 @@
                 HorizontalAlignment="Center"
                 Spacing="8"
                 IsVisible="{Binding Busy}">
+      <ProgressBar IsIndeterminate="True" Width="120" />
       <TextBlock Name="ProgressText"
                  VerticalAlignment="Center"
                  Opacity="0.8"
-                 Text="{Binding Progress}" />
-      <Button Command="{Binding CancelCommand}" Content="Cancel" />
+                 Text="Signing in…" />
     </StackPanel>
 
     <TextBlock Name="ErrorText"
@@ -54,6 +73,22 @@
                TextWrapping="Wrap"
                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                Text="{Binding Error}" />
+
+    <StackPanel Orientation="Horizontal"
+                HorizontalAlignment="Center"
+                Spacing="6">
+      <TextBlock Opacity="0.7"
+                 VerticalAlignment="Center"
+                 FontSize="13"
+                 Text="{Binding SwitchPrompt}" />
+      <Button Name="SwitchModeButton"
+              Command="{Binding SwitchModeCommand}"
+              Padding="2,0"
+              Background="Transparent"
+              FontSize="13"
+              Foreground="{DynamicResource SystemAccentColor}"
+              Content="{Binding SwitchLabel}" />
+    </StackPanel>
 
   </StackPanel>
 

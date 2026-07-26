@@ -27,7 +27,6 @@ jobs:
           POSTGRES_USER=nodescope
           POSTGRES_PASSWORD=ci-test-password
           POSTGRES_DB=nodescope
-          BETTER_AUTH_SECRET=ci-test-secret-minimum-32-characters-long
           SECRET_ENCRYPTION_KEY=Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
           GEOCODING_USER_AGENT=NodeScope/1.0 (ci@example.com)
           WEB_PORT=8080

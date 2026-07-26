@@ -18,8 +18,8 @@ public interface IRealtimeClient : IAsyncDisposable
 
     /// <summary>
     /// Connects and authenticates the socket with <paramref name="auth"/> (the same
-    /// cookie/bearer the HTTP suite mints), or with no credential when null - the case
-    /// the server must reject.
+    /// bearer credential the HTTP suite mints), or with no credential when null - the
+    /// case the server must reject.
     /// </summary>
     public Task ConnectAsync(Auth? auth, CancellationToken cancellationToken = default);
 
@@ -171,11 +171,6 @@ public sealed class SocketIoRealtimeClient : IRealtimeClient
         if (auth is null)
         {
             return headers;
-        }
-
-        if (auth.Cookie is not null)
-        {
-            headers["Cookie"] = auth.Cookie;
         }
 
         if (auth.BearerToken is not null)

@@ -46,14 +46,10 @@ public sealed class SettingsE2ETests : IDisposable
 
         var vault = new PlainFileTokenVault(Path.Combine(_scratch.FullName, "vault.json"));
         var settingsStore = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        using var browser = new SignInBrowser(server);
         using var factory = new ApplianceClientFactory();
-        using var flow = new DesktopAuthFlow(
-            factory, vault, settingsStore, browser, NullLogger<DesktopAuthFlow>.Instance);
+        using var flow = new DesktopAuthFlow(factory, vault, settingsStore, NullLogger<DesktopAuthFlow>.Instance);
 
-        await browser.SignInAsync(email, password);
-        flow.StartSignIn(server);
-        await flow.HandleCallbackAsync(await browser.CompleteAuthorizeAsync(), CancellationToken.None);
+        await LiveSignIn.RestoreAsync(flow, vault, server, email, password);
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         var session = flow.Session!;
         var user = flow.Current.User!;

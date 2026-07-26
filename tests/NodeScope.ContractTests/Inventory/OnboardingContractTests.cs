@@ -45,7 +45,7 @@ public class OnboardingContractTests
         // the org's network under the collected name.
         var addressSkipped = await TurnAsync(org, new { chipChoice = "skip" });
         Assert.Equal("browserDeviceName", addressSkipped.GetProperty("stepId").GetString());
-        var networks = await _api.GetAsync("v1/networks", org.OwnerCookie);
+        var networks = await _api.GetAsync("v1/networks", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, networks.Status);
         var network = Assert.Single(networks.Data.EnumerateArray());
         Assert.Equal("Contract HQ", network.GetProperty("name").GetString());
@@ -76,7 +76,7 @@ public class OnboardingContractTests
         Assert.True(done.GetProperty("complete").GetBoolean());
 
         // The wizard is spent: a fresh turn hits the durable completion marker.
-        var again = await _api.PostAsync("v1/onboarding/turn", new { }, org.OwnerCookie);
+        var again = await _api.PostAsync("v1/onboarding/turn", new { }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, again.Status);
         Assert.Equal("ONBOARD_002", again.ErrorCode);
     }
@@ -103,7 +103,7 @@ public class OnboardingContractTests
         var named = await TurnAsync(org, new { fieldValues = new { name = "Abandoned" } });
         Assert.Equal("address", named.GetProperty("stepId").GetString());
 
-        var skip = await _api.PostAsync("v1/onboarding/skip", new { }, org.OwnerCookie);
+        var skip = await _api.PostAsync("v1/onboarding/skip", new { }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, skip.Status);
         Assert.Equal(JsonValueKind.Null, skip.Data.ValueKind);
 
@@ -118,7 +118,7 @@ public class OnboardingContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        var response = await _api.PostAsync("v1/onboarding/turn", new { }, member.AsCookie());
+        var response = await _api.PostAsync("v1/onboarding/turn", new { }, member.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_003", response.ErrorCode);
@@ -126,7 +126,7 @@ public class OnboardingContractTests
 
     private async Task<JsonElement> TurnAsync(ProvisionedOrg org, object body)
     {
-        var response = await _api.PostAsync("v1/onboarding/turn", body, org.OwnerCookie);
+        var response = await _api.PostAsync("v1/onboarding/turn", body, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, response.Status);
         return response.Data;
     }

@@ -8,16 +8,23 @@ internal interface IApplianceClient : IDisposable
     public Uri BaseUrl { get; }
 
     /// <summary>
-    /// <c>POST /api/v1/desktop-auth/token</c>: burns the one-time code against its PKCE
-    /// verifier and returns the session token to use as a Bearer credential.
+    /// <c>POST /api/v1/auth/sign-in</c>: trades the credentials for a session token to
+    /// use as a Bearer credential.
     /// </summary>
-    public Task<string> ExchangeDesktopCodeAsync(string code, string codeVerifier, CancellationToken cancellationToken);
+    public Task<string> SignInAsync(string email, string password, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/auth/sign-up</c>: creates the account and returns its first
+    /// session token - the appliance's only account-creation surface.
+    /// </summary>
+    public Task<string> SignUpAsync(
+        string name, string email, string password, CancellationToken cancellationToken);
 
     /// <summary><c>GET /api/v1/users/me</c> with the Bearer credential.</summary>
     public Task<CurrentUser> GetCurrentUserAsync(string bearerToken, CancellationToken cancellationToken);
 
-    /// <summary><c>POST /api/v1/desktop-auth/revoke</c>: deletes the session behind the token.</summary>
-    public Task RevokeAsync(string bearerToken, CancellationToken cancellationToken);
+    /// <summary><c>POST /api/v1/auth/sign-out</c>: deletes the session behind the token.</summary>
+    public Task SignOutAsync(string bearerToken, CancellationToken cancellationToken);
 
     /// <summary>
     /// True when the appliance serves the rasterized map style - false means the region

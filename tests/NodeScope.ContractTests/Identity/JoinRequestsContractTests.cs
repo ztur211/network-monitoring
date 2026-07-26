@@ -25,7 +25,7 @@ public class JoinRequestsContractTests
         // example.com is never claimed by any provisioned org.
         var user = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.PostAsync("v1/join-requests", auth: user.AsCookie());
+        var response = await _api.PostAsync("v1/join-requests", auth: user.AsBearer());
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("ORG_014", response.ErrorCode);
@@ -36,7 +36,7 @@ public class JoinRequestsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.PostAsync("v1/join-requests", auth: org.OwnerCookie);
+        var response = await _api.PostAsync("v1/join-requests", auth: org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, response.Status);
         Assert.Equal("ORG_011", response.ErrorCode);
@@ -47,10 +47,10 @@ public class JoinRequestsContractTests
     {
         var (_, requester) = await OrgWithDomainRequesterAsync();
 
-        var first = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var first = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, first.Status);
 
-        var second = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var second = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Conflict, second.Status);
         Assert.Equal("ORG_015", second.ErrorCode);
     }
@@ -59,10 +59,10 @@ public class JoinRequestsContractTests
     public async Task List_defaults_to_PENDING_and_honors_an_explicit_status_filter()
     {
         var (org, requester) = await OrgWithDomainRequesterAsync();
-        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, submit.Status);
 
-        var pending = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerCookie);
+        var pending = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, pending.Status);
         var request = pending.Data.EnumerateArray()
             .Single(r => r.GetProperty("userId").GetString() == requester.UserId);
@@ -72,18 +72,18 @@ public class JoinRequestsContractTests
 
         var deny = await _api.PostAsync(
             $"v1/organizations/me/join-requests/{requestId}/deny",
-            auth: org.OwnerCookie);
+            auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, deny.Status);
 
         // Decided: gone from the default view, present under its status.
-        var pendingAfter = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerCookie);
+        var pendingAfter = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerAuth);
         Assert.DoesNotContain(
             pendingAfter.Data.EnumerateArray(),
             r => r.GetProperty("id").GetString() == requestId);
 
         var denied = await _api.GetAsync(
             "v1/organizations/me/join-requests?status=DENIED",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, denied.Status);
         var deniedRow = denied.Data.EnumerateArray()
             .Single(r => r.GetProperty("id").GetString() == requestId);
@@ -98,23 +98,23 @@ public class JoinRequestsContractTests
 
         var unknown = await _api.PostAsync(
             $"v1/organizations/me/join-requests/{Guid.NewGuid()}/approve",
-            auth: org.OwnerCookie);
+            auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("ORG_012", unknown.ErrorCode);
 
         // Deny a real one, then try to approve it - decided requests are spent.
-        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsCookie());
+        var submit = await _api.PostAsync("v1/join-requests", auth: requester.AsBearer());
         Assert.Equal(HttpStatusCode.Created, submit.Status);
         var requestId = await PendingRequestIdAsync(org, requester.UserId);
 
         var deny = await _api.PostAsync(
             $"v1/organizations/me/join-requests/{requestId}/deny",
-            auth: org.OwnerCookie);
+            auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, deny.Status);
 
         var approveAfter = await _api.PostAsync(
             $"v1/organizations/me/join-requests/{requestId}/approve",
-            auth: org.OwnerCookie);
+            auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, approveAfter.Status);
         Assert.Equal("ORG_012", approveAfter.ErrorCode);
     }
@@ -129,7 +129,7 @@ public class JoinRequestsContractTests
         var claim = await _api.PostAsync(
             $"v1/admin/organizations/{org.OrganizationId}/domains",
             new { domain },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
         Assert.Equal(HttpStatusCode.Created, claim.Status);
 
         var requester = await AuthWorkflow.SignUpAsync(
@@ -141,7 +141,7 @@ public class JoinRequestsContractTests
 
     private async Task<string> PendingRequestIdAsync(ProvisionedOrg org, string userId)
     {
-        var list = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/join-requests", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var request = list.Data.EnumerateArray().Single(r => r.GetProperty("userId").GetString() == userId);
         return request.GetProperty("id").GetString()

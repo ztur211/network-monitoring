@@ -28,14 +28,14 @@ public class UsersExtrasContractTests
         var response = await _api.PostAsync(
             "v1/users/location",
             new { latitude = 40.7128, longitude = -74.0060 },
-            user.AsCookie());
+            user.AsBearer());
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         Assert.Equal(40.7128, response.Data.GetProperty("latitude").GetDouble());
         Assert.Equal(-74.0060, response.Data.GetProperty("longitude").GetDouble());
         Assert.Equal(JsonValueKind.Null, response.Data.GetProperty("address").ValueKind);
 
-        var me = await _api.GetAsync("v1/users/me", user.AsCookie());
+        var me = await _api.GetAsync("v1/users/me", user.AsBearer());
         Assert.Equal(HttpStatusCode.OK, me.Status);
         Assert.Equal(40.7128, me.Data.GetProperty("homeLatitude").GetDouble());
         Assert.Equal(-74.0060, me.Data.GetProperty("homeLongitude").GetDouble());
@@ -46,7 +46,7 @@ public class UsersExtrasContractTests
     {
         var user = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.PostAsync("v1/users/location", new { }, user.AsCookie());
+        var response = await _api.PostAsync("v1/users/location", new { }, user.AsBearer());
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("GEN_001", response.ErrorCode);
@@ -60,7 +60,7 @@ public class UsersExtrasContractTests
         var response = await _api.PostAsync(
             "v1/users/location",
             new { latitude = 95.0, longitude = 0.0 },
-            user.AsCookie());
+            user.AsBearer());
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Equal("GEN_001", response.ErrorCode);
@@ -71,7 +71,7 @@ public class UsersExtrasContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.GetAsync("v1/users/me/data-sources", org.OwnerCookie);
+        var response = await _api.GetAsync("v1/users/me/data-sources", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         var sources = response.Data.GetProperty("sources");
@@ -86,7 +86,7 @@ public class UsersExtrasContractTests
     {
         var orgless = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.GetAsync("v1/users/me/data-sources", orgless.AsCookie());
+        var response = await _api.GetAsync("v1/users/me/data-sources", orgless.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_002", response.ErrorCode);

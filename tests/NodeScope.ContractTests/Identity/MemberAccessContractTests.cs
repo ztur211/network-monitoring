@@ -26,19 +26,19 @@ public class MemberAccessContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
         var siteId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
         var memberId = await OrgProvisioning.OrgMemberIdAsync(_api, org, member.UserId);
 
         var grant = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId = siteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
         Assert.Equal(memberId, grant.Data.GetProperty("memberId").GetString());
         Assert.Equal(siteId, grant.Data.GetProperty("propertyId").GetString());
 
-        var access = await _api.GetAsync($"v1/members/{memberId}/access", org.OwnerCookie);
+        var access = await _api.GetAsync($"v1/members/{memberId}/access", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, access.Status);
         Assert.Equal("MEMBER", access.Data.GetProperty("role").GetString());
         Assert.False(access.Data.GetProperty("unscoped").GetBoolean());
@@ -48,10 +48,10 @@ public class MemberAccessContractTests
 
         var revoke = await _api.DeleteAsync(
             $"v1/members/{memberId}/properties/{siteId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NoContent, revoke.Status);
 
-        var after = await _api.GetAsync($"v1/members/{memberId}/access", org.OwnerCookie);
+        var after = await _api.GetAsync($"v1/members/{memberId}/access", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, after.Status);
         Assert.Empty(after.Data.GetProperty("assignedRootPropertyIds").EnumerateArray());
     }
@@ -61,14 +61,14 @@ public class MemberAccessContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var access = await _api.GetAsync($"v1/members/{Guid.NewGuid()}/access", org.OwnerCookie);
+        var access = await _api.GetAsync($"v1/members/{Guid.NewGuid()}/access", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, access.Status);
         Assert.Equal("ORG_001", access.ErrorCode);
 
         var grant = await _api.PostAsync(
             $"v1/members/{Guid.NewGuid()}/properties",
             new { propertyId = Guid.NewGuid().ToString() },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, grant.Status);
         Assert.Equal("ORG_001", grant.ErrorCode);
     }
@@ -78,16 +78,16 @@ public class MemberAccessContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
         var siteAId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
         var siteBId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
 
         var admin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
         var adminMemberId = await OrgProvisioning.OrgMemberIdAsync(_api, org, admin.UserId);
         var grantAdmin = await _api.PostAsync(
             $"v1/members/{adminMemberId}/properties",
             new { propertyId = siteAId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grantAdmin.Status);
 
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
@@ -97,7 +97,7 @@ public class MemberAccessContractTests
         var beyond = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId = siteBId },
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, beyond.Status);
         Assert.Equal("PERM_002", beyond.ErrorCode);
 
@@ -105,7 +105,7 @@ public class MemberAccessContractTests
         var within = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId = siteAId },
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Created, within.Status);
     }
 
@@ -114,14 +114,14 @@ public class MemberAccessContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
         var siteId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
 
         var admin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
         var adminMemberId = await OrgProvisioning.OrgMemberIdAsync(_api, org, admin.UserId);
         var grantAdmin = await _api.PostAsync(
             $"v1/members/{adminMemberId}/properties",
             new { propertyId = siteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grantAdmin.Status);
 
         var otherAdmin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
@@ -130,7 +130,7 @@ public class MemberAccessContractTests
         var response = await _api.PostAsync(
             $"v1/members/{otherAdminMemberId}/properties",
             new { propertyId = siteId },
-            admin.AsCookie());
+            admin.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("PERM_003", response.ErrorCode);

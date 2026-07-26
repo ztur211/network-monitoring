@@ -28,11 +28,11 @@ public class MapContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var malformed = await _api.GetAsync("v1/map/devices?bbox=not-a-bbox", org.OwnerCookie);
+        var malformed = await _api.GetAsync("v1/map/devices?bbox=not-a-bbox", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.Status);
         Assert.Equal("GEN_001", malformed.ErrorCode);
 
-        var outOfRange = await _api.GetAsync("v1/map/devices?bbox=-190.0,0.0,10.0,1.0", org.OwnerCookie);
+        var outOfRange = await _api.GetAsync("v1/map/devices?bbox=-190.0,0.0,10.0,1.0", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, outOfRange.Status);
         Assert.Equal("GEN_001", outOfRange.ErrorCode);
     }
@@ -41,12 +41,12 @@ public class MapContractTests
     public async Task Devices_read_returns_only_devices_inside_the_bbox_and_honors_floor()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
         var insideId = await PlacedDeviceAsync(org, site, latitude: 50.5, longitude: 10.5, floor: 1);
         var outsideId = await PlacedDeviceAsync(org, site, latitude: 20.0, longitude: -30.0, floor: 1);
         var otherFloorId = await PlacedDeviceAsync(org, site, latitude: 50.6, longitude: 10.6, floor: 3);
 
-        var read = await _api.GetAsync($"v1/map/devices?bbox={InsideBbox}", org.OwnerCookie);
+        var read = await _api.GetAsync($"v1/map/devices?bbox={InsideBbox}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, read.Status);
         var ids = read.Data.GetProperty("items").EnumerateArray()
             .Select(d => d.GetProperty("id").GetString()).ToList();
@@ -54,7 +54,7 @@ public class MapContractTests
         Assert.Contains(otherFloorId, ids);
         Assert.DoesNotContain(outsideId, ids);
 
-        var floored = await _api.GetAsync($"v1/map/devices?bbox={InsideBbox}&floor=3", org.OwnerCookie);
+        var floored = await _api.GetAsync($"v1/map/devices?bbox={InsideBbox}&floor=3", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, floored.Status);
         var flooredIds = floored.Data.GetProperty("items").EnumerateArray()
             .Select(d => d.GetProperty("id").GetString()).ToList();
@@ -65,7 +65,7 @@ public class MapContractTests
     public async Task FiberRuns_read_includes_a_run_when_either_endpoint_is_inside()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
         var insideId = await PlacedDeviceAsync(org, site, latitude: 50.5, longitude: 10.5);
         var outsideId = await PlacedDeviceAsync(org, site, latitude: 20.0, longitude: -30.0);
         var farAId = await PlacedDeviceAsync(org, site, latitude: -40.0, longitude: 100.0);
@@ -75,7 +75,7 @@ public class MapContractTests
         var straddling = await CreateRunAsync(org, insideId, outsideId);
         var elsewhere = await CreateRunAsync(org, farAId, farBId);
 
-        var read = await _api.GetAsync($"v1/map/fiber-runs?bbox={InsideBbox}", org.OwnerCookie);
+        var read = await _api.GetAsync($"v1/map/fiber-runs?bbox={InsideBbox}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, read.Status);
         var ids = read.Data.GetProperty("items").EnumerateArray()
             .Select(r => r.GetProperty("id").GetString()).ToList();
@@ -87,14 +87,14 @@ public class MapContractTests
     public async Task Circuits_read_follows_the_linked_device()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
         var insideId = await PlacedDeviceAsync(org, site, latitude: 50.5, longitude: 10.5);
         var outsideId = await PlacedDeviceAsync(org, site, latitude: 20.0, longitude: -30.0);
 
         var insideCircuit = await CreateCircuitAsync(org, insideId);
         var outsideCircuit = await CreateCircuitAsync(org, outsideId);
 
-        var read = await _api.GetAsync($"v1/map/circuits?bbox={InsideBbox}", org.OwnerCookie);
+        var read = await _api.GetAsync($"v1/map/circuits?bbox={InsideBbox}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, read.Status);
         var ids = read.Data.GetProperty("items").EnumerateArray()
             .Select(c => c.GetProperty("id").GetString()).ToList();
@@ -129,7 +129,7 @@ public class MapContractTests
                 longitude,
                 floor,
             };
-        var response = await _api.PostAsync("v1/devices", body, org.OwnerCookie);
+        var response = await _api.PostAsync("v1/devices", body, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, response.Status);
         return InventoryScaffold.RequireId(response.Data);
     }
@@ -139,7 +139,7 @@ public class MapContractTests
         var response = await _api.PostAsync(
             "v1/fiber-runs",
             new { name = $"map-run-{Guid.NewGuid():N}", startDeviceId, endDeviceId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, response.Status);
         return InventoryScaffold.RequireId(response.Data);
     }
@@ -149,7 +149,7 @@ public class MapContractTests
         var response = await _api.PostAsync(
             "v1/circuits",
             new { ispName = $"isp-{Guid.NewGuid():N}", serviceType = "DIA", deviceId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, response.Status);
         return InventoryScaffold.RequireId(response.Data);
     }

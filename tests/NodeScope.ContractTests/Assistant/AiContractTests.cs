@@ -24,7 +24,7 @@ public class AiContractTests
     {
         var user = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.GetAsync("v1/ai/usage", user.AsCookie());
+        var response = await _api.GetAsync("v1/ai/usage", user.AsBearer());
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         var data = response.Data;
@@ -44,7 +44,7 @@ public class AiContractTests
 
         var response = await _api.DeleteAsync(
             $"v1/ai/conversation/{Guid.NewGuid()}",
-            user.AsCookie());
+            user.AsBearer());
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("GEN_002", response.ErrorCode);

@@ -7,11 +7,8 @@ internal enum SessionPhase
 {
     SignedOut,
 
-    /// <summary>The system browser is open; we are waiting for the nodescope:// callback.</summary>
-    WaitingForBrowser,
-
-    /// <summary>Callback received; the one-time code is being exchanged.</summary>
-    Exchanging,
+    /// <summary>The credential post (sign-in or sign-up) is in flight.</summary>
+    SigningIn,
 
     SignedIn,
 
@@ -31,32 +28,22 @@ internal sealed record SessionSnapshot(
 }
 
 /// <summary>
-/// The desktop side of Decision 17's PKCE flow. Owns the session lifecycle:
-/// restore-from-vault at startup, browser sign-in, callback exchange, sign-out.
+/// The native auth flow. Owns the session lifecycle: restore-from-vault at startup,
+/// credential sign-in/sign-up straight against the appliance, sign-out.
 /// </summary>
 /// <remarks>
-/// UI-thread affine by design: every entry point is called from the Avalonia dispatcher
-/// (commands and dispatched scheme activations), so state needs no locking. Failures never
-/// throw out of the flow - they become snapshots with an <c>Error</c>, because every error
-/// here ends in the same place: the sign-in screen with a message.
+/// UI-thread affine by design: every entry point is called from the Avalonia dispatcher,
+/// so state needs no locking. Failures never throw out of the flow - they become
+/// snapshots with an <c>Error</c>, because every error here ends in the same place:
+/// the sign-in screen with a message.
 /// </remarks>
 internal sealed class DesktopAuthFlow(
     IApplianceClientFactory clients,
     ITokenVault vault,
     SettingsStore settings,
-    IBrowserLauncher browser,
-    ILogger<DesktopAuthFlow> logger,
-    TimeProvider? timeProvider = null) : IDisposable
+    ILogger<DesktopAuthFlow> logger) : IDisposable
 {
-    /// <summary>
-    /// How long a started sign-in stays valid. Generous on purpose: the 120s server-side
-    /// code TTL starts at the redirect, but the user may sit on the web login form first.
-    /// </summary>
-    private static readonly TimeSpan PendingTtl = TimeSpan.FromMinutes(10);
-
-    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private IApplianceClient? _client;
-    private PendingSignIn? _pending;
 
     public SessionSnapshot Current { get; private set; } = SessionSnapshot.SignedOut();
 
@@ -109,96 +96,20 @@ internal sealed class DesktopAuthFlow(
         }
     }
 
-    /// <summary>Kicks off the browser sign-in against <paramref name="serverUrl"/>.</summary>
-    public void StartSignIn(Uri serverUrl)
-    {
-        if (Current.Phase == SessionPhase.Exchanging)
-        {
-            return; // an exchange is in flight; let it finish or fail first
-        }
+    /// <summary>Signs in with the credentials, in place - no browser leaves the app.</summary>
+    public Task SignInAsync(Uri serverUrl, string email, string password, CancellationToken cancellationToken) =>
+        AuthenticateAsync(
+            serverUrl,
+            client => client.SignInAsync(email, password, cancellationToken),
+            cancellationToken);
 
-        // Read-modify-write: the settings file also carries the theme choice.
-        settings.Save(settings.Load() with { ApplianceUrl = serverUrl });
-        var client = UseClient(serverUrl);
-
-        var pkce = Pkce.NewPair();
-        _pending = new PendingSignIn(client, pkce, Pkce.NewState(), _time.GetUtcNow() + PendingTtl);
-
-        var authorizeUrl = new Uri(client.BaseUrl,
-            "api/v1/desktop-auth/authorize"
-            + $"?code_challenge={Uri.EscapeDataString(pkce.Challenge)}"
-            + $"&state={Uri.EscapeDataString(_pending.State)}"
-            + $"&redirect_uri={Uri.EscapeDataString(DesktopCallback.RedirectUri)}");
-
-        AuthLog.SignInStarted(logger, serverUrl);
-        browser.Open(authorizeUrl);
-        Publish(new SessionSnapshot(SessionPhase.WaitingForBrowser, serverUrl, null, null));
-    }
-
-    /// <summary>Abandons a browser sign-in that is still pending.</summary>
-    public void CancelSignIn()
-    {
-        if (Current.Phase != SessionPhase.WaitingForBrowser)
-        {
-            return;
-        }
-
-        _pending = null;
-        Publish(SessionSnapshot.SignedOut());
-    }
-
-    /// <summary>Handles a <c>nodescope://auth/callback</c> activation from the OS.</summary>
-    public async Task HandleCallbackAsync(Uri callback, CancellationToken cancellationToken)
-    {
-        if (Current.Phase == SessionPhase.Exchanging)
-        {
-            AuthLog.CallbackRejected(logger, "an exchange is already in flight");
-            return;
-        }
-
-        var parsed = DesktopCallback.Parse(callback);
-        if (parsed is null)
-        {
-            AuthLog.CallbackRejected(logger, "the URI is not the auth callback shape");
-            return;
-        }
-
-        var pending = _pending;
-        if (pending is null
-            || !string.Equals(pending.State, parsed.State, StringComparison.Ordinal)
-            || pending.ExpiresAt <= _time.GetUtcNow())
-        {
-            // Wrong or stale state is the CSRF case: an activation we did not start.
-            AuthLog.CallbackRejected(logger, "no matching pending sign-in (state mismatch or expired)");
-            Publish(SessionSnapshot.SignedOut("The sign-in could not be verified - start it again from here."));
-            return;
-        }
-
-        _pending = null;
-        Publish(new SessionSnapshot(SessionPhase.Exchanging, pending.Client.BaseUrl, null, null));
-
-        try
-        {
-            var token = await pending.Client.ExchangeDesktopCodeAsync(
-                parsed.Code, pending.Pkce.Verifier, cancellationToken);
-            vault.Save(new VaultEntry(pending.Client.BaseUrl, token));
-
-            var user = await pending.Client.GetCurrentUserAsync(token, cancellationToken);
-            AuthLog.SignedIn(logger, user.Email, pending.Client.BaseUrl);
-            Session = new ApplianceSession(pending.Client, token);
-            Publish(new SessionSnapshot(SessionPhase.SignedIn, pending.Client.BaseUrl, user, null));
-        }
-        catch (ApplianceApiException failure)
-        {
-            AuthLog.ExchangeFailed(logger, failure.Code, failure.Message);
-            Publish(SessionSnapshot.SignedOut($"Sign-in failed ({failure.Code}): {failure.Message}"));
-        }
-        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
-        {
-            AuthLog.ExchangeFailed(logger, "TRANSPORT", failure.Message);
-            Publish(SessionSnapshot.SignedOut($"Could not reach the appliance: {failure.Message}"));
-        }
-    }
+    /// <summary>Creates the account and signs into its first session.</summary>
+    public Task SignUpAsync(
+        Uri serverUrl, string name, string email, string password, CancellationToken cancellationToken) =>
+        AuthenticateAsync(
+            serverUrl,
+            client => client.SignUpAsync(name, email, password, cancellationToken),
+            cancellationToken);
 
     /// <summary>Revokes the session server-side (best effort) and forgets it locally.</summary>
     public async Task SignOutAsync(CancellationToken cancellationToken)
@@ -208,7 +119,7 @@ internal sealed class DesktopAuthFlow(
         {
             try
             {
-                await _client.RevokeAsync(entry.Token, cancellationToken);
+                await _client.SignOutAsync(entry.Token, cancellationToken);
             }
             catch (Exception failure) when (
                 failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
@@ -224,6 +135,60 @@ internal sealed class DesktopAuthFlow(
         // Keep the server URL visible so signing back in is one click, not a retype.
         Publish(new SessionSnapshot(SessionPhase.SignedOut, Current.ServerUrl, null, null));
     }
+
+    private async Task AuthenticateAsync(
+        Uri serverUrl,
+        Func<IApplianceClient, Task<string>> credential,
+        CancellationToken cancellationToken)
+    {
+        if (Current.Phase == SessionPhase.SigningIn)
+        {
+            return; // a credential post is in flight; let it finish or fail first
+        }
+
+        // Read-modify-write: the settings file also carries the theme choice.
+        settings.Save(settings.Load() with { ApplianceUrl = serverUrl });
+        var client = UseClient(serverUrl);
+
+        AuthLog.SignInStarted(logger, serverUrl);
+        Publish(new SessionSnapshot(SessionPhase.SigningIn, serverUrl, null, null));
+
+        try
+        {
+            var token = await credential(client);
+            vault.Save(new VaultEntry(serverUrl, token));
+
+            var user = await client.GetCurrentUserAsync(token, cancellationToken);
+            AuthLog.SignedIn(logger, user.Email, serverUrl);
+            Session = new ApplianceSession(client, token);
+            Publish(new SessionSnapshot(SessionPhase.SignedIn, serverUrl, user, null));
+        }
+        catch (ApplianceApiException failure)
+        {
+            AuthLog.SignInFailed(logger, failure.Code, failure.Message);
+            Publish(new SessionSnapshot(SessionPhase.SignedOut, serverUrl, null, CredentialErrorCopy(failure)));
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
+        {
+            AuthLog.SignInFailed(logger, "TRANSPORT", failure.Message);
+            Publish(new SessionSnapshot(
+                SessionPhase.SignedOut, serverUrl, null,
+                $"Could not reach the appliance: {failure.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// The wire speaks stable codes with SCREAMING messages ("INVALID_CREDENTIALS");
+    /// the form speaks sentences. Unknown codes fall back to the raw message.
+    /// </summary>
+    private static string CredentialErrorCopy(ApplianceApiException failure) => failure.Code switch
+    {
+        "AUTH_001" => "Invalid email or password.",
+        "AUTH_005" => "An account with this email already exists - sign in instead.",
+        "GEN_001" => "Check the email address and password (8 characters minimum).",
+        "GEN_004" => "Too many attempts - wait a few minutes and try again.",
+        _ => failure.Message,
+    };
 
     private IApplianceClient UseClient(Uri serverUrl)
     {
@@ -246,7 +211,4 @@ internal sealed class DesktopAuthFlow(
         Current = snapshot;
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
-
-    private sealed record PendingSignIn(
-        IApplianceClient Client, PkcePair Pkce, string State, DateTimeOffset ExpiresAt);
 }

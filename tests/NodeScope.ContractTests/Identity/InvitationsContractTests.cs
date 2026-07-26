@@ -29,11 +29,11 @@ public class InvitationsContractTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email, role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var invitationId = invite.Data.GetProperty("invitation").GetProperty("id").GetString();
 
-        var list = await _api.GetAsync("v1/organizations/me/invitations", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/organizations/me/invitations", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var row = list.Data.EnumerateArray().Single(i => i.GetProperty("id").GetString() == invitationId);
         Assert.Equal(email, row.GetProperty("email").GetString());
@@ -43,7 +43,7 @@ public class InvitationsContractTests
 
         // Accepting removes it from the pending list.
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
-        var after = await _api.GetAsync("v1/organizations/me/invitations", org.OwnerCookie);
+        var after = await _api.GetAsync("v1/organizations/me/invitations", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, after.Status);
         Assert.DoesNotContain(
             after.Data.EnumerateArray(),
@@ -57,7 +57,7 @@ public class InvitationsContractTests
 
         var response = await _api.DeleteAsync(
             $"v1/organizations/me/invitations/{Guid.NewGuid()}",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("ORG_009", response.ErrorCode);
@@ -73,20 +73,20 @@ public class InvitationsContractTests
         var adminInvitesAdmin = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = AuthWorkflow.NewEmail(), role = "ADMIN" },
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, adminInvitesAdmin.Status);
         Assert.Equal("PERM_003", adminInvitesAdmin.ErrorCode);
 
         var adminInvitesMember = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = AuthWorkflow.NewEmail(), role = "MEMBER" },
-            admin.AsCookie());
+            admin.AsBearer());
         Assert.Equal(HttpStatusCode.Created, adminInvitesMember.Status);
 
         var memberInvites = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = AuthWorkflow.NewEmail(), role = "MEMBER" },
-            member.AsCookie());
+            member.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, memberInvites.Status);
         Assert.Equal("ORG_003", memberInvites.ErrorCode);
     }
@@ -99,7 +99,7 @@ public class InvitationsContractTests
         var response = await _api.PostAsync(
             "v1/invitations/accept",
             new { token = "not-a-real-token" },
-            user.AsCookie());
+            user.AsBearer());
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("ORG_009", response.ErrorCode);
@@ -113,7 +113,7 @@ public class InvitationsContractTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = AuthWorkflow.NewEmail("invited"), role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var token = invite.Data.GetProperty("token").GetString();
 
@@ -122,7 +122,7 @@ public class InvitationsContractTests
         var response = await _api.PostAsync(
             "v1/invitations/accept",
             new { token },
-            impostor.AsCookie());
+            impostor.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_010", response.ErrorCode);
@@ -139,14 +139,14 @@ public class InvitationsContractTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = orgA.Owner.Email, role = "MEMBER" },
-            orgB.OwnerCookie);
+            orgB.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var token = invite.Data.GetProperty("token").GetString();
 
         var response = await _api.PostAsync(
             "v1/invitations/accept",
             new { token },
-            orgA.OwnerCookie);
+            orgA.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, response.Status);
         Assert.Equal("ORG_011", response.ErrorCode);

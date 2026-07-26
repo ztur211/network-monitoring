@@ -28,7 +28,7 @@ public class CircuitsContractTests
         var response = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA", bandwidth = 1000 },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         var circuit = response.Data;
@@ -43,15 +43,15 @@ public class CircuitsContractTests
     public async Task CreateCircuit_linked_to_a_real_device_records_the_link()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
         var device = await InventoryScaffold.CreateDeviceAsync(
-            _api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+            _api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
         var response = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA", deviceId },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         Assert.Equal(deviceId, response.Data.GetProperty("deviceId").GetString());
@@ -65,7 +65,7 @@ public class CircuitsContractTests
         var response = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA", deviceId = Guid.NewGuid().ToString() },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("DEVICE_001", response.ErrorCode);
@@ -78,10 +78,10 @@ public class CircuitsContractTests
         var created = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(created.Data);
 
-        var list = await _api.GetAsync("v1/circuits", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/circuits", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var page = list.Data;
@@ -99,14 +99,14 @@ public class CircuitsContractTests
         var created = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(created.Data);
 
-        var found = await _api.GetAsync($"v1/circuits/{circuitId}", org.OwnerCookie);
+        var found = await _api.GetAsync($"v1/circuits/{circuitId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, found.Status);
         Assert.Equal(circuitId, found.Data.GetProperty("id").GetString());
 
-        var missing = await _api.GetAsync($"v1/circuits/{Guid.NewGuid()}", org.OwnerCookie);
+        var missing = await _api.GetAsync($"v1/circuits/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, missing.Status);
         Assert.Equal("CIRCUIT_001", missing.ErrorCode);
     }
@@ -118,7 +118,7 @@ public class CircuitsContractTests
         var created = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(created.Data);
         var baseVersion = created.Data.GetProperty("version").GetInt32();
 
@@ -129,7 +129,7 @@ public class CircuitsContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "Provisioned 2026-07" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal("Provisioned 2026-07", patch.Data.GetProperty("notes").GetString());
@@ -143,7 +143,7 @@ public class CircuitsContractTests
         var created = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(created.Data);
         var baseVersion = created.Data.GetProperty("version").GetInt32();
 
@@ -154,7 +154,7 @@ public class CircuitsContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "First" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, first.Status);
 
         var stale = await _api.PatchAsync(
@@ -164,7 +164,7 @@ public class CircuitsContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "Second" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("SYNC_001", stale.ErrorCode);
@@ -177,14 +177,14 @@ public class CircuitsContractTests
         var created = await _api.PostAsync(
             "v1/circuits",
             new { ispName = "Acme Fiber", serviceType = "DIA" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(created.Data);
 
-        var deleted = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
         Assert.Equal(JsonValueKind.Null, deleted.Data.ValueKind);
 
-        var again = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerCookie);
+        var again = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, again.Status);
         Assert.Equal("CIRCUIT_001", again.ErrorCode);
     }

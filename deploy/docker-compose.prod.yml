@@ -85,14 +85,11 @@ services:
       # NODE_ENV check, so the wire behavior of the Node era carries over unchanged.
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
       # SNMP credential encryption refuses to boot without a base64-encoded
       # 32-byte key: `openssl rand -base64 32`.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env (openssl rand -base64 32)}
-      # Same-origin appliance: both the API base and the auth base are the public origin
-      # (desktop-auth builds its redirects from these).
-      BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
-      FRONTEND_URL: ${PUBLIC_ORIGIN}
+      # Same-origin appliance: membership invite links are built from the public origin.
+      FRONTEND_URL: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-NodeScope/1.0 (demo@example.com)}
       # Proxy hops to trust for the real client IP (rate-limit keying). 1 = the single
       # Caddy hop (default); behind Cloudflare Tunnel → Caddy → API set 2, or every

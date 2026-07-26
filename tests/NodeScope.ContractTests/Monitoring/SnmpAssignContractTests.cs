@@ -34,12 +34,12 @@ public class SnmpAssignContractTests
     public async Task Assign_to_network_echoes_the_pair_and_explicit_nulls_unassign()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
-        var profileId = await MonitoringScaffold.CreateOidProfileAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
+        var profileId = await MonitoringScaffold.CreateOidProfileAsync(_api, org.OwnerAuth);
 
         var assign = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, cred.Id, profileId);
+            _api, org.OwnerAuth, "network", site.NetworkId, cred.Id, profileId);
         Assert.Equal(HttpStatusCode.OK, assign.Status);
         Assert.Equal("network", assign.Data.GetProperty("targetType").GetString());
         Assert.Equal(site.NetworkId, assign.Data.GetProperty("targetId").GetString());
@@ -47,7 +47,7 @@ public class SnmpAssignContractTests
         Assert.Equal(profileId, assign.Data.GetProperty("oidProfileId").GetString());
 
         var clear = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, null, null);
+            _api, org.OwnerAuth, "network", site.NetworkId, null, null);
         Assert.Equal(HttpStatusCode.OK, clear.Status);
         Assert.Equal(JsonValueKind.Null, clear.Data.GetProperty("snmpCredentialId").ValueKind);
         Assert.Equal(JsonValueKind.Null, clear.Data.GetProperty("oidProfileId").ValueKind);
@@ -57,13 +57,13 @@ public class SnmpAssignContractTests
     public async Task Assign_to_device_echoes_the_pair()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, site.NetworkId, site.SiteId);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, site.NetworkId, site.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
 
         var assign = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "device", deviceId, cred.Id, null);
+            _api, org.OwnerAuth, "device", deviceId, cred.Id, null);
 
         Assert.Equal(HttpStatusCode.OK, assign.Status);
         Assert.Equal("device", assign.Data.GetProperty("targetType").GetString());
@@ -76,18 +76,18 @@ public class SnmpAssignContractTests
     public async Task Assign_with_an_unknown_or_foreign_credential_is_404_SNMP_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var unknown = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, Guid.NewGuid().ToString(), null);
+            _api, org.OwnerAuth, "network", site.NetworkId, Guid.NewGuid().ToString(), null);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("SNMP_001", unknown.ErrorCode);
 
         // Another org's real credential must be indistinguishable from a missing one.
         var orgB = await _fixture.ProvisionOrgAsync();
-        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, orgB.OwnerCookie);
+        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, orgB.OwnerAuth);
         var foreign = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, credB.Id, null);
+            _api, org.OwnerAuth, "network", site.NetworkId, credB.Id, null);
         Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
         Assert.Equal("SNMP_001", foreign.ErrorCode);
     }
@@ -96,10 +96,10 @@ public class SnmpAssignContractTests
     public async Task Assign_with_an_unknown_profile_is_404_SNMP_002()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var response = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, null, Guid.NewGuid().ToString());
+            _api, org.OwnerAuth, "network", site.NetworkId, null, Guid.NewGuid().ToString());
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("SNMP_002", response.ErrorCode);
@@ -111,27 +111,27 @@ public class SnmpAssignContractTests
         var org = await _fixture.ProvisionOrgAsync();
 
         var unknownNetwork = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", Guid.NewGuid().ToString(), null, null);
+            _api, org.OwnerAuth, "network", Guid.NewGuid().ToString(), null, null);
         Assert.Equal(HttpStatusCode.NotFound, unknownNetwork.Status);
         Assert.Equal("NETWORK_002", unknownNetwork.ErrorCode);
 
         var unknownDevice = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "device", Guid.NewGuid().ToString(), null, null);
+            _api, org.OwnerAuth, "device", Guid.NewGuid().ToString(), null, null);
         Assert.Equal(HttpStatusCode.NotFound, unknownDevice.Status);
         Assert.Equal("DEVICE_001", unknownDevice.ErrorCode);
 
         // Another org's network and device are equally invisible.
         var orgB = await _fixture.ProvisionOrgAsync();
-        var siteB = await InventoryScaffold.CharteredSiteAsync(_api, orgB.OwnerCookie);
-        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, orgB.OwnerCookie, siteB.NetworkId, siteB.SiteId);
+        var siteB = await InventoryScaffold.CharteredSiteAsync(_api, orgB.OwnerAuth);
+        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, orgB.OwnerAuth, siteB.NetworkId, siteB.SiteId);
 
         var foreignNetwork = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", siteB.NetworkId, null, null);
+            _api, org.OwnerAuth, "network", siteB.NetworkId, null, null);
         Assert.Equal(HttpStatusCode.NotFound, foreignNetwork.Status);
         Assert.Equal("NETWORK_002", foreignNetwork.ErrorCode);
 
         var foreignDevice = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "device", InventoryScaffold.RequireId(deviceB), null, null);
+            _api, org.OwnerAuth, "device", InventoryScaffold.RequireId(deviceB), null, null);
         Assert.Equal(HttpStatusCode.NotFound, foreignDevice.Status);
         Assert.Equal("DEVICE_001", foreignDevice.ErrorCode);
     }
@@ -140,33 +140,33 @@ public class SnmpAssignContractTests
     public async Task Assign_body_must_carry_both_assignment_fields_and_a_valid_target_type()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         // Both assignment fields are required-present; null is the unassign value,
         // absence is a validation error.
         var missingBoth = await _api.PostAsync(
             "v1/snmp/assign",
             new { targetType = "network", targetId = site.NetworkId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, missingBoth.Status);
         Assert.Equal("GEN_001", missingBoth.ErrorCode);
 
         var missingCredential = await _api.PostAsync(
             "v1/snmp/assign",
             new { targetType = "network", targetId = site.NetworkId, oidProfileId = (string?)null },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, missingCredential.Status);
         Assert.Equal("GEN_001", missingCredential.ErrorCode);
 
         var missingProfile = await _api.PostAsync(
             "v1/snmp/assign",
             new { targetType = "network", targetId = site.NetworkId, snmpCredentialId = (string?)null },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, missingProfile.Status);
         Assert.Equal("GEN_001", missingProfile.ErrorCode);
 
         var badTargetType = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "circuit", site.NetworkId, null, null);
+            _api, org.OwnerAuth, "circuit", site.NetworkId, null, null);
         Assert.Equal(HttpStatusCode.BadRequest, badTargetType.Status);
         Assert.Equal("GEN_001", badTargetType.ErrorCode);
     }
@@ -175,17 +175,17 @@ public class SnmpAssignContractTests
     public async Task Admin_device_assignment_requires_the_governing_site_in_scope()
     {
         var (org, networkId, siteAId, siteBId, admin) = await TwoSiteOrgWithScopedAdminAsync();
-        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, networkId, siteAId);
-        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, networkId, siteBId);
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, networkId, siteAId);
+        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, networkId, siteBId);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
 
         var outOfScope = await MonitoringScaffold.AssignAsync(
-            _api, admin.AsCookie(), "device", InventoryScaffold.RequireId(deviceB), cred.Id, null);
+            _api, admin.AsBearer(), "device", InventoryScaffold.RequireId(deviceB), cred.Id, null);
         Assert.Equal(HttpStatusCode.Forbidden, outOfScope.Status);
         Assert.Equal("PERM_001", outOfScope.ErrorCode);
 
         var inScope = await MonitoringScaffold.AssignAsync(
-            _api, admin.AsCookie(), "device", InventoryScaffold.RequireId(deviceA), cred.Id, null);
+            _api, admin.AsBearer(), "device", InventoryScaffold.RequireId(deviceA), cred.Id, null);
         Assert.Equal(HttpStatusCode.OK, inScope.Status);
         Assert.Equal(cred.Id, inScope.Data.GetProperty("snmpCredentialId").GetString());
     }
@@ -194,19 +194,19 @@ public class SnmpAssignContractTests
     public async Task Admin_network_assignment_requires_full_charter_coverage()
     {
         var (org, networkId, _, siteBId, admin) = await TwoSiteOrgWithScopedAdminAsync();
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
 
         // Covering only one of the two chartered sites is not enough for a
         // network-level assignment.
         var partial = await MonitoringScaffold.AssignAsync(
-            _api, admin.AsCookie(), "network", networkId, cred.Id, null);
+            _api, admin.AsBearer(), "network", networkId, cred.Id, null);
         Assert.Equal(HttpStatusCode.Forbidden, partial.Status);
         Assert.Equal("PERM_004", partial.ErrorCode);
 
         // Granting the second site completes the coverage and flips the verdict.
         await GrantSiteToMemberAsync(org, admin, siteBId);
         var full = await MonitoringScaffold.AssignAsync(
-            _api, admin.AsCookie(), "network", networkId, cred.Id, null);
+            _api, admin.AsBearer(), "network", networkId, cred.Id, null);
         Assert.Equal(HttpStatusCode.OK, full.Status);
         Assert.Equal(cred.Id, full.Data.GetProperty("snmpCredentialId").GetString());
     }
@@ -215,8 +215,8 @@ public class SnmpAssignContractTests
     public async Task Agent_device_sync_resolves_the_assigned_target_with_override_wins()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
         // With nothing assigned anywhere, the device carries no snmp field at all.
         var bare = await AgentDeviceAsync(agent, monitored.DeviceId);
@@ -225,11 +225,11 @@ public class SnmpAssignContractTests
         // Network-level credential + profile: the target arrives with the community
         // DECRYPTED - the round-trip proof that create actually encrypted it - plus
         // the profile's OIDs and interface-metrics flag.
-        var credA = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var credA = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
         var profileId = await MonitoringScaffold.CreateOidProfileAsync(
-            _api, org.OwnerCookie, includeInterfaceMetrics: true);
+            _api, org.OwnerAuth, includeInterfaceMetrics: true);
         var assignNetwork = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", monitored.NetworkId, credA.Id, profileId);
+            _api, org.OwnerAuth, "network", monitored.NetworkId, credA.Id, profileId);
         Assert.Equal(HttpStatusCode.OK, assignNetwork.Status);
 
         var viaNetwork = (await AgentDeviceAsync(agent, monitored.DeviceId)).GetProperty("snmp");
@@ -242,9 +242,9 @@ public class SnmpAssignContractTests
 
         // A device-level credential wins over the network's, but the profile falls
         // back per field: the device's null profile does NOT blank the network's OIDs.
-        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
         var assignDevice = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "device", monitored.DeviceId, credB.Id, null);
+            _api, org.OwnerAuth, "device", monitored.DeviceId, credB.Id, null);
         Assert.Equal(HttpStatusCode.OK, assignDevice.Status);
 
         var overridden = (await AgentDeviceAsync(agent, monitored.DeviceId)).GetProperty("snmp");
@@ -253,7 +253,7 @@ public class SnmpAssignContractTests
 
         // Clearing the device-level pair restores the network default.
         var clearDevice = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "device", monitored.DeviceId, null, null);
+            _api, org.OwnerAuth, "device", monitored.DeviceId, null, null);
         Assert.Equal(HttpStatusCode.OK, clearDevice.Status);
 
         var restored = (await AgentDeviceAsync(agent, monitored.DeviceId)).GetProperty("snmp");
@@ -269,13 +269,13 @@ public class SnmpAssignContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
         var siteAId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
         var siteBId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie));
+            await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth));
         var networkId = InventoryScaffold.RequireId(
-            await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie));
-        await InventoryScaffold.CharterAsync(_api, org.OwnerCookie, networkId, siteAId);
-        await InventoryScaffold.CharterAsync(_api, org.OwnerCookie, networkId, siteBId);
+            await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth));
+        await InventoryScaffold.CharterAsync(_api, org.OwnerAuth, networkId, siteAId);
+        await InventoryScaffold.CharterAsync(_api, org.OwnerAuth, networkId, siteBId);
 
         var admin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
         await GrantSiteToMemberAsync(org, admin, siteAId);
@@ -289,7 +289,7 @@ public class SnmpAssignContractTests
         var grant = await _api.PostAsync(
             $"v1/members/{memberId}/properties",
             new { propertyId },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, grant.Status);
     }
 

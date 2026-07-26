@@ -14,8 +14,8 @@ using Xunit;
 namespace NodeScope.Desktop.Tests;
 
 /// <summary>
-/// The whole Decision 15 stack, live: the real desktop client code signs in over the
-/// real PKCE flow, the map view model loads the demo seed's NYC devices through the
+/// The whole Decision 15 stack, live: the real desktop client code signs in natively,
+/// the map view model loads the demo seed's NYC devices through the
 /// appliance API, fetches liberty tiles rasterized by tileserver-gl through Caddy, and
 /// the composed frame is rendered offscreen and pixel-checked.
 /// </summary>
@@ -51,17 +51,13 @@ public sealed class MapE2ETests : IDisposable
         var email = Environment.GetEnvironmentVariable("NODESCOPE_DESKTOP_MAP_E2E_EMAIL") ?? "owner@acme.test";
         var password = Environment.GetEnvironmentVariable("NODESCOPE_DESKTOP_MAP_E2E_PASSWORD") ?? "devpassword123";
 
-        // Real PKCE sign-in as the seeded demo owner; only the browser is played by code.
+        // The real client code signs in as the seeded demo owner (shared across suites).
         var vault = new PlainFileTokenVault(Path.Combine(_scratch.FullName, "vault.json"));
         var settings = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        using var browser = new SignInBrowser(server);
         using var factory = new ApplianceClientFactory();
-        using var flow = new DesktopAuthFlow(
-            factory, vault, settings, browser, NullLogger<DesktopAuthFlow>.Instance);
+        using var flow = new DesktopAuthFlow(factory, vault, settings, NullLogger<DesktopAuthFlow>.Instance);
 
-        await browser.SignInAsync(email, password);
-        flow.StartSignIn(server);
-        await flow.HandleCallbackAsync(await browser.CompleteAuthorizeAsync(), CancellationToken.None);
+        await LiveSignIn.RestoreAsync(flow, vault, server, email, password);
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         Assert.NotNull(flow.Session);
 

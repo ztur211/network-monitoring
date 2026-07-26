@@ -62,10 +62,9 @@ Or extract the `nodescope-desktop-win-x64.zip` or
 In the sign-in view:
 
 1. Enter `http://localhost:8080`. Do not append `/api`.
-2. Start sign-in.
-3. Use `owner@acme.test` and `devpassword123` in the browser.
-4. Let the `nodescope://` callback return to the native client.
-5. Open Main Building and select the seeded model.
+2. Sign in with `owner@acme.test` and `devpassword123` - the form is native,
+   no browser opens.
+3. Open Main Building and select the seeded model.
 
 The expected demo:
 

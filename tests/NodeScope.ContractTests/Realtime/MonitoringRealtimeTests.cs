@@ -34,10 +34,10 @@ public class MonitoringRealtimeTests
     public async Task Owner_socket_receives_device_status_on_state_transitions_but_not_same_state_ingests()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        var token = await MonitoringScaffold.MintIngestTokenAsync(_api, org.OwnerAuth);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         // First check ever: UNKNOWN -> UP is a transition, so it emits.
         await IngestCheckAsync(monitored.DeviceId, ok: true, token);
@@ -67,7 +67,7 @@ public class MonitoringRealtimeTests
     public async Task Owner_socket_receives_metrics_update_with_its_latest_submitted_sample()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         await socket.EmitAsync("v1:metrics:submit", new
         {

@@ -25,8 +25,6 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env.demo}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env.demo}
-      BETTER_AUTH_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
       FRONTEND_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
       STORAGE_DRIVER: fs
       STORAGE_FS_ROOT: /data/storage

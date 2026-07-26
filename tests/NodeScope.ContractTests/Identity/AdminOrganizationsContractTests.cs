@@ -49,7 +49,7 @@ public class AdminOrganizationsContractTests
         var create = await _api.PostAsync(
             "v1/admin/organizations",
             new { name = $"Acme {Guid.NewGuid():N}" },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
 
         Assert.Equal(HttpStatusCode.Created, create.Status);
         Assert.True(create.Json.GetProperty("success").GetBoolean());
@@ -60,7 +60,7 @@ public class AdminOrganizationsContractTests
         var designate = await _api.PostAsync(
             $"v1/admin/organizations/{orgId}/owner",
             new { email = owner.Email },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
 
         Assert.Equal(HttpStatusCode.Created, designate.Status);
         Assert.Equal("OWNER", designate.Data.GetProperty("role").GetString());
@@ -68,7 +68,7 @@ public class AdminOrganizationsContractTests
         Assert.Equal(orgId, designate.Data.GetProperty("organizationId").GetString());
 
         // The designated owner now resolves that exact org as their own, with no re-auth.
-        var me = await _api.GetAsync("v1/organizations/me", owner.AsCookie());
+        var me = await _api.GetAsync("v1/organizations/me", owner.AsBearer());
         Assert.Equal(HttpStatusCode.OK, me.Status);
         Assert.Equal(orgId, me.Data.GetProperty("id").GetString());
     }
@@ -82,13 +82,13 @@ public class AdminOrganizationsContractTests
         var second = await _api.PostAsync(
             "v1/admin/organizations",
             new { name = $"Second {Guid.NewGuid():N}" },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
         var secondId = second.Data.GetProperty("id").GetString();
 
         var response = await _api.PostAsync(
             $"v1/admin/organizations/{secondId}/owner",
             new { email = existing.Owner.Email },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
 
         Assert.Equal(HttpStatusCode.Conflict, response.Status);
         Assert.Equal("ORG_003", response.ErrorCode);
@@ -104,7 +104,7 @@ public class AdminOrganizationsContractTests
         var response = await _api.PostAsync(
             $"v1/admin/organizations/{missingOrgId}/owner",
             new { email = owner.Email },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("ORG_001", response.ErrorCode);
@@ -120,13 +120,13 @@ public class AdminOrganizationsContractTests
         var first = await _api.PostAsync(
             $"v1/admin/organizations/{org.OrganizationId}/domains",
             new { domain },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
         Assert.Equal(HttpStatusCode.Created, first.Status);
 
         var duplicate = await _api.PostAsync(
             $"v1/admin/organizations/{org.OrganizationId}/domains",
             new { domain },
-            superAdmin.AsCookie());
+            superAdmin.AsBearer());
         Assert.Equal(HttpStatusCode.Conflict, duplicate.Status);
         Assert.Equal("ORG_004", duplicate.ErrorCode);
     }

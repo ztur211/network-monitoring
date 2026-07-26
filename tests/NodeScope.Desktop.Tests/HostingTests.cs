@@ -25,10 +25,10 @@ public sealed class SingleInstanceTests : IDisposable
         using var primary = SingleInstance.TryStartPrimary(_socketPath, received.Add);
         Assert.NotNull(primary);
 
-        Assert.True(SingleInstance.TryForward(_socketPath, "nodescope://auth/callback?code=c&state=s"));
+        Assert.True(SingleInstance.TryForward(_socketPath, SingleInstance.ActivateMessage));
 
         var message = await Task.Run(() => received.Take(new CancellationTokenSource(5000).Token));
-        Assert.Equal("nodescope://auth/callback?code=c&state=s", message);
+        Assert.Equal(SingleInstance.ActivateMessage, message);
     }
 
     [Fact]
@@ -73,29 +73,3 @@ public sealed class ActivationQueueTests
     }
 }
 
-public sealed class SchemeRegistrationTests : IDisposable
-{
-    private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-scheme-tests-");
-
-    public void Dispose() => _scratch.Delete(recursive: true);
-
-    [Fact]
-    public void The_desktop_entry_claims_the_scheme_and_writes_idempotently()
-    {
-        var fileName = SchemeRegistration.WriteDesktopFileIfChanged(_scratch.FullName, "/opt/nodescope/NodeScope.Desktop");
-        var path = Path.Combine(_scratch.FullName, fileName);
-        var written = File.ReadAllText(path);
-
-        Assert.Contains("MimeType=x-scheme-handler/nodescope;", written, StringComparison.Ordinal);
-        Assert.Contains("Exec=/opt/nodescope/NodeScope.Desktop %u", written, StringComparison.Ordinal);
-        Assert.Contains("NoDisplay=true", written, StringComparison.Ordinal);
-
-        var before = File.GetLastWriteTimeUtc(path);
-        SchemeRegistration.WriteDesktopFileIfChanged(_scratch.FullName, "/opt/nodescope/NodeScope.Desktop");
-        Assert.Equal(before, File.GetLastWriteTimeUtc(path)); // unchanged content: no rewrite
-
-        SchemeRegistration.WriteDesktopFileIfChanged(_scratch.FullName, "/elsewhere/NodeScope.Desktop");
-        Assert.Contains("Exec=/elsewhere/NodeScope.Desktop %u",
-            File.ReadAllText(path), StringComparison.Ordinal); // moved binary: rewritten
-    }
-}

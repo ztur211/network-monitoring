@@ -25,12 +25,12 @@ public class DevicesContractTests
     public async Task CreateDevice_on_a_chartered_site_returns_the_device_at_version_one()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var response = await _api.PostAsync(
             "v1/devices",
             new { name = "core-sw-01", category = "SWITCH", networkId = scaffold.NetworkId, propertyId = scaffold.SiteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         var device = response.Data;
@@ -47,15 +47,15 @@ public class DevicesContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
         // A site and a network, but deliberately no charter binding them.
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie, "SITE");
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth, "SITE");
         var siteId = InventoryScaffold.RequireId(site);
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
 
         var response = await _api.PostAsync(
             "v1/devices",
             new { name = "orphan-sw", category = "SWITCH", networkId, propertyId = siteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.Status);
         Assert.Equal("PROP_007", response.ErrorCode);
@@ -65,13 +65,13 @@ public class DevicesContractTests
     public async Task CreateDevice_with_a_name_that_differs_only_in_case_is_409_ORG_005()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId, name: "Edge-Router");
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId, name: "Edge-Router");
 
         var clash = await _api.PostAsync(
             "v1/devices",
             new { name = "edge-router", category = "ROUTER", networkId = scaffold.NetworkId, propertyId = scaffold.SiteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, clash.Status);
         Assert.Equal("ORG_005", clash.ErrorCode);
@@ -81,11 +81,11 @@ public class DevicesContractTests
     public async Task ListDevices_is_paginated_and_counts_the_created_device()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
-        var list = await _api.GetAsync("v1/devices", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/devices", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, list.Status);
         Assert.Equal(JsonValueKind.Array, list.Data.GetProperty("items").ValueKind);
@@ -97,12 +97,12 @@ public class DevicesContractTests
     public async Task ListDevices_scoped_to_a_building_returns_a_bare_array()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
         // ?buildingPropertyId scopes to a subtree and returns a bare array, not the {items,total} page.
-        var scoped = await _api.GetAsync($"v1/devices?buildingPropertyId={scaffold.SiteId}", org.OwnerCookie);
+        var scoped = await _api.GetAsync($"v1/devices?buildingPropertyId={scaffold.SiteId}", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, scoped.Status);
         Assert.Equal(JsonValueKind.Array, scoped.Data.ValueKind);
@@ -113,15 +113,15 @@ public class DevicesContractTests
     public async Task GetDevice_returns_the_device_and_unknown_ids_are_404_DEVICE_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
-        var found = await _api.GetAsync($"v1/devices/{deviceId}", org.OwnerCookie);
+        var found = await _api.GetAsync($"v1/devices/{deviceId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, found.Status);
         Assert.Equal(deviceId, found.Data.GetProperty("id").GetString());
 
-        var missing = await _api.GetAsync($"v1/devices/{Guid.NewGuid()}", org.OwnerCookie);
+        var missing = await _api.GetAsync($"v1/devices/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, missing.Status);
         Assert.Equal("DEVICE_001", missing.ErrorCode);
     }
@@ -130,11 +130,11 @@ public class DevicesContractTests
     public async Task NameSuggestion_returns_a_suggested_name_field()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var response = await _api.GetAsync(
             $"v1/devices/name-suggestion?propertyId={scaffold.SiteId}&category=SWITCH",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         // The suggestion may be a string or null depending on naming template, but the
@@ -147,8 +147,8 @@ public class DevicesContractTests
     public async Task PatchDevice_renames_and_bumps_the_version()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
         var baseVersion = device.GetProperty("version").GetInt32();
         var newName = $"renamed-{Guid.NewGuid():N}";
@@ -160,7 +160,7 @@ public class DevicesContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = (string?)null, newValue = newName } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, patch.Status);
         Assert.Equal(newName, patch.Data.GetProperty("name").GetString());
@@ -171,8 +171,8 @@ public class DevicesContractTests
     public async Task PatchDevice_with_a_stale_base_version_is_409_SYNC_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
         var baseVersion = device.GetProperty("version").GetInt32();
 
@@ -183,7 +183,7 @@ public class DevicesContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "First" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, first.Status);
 
         var stale = await _api.PatchAsync(
@@ -193,7 +193,7 @@ public class DevicesContractTests
                 baseVersion,
                 changes = new[] { new { field = "notes", oldValue = (string?)null, newValue = "Second" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("SYNC_001", stale.ErrorCode);
@@ -203,15 +203,15 @@ public class DevicesContractTests
     public async Task DeleteDevice_succeeds_and_a_second_delete_is_404_DEVICE_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
-        var deleted = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
         Assert.Equal(JsonValueKind.Null, deleted.Data.ValueKind);
 
-        var again = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerCookie);
+        var again = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, again.Status);
         Assert.Equal("DEVICE_001", again.ErrorCode);
     }

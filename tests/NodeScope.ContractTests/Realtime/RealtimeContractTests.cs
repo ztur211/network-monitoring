@@ -7,7 +7,7 @@ namespace NodeScope.ContractTests.Realtime;
 /// <see cref="IRealtimeClient"/> (Decision 4). Parity here is asserted on semantics -
 /// which event fires, with which payload, to which subscribers - not on the wire, so the
 /// same tests carry from socket.io (Node) to SignalR (C#) by swapping the client impl.
-/// This first slice proves the adapter end to end: cookie-authenticated connect, both
+/// This first slice proves the adapter end to end: bearer-authenticated connect, both
 /// server-to-client fan-out modes (scoped entity events and the owner-room network event),
 /// the client-to-server ping/pong round-trip, and - the load-bearing one - that events do
 /// not cross the org boundary. Each test provisions its own isolated org(s).
@@ -30,14 +30,14 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_device_updated_when_a_device_is_patched()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
         var newName = $"rt-{Guid.NewGuid():N}";
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchDeviceNameAsync(deviceId, device.GetProperty("version").GetInt32(), newName, org.OwnerCookie);
+        await PatchDeviceNameAsync(deviceId, device.GetProperty("version").GetInt32(), newName, org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync("v1:device:updated", p => DeviceIdIs(p, deviceId));
         Assert.Equal(newName, evt.GetProperty("device").GetProperty("name").GetString());
@@ -49,13 +49,13 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_device_deleted_when_a_device_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var device = await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var deviceId = InventoryScaffold.RequireId(device);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deleted = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/devices/{deviceId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
 
         var evt = await socket.WaitForEventAsync("v1:device:deleted", p => DeviceIdIs(p, deviceId));
@@ -68,13 +68,13 @@ public class RealtimeContractTests
         var org = await _fixture.ProvisionOrgAsync();
         // A device-less circuit governs no site; the scoped emit still reaches the owner
         // room, which is what an OWNER socket subscribes to.
-        var circuit = await CreateDevicelessCircuitAsync(org.OwnerCookie);
+        var circuit = await CreateDevicelessCircuitAsync(org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(circuit);
         var newNotes = $"rt-{Guid.NewGuid():N}";
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchNotesAsync($"v1/circuits/{circuitId}", circuit.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+        await PatchNotesAsync($"v1/circuits/{circuitId}", circuit.GetProperty("version").GetInt32(), newNotes, org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync(
             "v1:circuit:updated",
@@ -88,12 +88,12 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_circuit_deleted_when_a_circuit_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var circuit = await CreateDevicelessCircuitAsync(org.OwnerCookie);
+        var circuit = await CreateDevicelessCircuitAsync(org.OwnerAuth);
         var circuitId = InventoryScaffold.RequireId(circuit);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deleted = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/circuits/{circuitId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -106,14 +106,14 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_fiber_run_updated_when_a_fiber_run_is_patched()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var run = await CreateFiberRunAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var run = await CreateFiberRunAsync(org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var fiberRunId = InventoryScaffold.RequireId(run);
         var newNotes = $"rt-{Guid.NewGuid():N}";
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchNotesAsync($"v1/fiber-runs/{fiberRunId}", run.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+        await PatchNotesAsync($"v1/fiber-runs/{fiberRunId}", run.GetProperty("version").GetInt32(), newNotes, org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync(
             "v1:fiber-run:updated",
@@ -127,13 +127,13 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_fiber_run_deleted_when_a_fiber_run_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var run = await CreateFiberRunAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var run = await CreateFiberRunAsync(org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var fiberRunId = InventoryScaffold.RequireId(run);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deleted = await _api.DeleteAsync($"v1/fiber-runs/{fiberRunId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/fiber-runs/{fiberRunId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -146,14 +146,14 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_connection_updated_when_a_connection_is_patched()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var connection = await CreateConnectionAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var connection = await CreateConnectionAsync(org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var connectionId = InventoryScaffold.RequireId(connection);
         var newNotes = $"rt-{Guid.NewGuid():N}";
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        await PatchNotesAsync($"v1/device-connections/{connectionId}", connection.GetProperty("version").GetInt32(), newNotes, org.OwnerCookie);
+        await PatchNotesAsync($"v1/device-connections/{connectionId}", connection.GetProperty("version").GetInt32(), newNotes, org.OwnerAuth);
 
         var evt = await socket.WaitForEventAsync(
             "v1:connection:updated",
@@ -167,13 +167,13 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_connection_deleted_when_a_connection_is_deleted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var connection = await CreateConnectionAsync(org.OwnerCookie, scaffold.NetworkId, scaffold.SiteId);
+        var scaffold = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var connection = await CreateConnectionAsync(org.OwnerAuth, scaffold.NetworkId, scaffold.SiteId);
         var connectionId = InventoryScaffold.RequireId(connection);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var deleted = await _api.DeleteAsync($"v1/device-connections/{connectionId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/device-connections/{connectionId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -188,9 +188,9 @@ public class RealtimeContractTests
         // The org has no network yet; creating the first one fans out to the owner room
         // (no charters => governing-site list is empty => OWNER-only).
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerCookie);
+        var network = await InventoryScaffold.CreateNetworkAsync(_api, org.OwnerAuth);
         var networkId = InventoryScaffold.RequireId(network);
 
         var evt = await socket.WaitForEventAsync(
@@ -203,9 +203,9 @@ public class RealtimeContractTests
     public async Task Owner_socket_receives_property_created_when_a_property_is_created()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie, "SITE");
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth, "SITE");
         var siteId = InventoryScaffold.RequireId(site);
 
         var evt = await socket.WaitForEventAsync(
@@ -221,7 +221,7 @@ public class RealtimeContractTests
         // joins - so the OWNER sees them. The whole invite -> sign-up -> accept flow runs
         // after the owner socket is ready; the accept step is what emits member:added.
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
@@ -237,12 +237,12 @@ public class RealtimeContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var patch = await _api.PatchAsync(
             $"v1/organizations/me/members/{member.UserId}",
             new { role = "ADMIN" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, patch.Status);
 
         var evt = await socket.WaitForEventAsync("v1:org:member:updated", p => UserIdIs(p, member.UserId));
@@ -257,9 +257,9 @@ public class RealtimeContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var removed = await _api.DeleteAsync($"v1/organizations/me/members/{member.UserId}", org.OwnerCookie);
+        var removed = await _api.DeleteAsync($"v1/organizations/me/members/{member.UserId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, removed.Status);
 
         var evt = await socket.WaitForEventAsync("v1:org:member:removed", p => UserIdIs(p, member.UserId));
@@ -274,10 +274,10 @@ public class RealtimeContractTests
         // mutation. The C# port must preserve that silence, so it is asserted here.
         var org = await _fixture.ProvisionOrgAsync();
 
-        var before = await _api.GetAsync("v1/organizations/me", org.OwnerCookie);
+        var before = await _api.GetAsync("v1/organizations/me", org.OwnerAuth);
         var baseVersion = before.Data.GetProperty("version").GetInt32();
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var patch = await _api.PatchAsync(
             "v1/organizations/me",
@@ -286,7 +286,7 @@ public class RealtimeContractTests
                 baseVersion,
                 changes = new[] { new { field = "name", oldValue = (string?)null, newValue = $"rt-{Guid.NewGuid():N}" } },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, patch.Status);
 
         await Assert.ThrowsAsync<TimeoutException>(
@@ -297,7 +297,7 @@ public class RealtimeContractTests
     public async Task Ping_is_answered_with_a_pong()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         await socket.EmitAsync("v1:ping");
 
@@ -310,20 +310,20 @@ public class RealtimeContractTests
     public async Task Events_do_not_cross_the_org_boundary()
     {
         var orgA = await _fixture.ProvisionOrgAsync();
-        var scaffoldA = await InventoryScaffold.CharteredSiteAsync(_api, orgA.OwnerCookie);
-        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, orgA.OwnerCookie, scaffoldA.NetworkId, scaffoldA.SiteId);
+        var scaffoldA = await InventoryScaffold.CharteredSiteAsync(_api, orgA.OwnerAuth);
+        var deviceA = await InventoryScaffold.CreateDeviceAsync(_api, orgA.OwnerAuth, scaffoldA.NetworkId, scaffoldA.SiteId);
         var deviceAId = InventoryScaffold.RequireId(deviceA);
 
         var orgB = await _fixture.ProvisionOrgAsync();
-        var scaffoldB = await InventoryScaffold.CharteredSiteAsync(_api, orgB.OwnerCookie);
-        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, orgB.OwnerCookie, scaffoldB.NetworkId, scaffoldB.SiteId);
+        var scaffoldB = await InventoryScaffold.CharteredSiteAsync(_api, orgB.OwnerAuth);
+        var deviceB = await InventoryScaffold.CreateDeviceAsync(_api, orgB.OwnerAuth, scaffoldB.NetworkId, scaffoldB.SiteId);
         var deviceBId = InventoryScaffold.RequireId(deviceB);
 
-        await using var socketB = await RealtimeScaffold.ConnectReadyAsync(orgB.OwnerCookie);
+        await using var socketB = await RealtimeScaffold.ConnectReadyAsync(orgB.OwnerAuth);
 
         // Mutate org A's device first (B must never see it), then org B's own device.
-        await PatchDeviceNameAsync(deviceAId, deviceA.GetProperty("version").GetInt32(), $"rt-a-{Guid.NewGuid():N}", orgA.OwnerCookie);
-        await PatchDeviceNameAsync(deviceBId, deviceB.GetProperty("version").GetInt32(), $"rt-b-{Guid.NewGuid():N}", orgB.OwnerCookie);
+        await PatchDeviceNameAsync(deviceAId, deviceA.GetProperty("version").GetInt32(), $"rt-a-{Guid.NewGuid():N}", orgA.OwnerAuth);
+        await PatchDeviceNameAsync(deviceBId, deviceB.GetProperty("version").GetInt32(), $"rt-b-{Guid.NewGuid():N}", orgB.OwnerAuth);
 
         // B receives its own device's event (proves the socket is live and delivering)...
         var own = await socketB.WaitForEventAsync("v1:device:updated", p => DeviceIdIs(p, deviceBId));

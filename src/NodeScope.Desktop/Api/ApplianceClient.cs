@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace NodeScope.Desktop.Api;
 
@@ -25,21 +24,12 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
 
     public void Dispose() => http.Dispose();
 
-    public async Task<string> ExchangeDesktopCodeAsync(
-        string code, string codeVerifier, CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("api/v1/desktop-auth/token", UriKind.Relative))
-        {
-            Content = JsonContent.Create(new ExchangeRequest(code, codeVerifier), options: Json),
-        };
-        using var response = await http.SendAsync(request, cancellationToken);
-        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+    public Task<string> SignInAsync(string email, string password, CancellationToken cancellationToken) =>
+        PostCredentialAsync("api/v1/auth/sign-in", new SignInRequest(email, password), cancellationToken);
 
-        return data.TryGetProperty("token", out var token) && token.GetString() is { Length: > 0 } value
-            ? value
-            : throw new ApplianceApiException(
-                ApplianceApiException.ProtocolErrorCode, "The token exchange response carried no token.", (int)response.StatusCode);
-    }
+    public Task<string> SignUpAsync(
+        string name, string email, string password, CancellationToken cancellationToken) =>
+        PostCredentialAsync("api/v1/auth/sign-up", new SignUpRequest(name, email, password), cancellationToken);
 
     public async Task<CurrentUser> GetCurrentUserAsync(string bearerToken, CancellationToken cancellationToken)
     {
@@ -53,9 +43,9 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
                 ApplianceApiException.ProtocolErrorCode, "The users/me response carried no user.", (int)response.StatusCode);
     }
 
-    public async Task RevokeAsync(string bearerToken, CancellationToken cancellationToken)
+    public async Task SignOutAsync(string bearerToken, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("api/v1/desktop-auth/revoke", UriKind.Relative));
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("api/v1/auth/sign-out", UriKind.Relative));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NoContent)
@@ -881,15 +871,35 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
             status);
     }
 
+    /// <summary>A credential post's whole answer is <c>data: { token }</c> in the envelope.</summary>
+    private async Task<string> PostCredentialAsync<TBody>(
+        string relativeUrl, TBody body, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(relativeUrl, UriKind.Relative))
+        {
+            Content = JsonContent.Create(body, options: Json),
+        };
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+
+        return data.ValueKind == JsonValueKind.Object
+            && data.TryGetProperty("token", out var token)
+            && token.GetString() is { Length: > 0 } value
+            ? value
+            : throw new ApplianceApiException(
+                ApplianceApiException.ProtocolErrorCode,
+                "The sign-in response carried no session token.",
+                (int)response.StatusCode);
+    }
+
     private static ApplianceApiException ModelGeometryTooLarge(int status) => new(
         "MODEL_GEOMETRY_TOO_LARGE",
         "The active model geometry exceeds the desktop safety limit of 200 MiB.",
         status);
 
-    /// <summary>The exchange body; <c>code_verifier</c> keeps its snake_case wire name.</summary>
-    private sealed record ExchangeRequest(
-        string Code,
-        [property: JsonPropertyName("code_verifier")] string CodeVerifier);
+    private sealed record SignInRequest(string Email, string Password);
+
+    private sealed record SignUpRequest(string Name, string Email, string Password);
 
     private sealed record ActivateModelVersionRequest(string VersionId);
 

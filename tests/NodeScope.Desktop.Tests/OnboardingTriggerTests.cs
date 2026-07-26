@@ -39,7 +39,6 @@ public sealed class OnboardingTriggerTests : IDisposable
             _factory,
             new InMemoryTokenVault(),
             store,
-            new FakeBrowserLauncher(),
             NullLogger<DesktopAuthFlow>.Instance);
         _workspace = new WorkspaceViewModel(
             new CurrentUser("user-1", "owner@acme.test", "Owner"),

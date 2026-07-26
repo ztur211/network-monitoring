@@ -17,11 +17,6 @@ export PATH="$HOME/.dotnet:$PATH"
 
 export ASPNETCORE_URLS="${ASPNETCORE_URLS:-http://127.0.0.1:5199}"
 export DATABASE_URL="${DATABASE_URL:-postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test}"
-export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-test-secret-minimum-32-characters-long-aaa}"
-# Desktop-auth builds absolute redirects from these. FRONTEND_URL is the auth-page
-# origin - the host serves /login itself since step 6, so it is this host's own URL.
-export FRONTEND_URL="${FRONTEND_URL:-http://127.0.0.1:5199}"
-export BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://127.0.0.1:5199}"
 # The suite provisions fresh users/orgs per test from one IP, far past the
 # interactive-client rate limits. Lift them for the target only (non-production),
 # mirroring run-contract-target.sh.

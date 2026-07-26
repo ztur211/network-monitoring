@@ -25,21 +25,21 @@ public class BcfContractTests
     public async Task Topics_list_and_detail_return_what_was_created()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerAuth);
         var topicId = await CreateTopicAsync(org, building.BuildingId, "Leaky conduit");
 
         var comment = await _api.PostAsync(
             $"v1/bcf/topics/{topicId}/comments",
             new { comment = "Confirmed on site" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, comment.Status);
 
-        var list = await _api.GetAsync($"v1/buildings/{building.BuildingId}/bcf/topics", org.OwnerCookie);
+        var list = await _api.GetAsync($"v1/buildings/{building.BuildingId}/bcf/topics", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var summary = list.Data.EnumerateArray().Single(t => t.GetProperty("id").GetString() == topicId);
         Assert.Equal("Leaky conduit", summary.GetProperty("title").GetString());
 
-        var detail = await _api.GetAsync($"v1/bcf/topics/{topicId}", org.OwnerCookie);
+        var detail = await _api.GetAsync($"v1/bcf/topics/{topicId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, detail.Status);
         Assert.Equal("Leaky conduit", detail.Data.GetProperty("title").GetString());
         var comments = detail.Data.GetProperty("comments").EnumerateArray().ToList();
@@ -51,15 +51,15 @@ public class BcfContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var topic = await _api.GetAsync($"v1/bcf/topics/{Guid.NewGuid()}", org.OwnerCookie);
+        var topic = await _api.GetAsync($"v1/bcf/topics/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, topic.Status);
         Assert.Equal("BCF_004", topic.ErrorCode);
 
-        var topics = await _api.GetAsync($"v1/buildings/{Guid.NewGuid()}/bcf/topics", org.OwnerCookie);
+        var topics = await _api.GetAsync($"v1/buildings/{Guid.NewGuid()}/bcf/topics", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, topics.Status);
         Assert.Equal("PROP_001", topics.ErrorCode);
 
-        var export = await _api.GetRawAsync($"v1/buildings/{Guid.NewGuid()}/bcf/export", org.OwnerCookie);
+        var export = await _api.GetRawAsync($"v1/buildings/{Guid.NewGuid()}/bcf/export", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, export.Status);
     }
 
@@ -67,19 +67,19 @@ public class BcfContractTests
     public async Task Patch_with_a_stale_baseVersion_is_409_BCF_005()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerAuth);
         var topicId = await CreateTopicAsync(org, building.BuildingId, "Versioned");
 
         var first = await _api.PatchAsync(
             $"v1/bcf/topics/{topicId}",
             new { baseVersion = 1, title = "Renamed once" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, first.Status);
 
         var stale = await _api.PatchAsync(
             $"v1/bcf/topics/{topicId}",
             new { baseVersion = 1, title = "Stale write" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, stale.Status);
         Assert.Equal("BCF_005", stale.ErrorCode);
     }
@@ -88,12 +88,12 @@ public class BcfContractTests
     public async Task Export_streams_a_real_zip_and_reimporting_it_round_trips_the_topics()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var source = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var source = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerAuth);
         await CreateTopicAsync(org, source.BuildingId, "Round-trip me");
 
         var export = await _api.GetRawAsync(
             $"v1/buildings/{source.BuildingId}/bcf/export",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, export.Status);
         Assert.Contains("application/octet-stream", export.Header("Content-Type"), StringComparison.Ordinal);
         Assert.Contains(".bcfzip", export.Header("Content-Disposition"), StringComparison.Ordinal);
@@ -106,17 +106,17 @@ public class BcfContractTests
         // topics upsert by [organization, guid] and a same-org re-import would
         // just update the source topic in place.
         var orgB = await _fixture.ProvisionOrgAsync();
-        var target = await InventoryScaffold.CreateBuildingAsync(_api, orgB.OwnerCookie);
+        var target = await InventoryScaffold.CreateBuildingAsync(_api, orgB.OwnerAuth);
         var import = await _api.PostMultipartAsync(
             $"v1/buildings/{target.BuildingId}/bcf/import",
             "file",
             "issues.bcfzip",
             [.. export.Body],
-            orgB.OwnerCookie);
+            orgB.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, import.Status);
         Assert.Equal(1, import.Data.GetProperty("topicsUpserted").GetInt32());
 
-        var topics = await _api.GetAsync($"v1/buildings/{target.BuildingId}/bcf/topics", orgB.OwnerCookie);
+        var topics = await _api.GetAsync($"v1/buildings/{target.BuildingId}/bcf/topics", orgB.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, topics.Status);
         Assert.Contains(
             topics.Data.EnumerateArray(),
@@ -127,14 +127,14 @@ public class BcfContractTests
     public async Task Importing_garbage_is_422_BCF_003()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerCookie);
+        var building = await InventoryScaffold.CreateBuildingAsync(_api, org.OwnerAuth);
 
         var response = await _api.PostMultipartAsync(
             $"v1/buildings/{building.BuildingId}/bcf/import",
             "file",
             "garbage.bcfzip",
             System.Text.Encoding.UTF8.GetBytes("this is not a zip archive"),
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.Status);
         Assert.Equal("BCF_003", response.ErrorCode);
@@ -145,7 +145,7 @@ public class BcfContractTests
         var create = await _api.PostAsync(
             $"v1/buildings/{buildingId}/bcf/topics",
             new { title },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         return InventoryScaffold.RequireId(create.Data);
     }

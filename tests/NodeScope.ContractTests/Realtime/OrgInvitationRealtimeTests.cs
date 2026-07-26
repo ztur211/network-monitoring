@@ -23,7 +23,7 @@ public class OrgInvitationRealtimeTests
     public async Task Owner_socket_receives_invitation_created_when_an_invitation_is_issued()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         // The service normalizes the invited email (trim + lowercase) before persisting,
         // and the event must carry the normalized form - not what the caller typed.
@@ -33,7 +33,7 @@ public class OrgInvitationRealtimeTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = typedEmail, role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var invitationId = RequireInvitationId(invite);
 
@@ -49,13 +49,13 @@ public class OrgInvitationRealtimeTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email = AuthWorkflow.NewEmail("invitee"), role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var invitationId = RequireInvitationId(invite);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
-        var revoke = await _api.DeleteAsync($"v1/organizations/me/invitations/{invitationId}", org.OwnerCookie);
+        var revoke = await _api.DeleteAsync($"v1/organizations/me/invitations/{invitationId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, revoke.Status);
 
         var evt = await socket.WaitForEventAsync("v1:org:invitation:revoked", p => IdIs(p, invitationId));
@@ -66,7 +66,7 @@ public class OrgInvitationRealtimeTests
     public async Task Owner_socket_receives_invitation_accepted_when_an_invitation_is_accepted()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         // The full accept flow inline (rather than OrgProvisioning.AddMemberAsync) so the
         // invitation id is in hand to correlate with the event.
@@ -74,13 +74,13 @@ public class OrgInvitationRealtimeTests
         var invite = await _api.PostAsync(
             "v1/organizations/me/invitations",
             new { email, role = "MEMBER" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var invitationId = RequireInvitationId(invite);
         var token = invite.Data.GetProperty("token").GetString();
 
         var invitee = await AuthWorkflow.SignUpAsync(_api, email: email, name: "Contract Invitee");
-        var accept = await _api.PostAsync("v1/invitations/accept", new { token }, invitee.AsCookie());
+        var accept = await _api.PostAsync("v1/invitations/accept", new { token }, invitee.AsBearer());
         Assert.Equal(HttpStatusCode.Created, accept.Status);
 
         var evt = await socket.WaitForEventAsync("v1:org:invitation:accepted", p => IdIs(p, invitationId));

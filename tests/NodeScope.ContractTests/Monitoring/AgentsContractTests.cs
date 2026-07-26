@@ -27,7 +27,7 @@ public class AgentsContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.PostAsync("v1/agents/enrollment-code", auth: org.OwnerCookie);
+        var response = await _api.PostAsync("v1/agents/enrollment-code", auth: org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         Assert.True(response.Json.GetProperty("success").GetBoolean());
@@ -38,9 +38,9 @@ public class AgentsContractTests
     public async Task Enrolled_agent_is_listed_with_status_APPROVED_and_its_metadata()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie, name: "listed-agent");
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth, name: "listed-agent");
 
-        var list = await _api.GetAsync("v1/agents", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/agents", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, list.Status);
         Assert.Equal(JsonValueKind.Array, list.Data.ValueKind);
@@ -56,13 +56,13 @@ public class AgentsContractTests
     public async Task RevokeAgent_returns_the_id_and_its_token_is_then_rejected()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
         // The token works before the revoke.
         var before = await _api.GetAsync("v1/monitoring/agent/devices", agent.AsAgentToken());
         Assert.Equal(HttpStatusCode.OK, before.Status);
 
-        var revoke = await _api.PostAsync($"v1/agents/{agent.AgentId}/revoke", auth: org.OwnerCookie);
+        var revoke = await _api.PostAsync($"v1/agents/{agent.AgentId}/revoke", auth: org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, revoke.Status);
         Assert.Equal(agent.AgentId, revoke.Data.GetProperty("id").GetString());
 
@@ -76,13 +76,13 @@ public class AgentsContractTests
     public async Task DeleteAgent_returns_the_id_and_removes_it_from_the_list()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, org.OwnerAuth);
 
-        var delete = await _api.DeleteAsync($"v1/agents/{agent.AgentId}", org.OwnerCookie);
+        var delete = await _api.DeleteAsync($"v1/agents/{agent.AgentId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, delete.Status);
         Assert.Equal(agent.AgentId, delete.Data.GetProperty("id").GetString());
 
-        var list = await _api.GetAsync("v1/agents", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/agents", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         Assert.DoesNotContain(list.Data.EnumerateArray(), a => a.GetProperty("id").GetString() == agent.AgentId);
     }
@@ -93,11 +93,11 @@ public class AgentsContractTests
         var org = await _fixture.ProvisionOrgAsync();
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
 
-        var list = await _api.GetAsync("v1/agents", member.AsCookie());
+        var list = await _api.GetAsync("v1/agents", member.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, list.Status);
         Assert.Equal("ORG_003", list.ErrorCode);
 
-        var mint = await _api.PostAsync("v1/agents/enrollment-code", auth: member.AsCookie());
+        var mint = await _api.PostAsync("v1/agents/enrollment-code", auth: member.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, mint.Status);
         Assert.Equal("ORG_003", mint.ErrorCode);
     }
@@ -126,10 +126,10 @@ public class AgentsContractTests
     public async Task RevokeAgent_belonging_to_another_org_is_404_AGENT_002()
     {
         var owning = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, owning.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, owning.OwnerAuth);
         var other = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.PostAsync($"v1/agents/{agent.AgentId}/revoke", auth: other.OwnerCookie);
+        var response = await _api.PostAsync($"v1/agents/{agent.AgentId}/revoke", auth: other.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("AGENT_002", response.ErrorCode);
@@ -139,10 +139,10 @@ public class AgentsContractTests
     public async Task DeleteAgent_belonging_to_another_org_is_404_AGENT_002()
     {
         var owning = await _fixture.ProvisionOrgAsync();
-        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, owning.OwnerCookie);
+        var agent = await MonitoringScaffold.EnrollAgentAsync(_api, owning.OwnerAuth);
         var other = await _fixture.ProvisionOrgAsync();
 
-        var response = await _api.DeleteAsync($"v1/agents/{agent.AgentId}", other.OwnerCookie);
+        var response = await _api.DeleteAsync($"v1/agents/{agent.AgentId}", other.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("AGENT_002", response.ErrorCode);

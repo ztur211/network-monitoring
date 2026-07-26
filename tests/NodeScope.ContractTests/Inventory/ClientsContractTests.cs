@@ -26,7 +26,7 @@ public class ClientsContractTests
 
         var response = await _api.GetAsync(
             "v1/clients",
-            org.OwnerCookie.WithExtraHeader("User-Agent", userAgent));
+            org.OwnerAuth.WithExtraHeader("User-Agent", userAgent));
 
         Assert.Equal(HttpStatusCode.OK, response.Status);
         var current = response.Data.GetProperty("currentDevice");
@@ -45,7 +45,7 @@ public class ClientsContractTests
     {
         var orgless = await AuthWorkflow.SignUpAsync(_api);
 
-        var response = await _api.GetAsync("v1/clients", orgless.AsCookie());
+        var response = await _api.GetAsync("v1/clients", orgless.AsBearer());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.Status);
         Assert.Equal("ORG_002", response.ErrorCode);

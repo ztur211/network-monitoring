@@ -67,6 +67,8 @@ internal sealed partial class MainWindowViewModel : IDisposable
         if (snapshot is { Phase: SessionPhase.SignedIn, User: not null, ServerUrl: not null }
             && _flow.Session is { } session)
         {
+            // The dormant form must not keep the credentials that just succeeded.
+            SignIn.Apply(snapshot);
             var workspace = new WorkspaceViewModel(
                 snapshot.User,
                 snapshot.ServerUrl,
@@ -87,8 +89,7 @@ internal sealed partial class MainWindowViewModel : IDisposable
         previous?.Dispose();
         Status = snapshot.Phase switch
         {
-            SessionPhase.WaitingForBrowser => "Waiting for the browser sign-in…",
-            SessionPhase.Exchanging => "Completing sign-in…",
+            SessionPhase.SigningIn => "Signing in…",
             SessionPhase.Unreachable => $"Appliance unreachable - {snapshot.ServerUrl?.Host}",
             _ => "Not signed in",
         };

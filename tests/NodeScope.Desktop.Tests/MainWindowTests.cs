@@ -16,7 +16,6 @@ public sealed class MainWindowTests : IDisposable
 
     private readonly DirectoryInfo _scratch = Directory.CreateTempSubdirectory("nodescope-shell-tests-");
     private readonly FakeApplianceClientFactory _clients = new();
-    private readonly FakeBrowserLauncher _browser = new();
     private readonly InMemoryTokenVault _vault = new();
     private readonly DesktopAuthFlow _flow;
     private readonly MainWindowViewModel _shell;
@@ -24,8 +23,7 @@ public sealed class MainWindowTests : IDisposable
     public MainWindowTests()
     {
         var settings = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        _flow = new DesktopAuthFlow(
-            _clients, _vault, settings, _browser, NullLogger<DesktopAuthFlow>.Instance);
+        _flow = new DesktopAuthFlow(_clients, _vault, settings, NullLogger<DesktopAuthFlow>.Instance);
         _shell = new MainWindowViewModel(
             _flow,
             settings,
@@ -59,13 +57,14 @@ public sealed class MainWindowTests : IDisposable
         var window = new MainWindow { DataContext = _shell };
         window.Show();
 
-        _flow.StartSignIn(Server);
-        Assert.Equal("Waiting for the browser sign-in…", window.FindControl<TextBlock>("StatusText")!.Text);
+        var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _clients.Configure = client => client.SignInGate = gate;
 
-        var state = StateFrom(_browser.LastOpened!);
-        await _flow.HandleCallbackAsync(
-            new Uri($"nodescope://auth/callback?code=c1&state={Uri.EscapeDataString(state)}"),
-            CancellationToken.None);
+        var signIn = _flow.SignInAsync(Server, "owner@acme.test", "devpassword123", CancellationToken.None);
+        Assert.Equal("Signing in…", window.FindControl<TextBlock>("StatusText")!.Text);
+
+        gate.SetResult("session-token-1");
+        await signIn;
 
         Assert.IsType<WorkspaceViewModel>(_shell.Content);
         var workspace = Assert.Single(window.GetVisualDescendants().OfType<WorkspaceView>());
@@ -91,19 +90,5 @@ public sealed class MainWindowTests : IDisposable
         var signIn = Assert.IsType<SignInViewModel>(_shell.Content);
         Assert.Single(window.GetVisualDescendants().OfType<SignInView>());
         Assert.Equal(Server.AbsoluteUri, signIn.ServerUrl);
-    }
-
-    private static string StateFrom(Uri authorizeUrl)
-    {
-        foreach (var pair in authorizeUrl.Query.TrimStart('?').Split('&'))
-        {
-            var parts = pair.Split('=', 2);
-            if (parts[0] == "state")
-            {
-                return Uri.UnescapeDataString(parts[1]);
-            }
-        }
-
-        throw new InvalidOperationException("no state in the authorize URL");
     }
 }

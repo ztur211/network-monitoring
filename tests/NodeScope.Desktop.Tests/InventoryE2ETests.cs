@@ -8,7 +8,7 @@ using Xunit;
 namespace NodeScope.Desktop.Tests;
 
 /// <summary>
-/// The CRUD milestone live: the real client code signs in over the real PKCE flow and
+/// The CRUD milestone live: the real client code signs in natively and
 /// walks a device and a circuit through create → edit → delete against the real
 /// appliance API, exactly as the inventory tabs drive it - including the property and
 /// network resolution the retired web client never did.
@@ -45,14 +45,10 @@ public sealed class InventoryE2ETests : IDisposable
 
         var vault = new PlainFileTokenVault(Path.Combine(_scratch.FullName, "vault.json"));
         var settings = new SettingsStore(Path.Combine(_scratch.FullName, "settings.json"));
-        using var browser = new SignInBrowser(server);
         using var factory = new ApplianceClientFactory();
-        using var flow = new DesktopAuthFlow(
-            factory, vault, settings, browser, NullLogger<DesktopAuthFlow>.Instance);
+        using var flow = new DesktopAuthFlow(factory, vault, settings, NullLogger<DesktopAuthFlow>.Instance);
 
-        await browser.SignInAsync(email, password);
-        flow.StartSignIn(server);
-        await flow.HandleCallbackAsync(await browser.CompleteAuthorizeAsync(), CancellationToken.None);
+        await LiveSignIn.RestoreAsync(flow, vault, server, email, password);
         Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
         var session = flow.Session!;
 

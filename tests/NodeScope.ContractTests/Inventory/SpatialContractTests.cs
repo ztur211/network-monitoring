@@ -26,22 +26,22 @@ public class SpatialContractTests
     public async Task Position_set_requires_a_modeled_building_then_round_trips()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
 
         // No model on the building yet - a real position is refused.
         var unmodeled = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/position",
             new { x = 1.5, y = 2.5, z = 0.5 },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, unmodeled.Status);
         Assert.Equal("SPATIAL_001", unmodeled.ErrorCode);
 
-        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerCookie, monitored.BuildingId);
+        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerAuth, monitored.BuildingId);
 
         var set = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/position",
             new { x = 1.5, y = 2.5, z = 0.5 },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, set.Status);
         Assert.Equal(1.5, set.Data.GetProperty("x").GetDouble());
         Assert.Equal(2.5, set.Data.GetProperty("y").GetDouble());
@@ -52,7 +52,7 @@ public class SpatialContractTests
         var clear = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/position",
             new { x = (double?)null, y = (double?)null, z = (double?)null },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, clear.Status);
         Assert.Equal(JsonValueKind.Null, clear.Data.GetProperty("x").ValueKind);
         Assert.Equal(JsonValueKind.Null, clear.Data.GetProperty("y").ValueKind);
@@ -63,13 +63,13 @@ public class SpatialContractTests
     public async Task A_partial_position_triple_is_422_SPATIAL_002()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
-        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerCookie, monitored.BuildingId);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
+        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerAuth, monitored.BuildingId);
 
         var response = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/position",
             new { x = 1.0 },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.Status);
         Assert.Equal("SPATIAL_002", response.ErrorCode);
@@ -79,28 +79,28 @@ public class SpatialContractTests
     public async Task IfcLink_set_requires_a_modeled_building_and_clearing_never_does()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerCookie);
+        var monitored = await MonitoringScaffold.MonitoredDeviceAsync(_api, org.OwnerAuth);
 
         var unmodeled = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/ifc-link",
             new { ifcGlobalId = "2O2Fr$t4X7Zf8NOew3FLKI" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, unmodeled.Status);
         Assert.Equal("SPATIAL_001", unmodeled.ErrorCode);
 
-        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerCookie, monitored.BuildingId);
+        await InventoryScaffold.UploadModelVersionAsync(_api, org.OwnerAuth, monitored.BuildingId);
 
         var set = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/ifc-link",
             new { ifcGlobalId = "2O2Fr$t4X7Zf8NOew3FLKI" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, set.Status);
         Assert.Equal("2O2Fr$t4X7Zf8NOew3FLKI", set.Data.GetProperty("ifcGlobalId").GetString());
 
         var clear = await _api.PatchAsync(
             $"v1/devices/{monitored.DeviceId}/ifc-link",
             new { ifcGlobalId = (string?)null },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, clear.Status);
         Assert.Equal(JsonValueKind.Null, clear.Data.GetProperty("ifcGlobalId").ValueKind);
     }
@@ -113,14 +113,14 @@ public class SpatialContractTests
         var position = await _api.PatchAsync(
             $"v1/devices/{Guid.NewGuid()}/position",
             new { },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, position.Status);
         Assert.Equal("DEVICE_001", position.ErrorCode);
 
         var link = await _api.PatchAsync(
             $"v1/devices/{Guid.NewGuid()}/ifc-link",
             new { ifcGlobalId = (string?)null },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, link.Status);
         Assert.Equal("DEVICE_001", link.ErrorCode);
     }

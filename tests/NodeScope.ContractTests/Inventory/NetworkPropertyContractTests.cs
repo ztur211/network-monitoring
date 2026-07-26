@@ -24,9 +24,9 @@ public class NetworkPropertyContractTests
     public async Task List_returns_the_charter_rows()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
-        var list = await _api.GetAsync($"v1/networks/{site.NetworkId}/properties", org.OwnerCookie);
+        var list = await _api.GetAsync($"v1/networks/{site.NetworkId}/properties", org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var row = Assert.Single(list.Data.EnumerateArray());
@@ -39,12 +39,12 @@ public class NetworkPropertyContractTests
     public async Task Chartering_the_same_site_twice_is_409_PROP_006()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var duplicate = await _api.PostAsync(
             $"v1/networks/{site.NetworkId}/properties",
             new { propertyId = site.SiteId },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, duplicate.Status);
         Assert.Equal("PROP_006", duplicate.ErrorCode);
@@ -54,12 +54,12 @@ public class NetworkPropertyContractTests
     public async Task Chartering_an_unknown_property_is_404_PROP_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var response = await _api.PostAsync(
             $"v1/networks/{site.NetworkId}/properties",
             new { propertyId = Guid.NewGuid().ToString() },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.NotFound, response.Status);
         Assert.Equal("PROP_001", response.ErrorCode);
@@ -69,12 +69,12 @@ public class NetworkPropertyContractTests
     public async Task Removing_a_charter_that_still_governs_devices_is_409_PROP_008()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerCookie, site.NetworkId, site.SiteId);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        await InventoryScaffold.CreateDeviceAsync(_api, org.OwnerAuth, site.NetworkId, site.SiteId);
 
         var refused = await _api.DeleteAsync(
             $"v1/networks/{site.NetworkId}/properties/{site.SiteId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Conflict, refused.Status);
         Assert.Equal("PROP_008", refused.ErrorCode);
@@ -84,17 +84,17 @@ public class NetworkPropertyContractTests
     public async Task Removing_a_device_free_charter_succeeds_and_a_second_remove_is_404_PROP_001()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
 
         var remove = await _api.DeleteAsync(
             $"v1/networks/{site.NetworkId}/properties/{site.SiteId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, remove.Status);
         Assert.Equal(JsonValueKind.Null, remove.Data.ValueKind);
 
         var again = await _api.DeleteAsync(
             $"v1/networks/{site.NetworkId}/properties/{site.SiteId}",
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, again.Status);
         Assert.Equal("PROP_001", again.ErrorCode);
     }

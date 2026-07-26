@@ -4,10 +4,9 @@ using System.Text;
 namespace NodeScope.Desktop.Hosting;
 
 /// <summary>
-/// One running client per user. The OS delivers nodescope:// activations by launching the
-/// registered executable with the URI as an argument; when an instance already runs, the
-/// new process forwards that URI (or a bare focus request) over a Unix domain socket and
-/// exits, so the callback lands in the window the user started the sign-in from.
+/// One running client per user. When an instance already runs, a second launch forwards
+/// a focus request over a Unix domain socket and exits, so the user's existing window
+/// comes forward instead of a duplicate opening.
 /// </summary>
 /// <remarks>
 /// A UDS in app data on both OSes (Windows supports AF_UNIX since Win10 1803): binding the
@@ -17,7 +16,7 @@ namespace NodeScope.Desktop.Hosting;
 /// </remarks>
 internal sealed class SingleInstance : IDisposable
 {
-    /// <summary>The bare focus request a second instance sends when it has no URI.</summary>
+    /// <summary>The focus request a second instance sends.</summary>
     public const string ActivateMessage = "activate";
 
     private readonly Socket _listener;

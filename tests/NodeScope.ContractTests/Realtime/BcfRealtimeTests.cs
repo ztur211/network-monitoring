@@ -24,10 +24,10 @@ public class BcfRealtimeTests
     public async Task Owner_socket_receives_bcf_topic_created_when_a_topic_is_created()
     {
         var (org, buildingId) = await OrgWithBuildingAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var title = $"topic-{Guid.NewGuid():N}";
-        var create = await _api.PostAsync($"v1/buildings/{buildingId}/bcf/topics", new { title }, org.OwnerCookie);
+        var create = await _api.PostAsync($"v1/buildings/{buildingId}/bcf/topics", new { title }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         var topicId = InventoryScaffold.RequireId(create.Data);
 
@@ -43,15 +43,15 @@ public class BcfRealtimeTests
         var create = await _api.PostAsync(
             $"v1/buildings/{buildingId}/bcf/topics",
             new { title = $"topic-{Guid.NewGuid():N}" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         var topicId = InventoryScaffold.RequireId(create.Data);
         var baseVersion = create.Data.GetProperty("version").GetInt32();
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var newTitle = $"topic-{Guid.NewGuid():N}";
-        var patch = await _api.PatchAsync($"v1/bcf/topics/{topicId}", new { baseVersion, title = newTitle }, org.OwnerCookie);
+        var patch = await _api.PatchAsync($"v1/bcf/topics/{topicId}", new { baseVersion, title = newTitle }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, patch.Status);
 
         var evt = await socket.WaitForEventAsync("v1:bcf:topic:updated", p => TopicIdIs(p, topicId));
@@ -65,14 +65,14 @@ public class BcfRealtimeTests
         var create = await _api.PostAsync(
             $"v1/buildings/{buildingId}/bcf/topics",
             new { title = $"topic-{Guid.NewGuid():N}" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, create.Status);
         var topicId = InventoryScaffold.RequireId(create.Data);
 
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         var text = $"comment-{Guid.NewGuid():N}";
-        var comment = await _api.PostAsync($"v1/bcf/topics/{topicId}/comments", new { comment = text }, org.OwnerCookie);
+        var comment = await _api.PostAsync($"v1/bcf/topics/{topicId}/comments", new { comment = text }, org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, comment.Status);
 
         var evt = await socket.WaitForEventAsync(
@@ -85,9 +85,9 @@ public class BcfRealtimeTests
     private async Task<(ProvisionedOrg Org, string BuildingId)> OrgWithBuildingAsync()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CreatePropertyAsync(_api, org.OwnerAuth);
         var building = await InventoryScaffold.CreatePropertyAsync(
-            _api, org.OwnerCookie, "BUILDING", parentId: InventoryScaffold.RequireId(site));
+            _api, org.OwnerAuth, "BUILDING", parentId: InventoryScaffold.RequireId(site));
         return (org, InventoryScaffold.RequireId(building));
     }
 

@@ -33,7 +33,7 @@ public class SnmpContractTests
         var response = await _api.PostAsync(
             "v1/snmp/credentials",
             new { name = "core-v2c", snmpVersion = "V2C", community },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         Assert.True(response.Json.GetProperty("success").GetBoolean());
@@ -73,7 +73,7 @@ public class SnmpContractTests
                 authKey,
                 privKey,
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, response.Status);
         var data = response.Data;
@@ -93,15 +93,15 @@ public class SnmpContractTests
     public async Task Credential_list_and_get_return_the_org_credentials_without_secrets()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
 
-        var list = await _api.GetAsync("v1/snmp/credentials", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/snmp/credentials", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var found = list.Data.EnumerateArray().Single(c => c.GetProperty("id").GetString() == cred.Id);
         Assert.True(found.GetProperty("hasCommunity").GetBoolean());
         Assert.DoesNotContain(cred.Community, list.Body, StringComparison.Ordinal);
 
-        var get = await _api.GetAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerCookie);
+        var get = await _api.GetAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, get.Status);
         Assert.Equal(cred.Id, get.Data.GetProperty("id").GetString());
         Assert.DoesNotContain(cred.Community, get.Body, StringComparison.Ordinal);
@@ -112,14 +112,14 @@ public class SnmpContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var unknown = await _api.GetAsync($"v1/snmp/credentials/{Guid.NewGuid()}", org.OwnerCookie);
+        var unknown = await _api.GetAsync($"v1/snmp/credentials/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("SNMP_001", unknown.ErrorCode);
 
         // A real credential in another org must be indistinguishable from a missing one.
         var orgB = await _fixture.ProvisionOrgAsync();
-        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, orgB.OwnerCookie);
-        var foreign = await _api.GetAsync($"v1/snmp/credentials/{credB.Id}", org.OwnerCookie);
+        var credB = await MonitoringScaffold.CreateCredentialAsync(_api, orgB.OwnerAuth);
+        var foreign = await _api.GetAsync($"v1/snmp/credentials/{credB.Id}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
         Assert.Equal("SNMP_001", foreign.ErrorCode);
     }
@@ -128,26 +128,26 @@ public class SnmpContractTests
     public async Task Credential_delete_is_refused_while_assigned_and_succeeds_after_unassign()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var cred = await MonitoringScaffold.CreateCredentialAsync(_api, org.OwnerAuth);
 
         var assign = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, cred.Id, null);
+            _api, org.OwnerAuth, "network", site.NetworkId, cred.Id, null);
         Assert.Equal(HttpStatusCode.OK, assign.Status);
 
-        var refused = await _api.DeleteAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerCookie);
+        var refused = await _api.DeleteAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, refused.Status);
         Assert.Equal("SNMP_003", refused.ErrorCode);
 
         var clear = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, null, null);
+            _api, org.OwnerAuth, "network", site.NetworkId, null, null);
         Assert.Equal(HttpStatusCode.OK, clear.Status);
 
-        var deleted = await _api.DeleteAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
         Assert.Equal(cred.Id, deleted.Data.GetProperty("id").GetString());
 
-        var gone = await _api.GetAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerCookie);
+        var gone = await _api.GetAsync($"v1/snmp/credentials/{cred.Id}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, gone.Status);
         Assert.Equal("SNMP_001", gone.ErrorCode);
     }
@@ -169,7 +169,7 @@ public class SnmpContractTests
                     new { oid = "1.3.6.1.2.1.1.3.0", metric = "uptime" },
                 },
             },
-            org.OwnerCookie);
+            org.OwnerAuth);
 
         Assert.Equal(HttpStatusCode.Created, create.Status);
         var data = create.Data;
@@ -188,14 +188,14 @@ public class SnmpContractTests
         var profileId = MonitoringScaffold.RequireId(data);
 
         // The list is a summary: same fields minus the entries.
-        var list = await _api.GetAsync("v1/snmp/oid-profiles", org.OwnerCookie);
+        var list = await _api.GetAsync("v1/snmp/oid-profiles", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);
         var summary = list.Data.EnumerateArray().Single(p => p.GetProperty("id").GetString() == profileId);
         Assert.True(summary.GetProperty("includeInterfaceMetrics").GetBoolean());
         Assert.False(summary.TryGetProperty("entries", out _));
 
         // The detail read carries them again.
-        var get = await _api.GetAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerCookie);
+        var get = await _api.GetAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, get.Status);
         Assert.Equal(2, get.Data.GetProperty("entries").GetArrayLength());
     }
@@ -205,13 +205,13 @@ public class SnmpContractTests
     {
         var org = await _fixture.ProvisionOrgAsync();
 
-        var unknown = await _api.GetAsync($"v1/snmp/oid-profiles/{Guid.NewGuid()}", org.OwnerCookie);
+        var unknown = await _api.GetAsync($"v1/snmp/oid-profiles/{Guid.NewGuid()}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, unknown.Status);
         Assert.Equal("SNMP_002", unknown.ErrorCode);
 
         var orgB = await _fixture.ProvisionOrgAsync();
-        var profileB = await MonitoringScaffold.CreateOidProfileAsync(_api, orgB.OwnerCookie);
-        var foreign = await _api.GetAsync($"v1/snmp/oid-profiles/{profileB}", org.OwnerCookie);
+        var profileB = await MonitoringScaffold.CreateOidProfileAsync(_api, orgB.OwnerAuth);
+        var foreign = await _api.GetAsync($"v1/snmp/oid-profiles/{profileB}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
         Assert.Equal("SNMP_002", foreign.ErrorCode);
     }
@@ -220,22 +220,22 @@ public class SnmpContractTests
     public async Task Profile_delete_is_refused_while_assigned_and_succeeds_after_unassign()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerCookie);
-        var profileId = await MonitoringScaffold.CreateOidProfileAsync(_api, org.OwnerCookie);
+        var site = await InventoryScaffold.CharteredSiteAsync(_api, org.OwnerAuth);
+        var profileId = await MonitoringScaffold.CreateOidProfileAsync(_api, org.OwnerAuth);
 
         var assign = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, null, profileId);
+            _api, org.OwnerAuth, "network", site.NetworkId, null, profileId);
         Assert.Equal(HttpStatusCode.OK, assign.Status);
 
-        var refused = await _api.DeleteAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerCookie);
+        var refused = await _api.DeleteAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Conflict, refused.Status);
         Assert.Equal("SNMP_003", refused.ErrorCode);
 
         var clear = await MonitoringScaffold.AssignAsync(
-            _api, org.OwnerCookie, "network", site.NetworkId, null, null);
+            _api, org.OwnerAuth, "network", site.NetworkId, null, null);
         Assert.Equal(HttpStatusCode.OK, clear.Status);
 
-        var deleted = await _api.DeleteAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerCookie);
+        var deleted = await _api.DeleteAsync($"v1/snmp/oid-profiles/{profileId}", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, deleted.Status);
         Assert.Equal(profileId, deleted.Data.GetProperty("id").GetString());
     }
@@ -247,16 +247,16 @@ public class SnmpContractTests
 
         // The role gate admits ADMIN - even reads are OWNER/ADMIN-only.
         var admin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
-        var adminList = await _api.GetAsync("v1/snmp/credentials", admin.AsCookie());
+        var adminList = await _api.GetAsync("v1/snmp/credentials", admin.AsBearer());
         Assert.Equal(HttpStatusCode.OK, adminList.Status);
 
         var member = await OrgProvisioning.AddMemberAsync(_api, org);
-        var memberList = await _api.GetAsync("v1/snmp/credentials", member.AsCookie());
+        var memberList = await _api.GetAsync("v1/snmp/credentials", member.AsBearer());
         Assert.Equal(HttpStatusCode.Forbidden, memberList.Status);
         Assert.Equal("ORG_003", memberList.ErrorCode);
 
         var memberAssign = await MonitoringScaffold.AssignAsync(
-            _api, member.AsCookie(), "network", Guid.NewGuid().ToString(), null, null);
+            _api, member.AsBearer(), "network", Guid.NewGuid().ToString(), null, null);
         Assert.Equal(HttpStatusCode.Forbidden, memberAssign.Status);
         Assert.Equal("ORG_003", memberAssign.ErrorCode);
 
@@ -274,7 +274,7 @@ public class SnmpContractTests
         var badVersion = await _api.PostAsync(
             "v1/snmp/credentials",
             new { name = "bad", snmpVersion = "V1" },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, badVersion.Status);
         Assert.Equal("GEN_001", badVersion.ErrorCode);
 
@@ -282,7 +282,7 @@ public class SnmpContractTests
         var badEntry = await _api.PostAsync(
             "v1/snmp/oid-profiles",
             new { name = "bad", entries = new[] { new { oid = "1.3.6.1.2.1.1.5.0" } } },
-            org.OwnerCookie);
+            org.OwnerAuth);
         Assert.Equal(HttpStatusCode.BadRequest, badEntry.Status);
         Assert.Equal("GEN_001", badEntry.ErrorCode);
     }

@@ -19,9 +19,9 @@ internal sealed partial class App : Application
     private ServiceProvider? _services;
 
     /// <summary>
-    /// Activation messages (nodescope:// URIs, focus requests) from this process's argv and
-    /// from forwarding secondaries. Static because Program posts before Avalonia constructs
-    /// the App; the queue buffers until <see cref="OnFrameworkInitializationCompleted"/> subscribes.
+    /// Focus requests from forwarding secondaries. Static because Program posts before
+    /// Avalonia constructs the App; the queue buffers until
+    /// <see cref="OnFrameworkInitializationCompleted"/> subscribes.
     /// </summary>
     public static ActivationQueue Activations { get; } = new();
 
@@ -46,8 +46,6 @@ internal sealed partial class App : Application
                 _ => Avalonia.Styling.ThemeVariant.Default,
             };
 
-            SchemeRegistration.EnsureRegistered(logger);
-
             var flow = _services.GetRequiredService<DesktopAuthFlow>();
             desktop.MainWindow = new MainWindow
             {
@@ -56,7 +54,7 @@ internal sealed partial class App : Application
             desktop.Exit += OnDesktopExit;
 
             Activations.Subscribe(message =>
-                Dispatcher.UIThread.Post(() => HandleActivation(message, desktop, flow, logger)));
+                Dispatcher.UIThread.Post(() => HandleActivation(message, desktop, logger)));
 
             _ = RestoreSafelyAsync(flow, logger);
         }
@@ -65,7 +63,7 @@ internal sealed partial class App : Application
     }
 
     private static void HandleActivation(
-        string message, IClassicDesktopStyleApplicationLifetime desktop, DesktopAuthFlow flow, ILogger logger)
+        string message, IClassicDesktopStyleApplicationLifetime desktop, ILogger logger)
     {
         if (message == SingleInstance.ActivateMessage)
         {
@@ -73,28 +71,7 @@ internal sealed partial class App : Application
             return;
         }
 
-        if (Uri.TryCreate(message, UriKind.Absolute, out var uri)
-            && string.Equals(uri.Scheme, DesktopCallback.Scheme, StringComparison.OrdinalIgnoreCase))
-        {
-            desktop.MainWindow?.Activate();
-            _ = HandleCallbackSafelyAsync(flow, uri, logger);
-            return;
-        }
-
         HostingLog.ActivationIgnored(logger, message);
-    }
-
-    /// <summary>The flow reports failures as state; this guard is for genuine bugs only.</summary>
-    private static async Task HandleCallbackSafelyAsync(DesktopAuthFlow flow, Uri uri, ILogger logger)
-    {
-        try
-        {
-            await flow.HandleCallbackAsync(uri, CancellationToken.None);
-        }
-        catch (Exception failure) when (failure is not OperationCanceledException)
-        {
-            HostingLog.RestoreCrashed(logger, failure);
-        }
     }
 
     private static async Task RestoreSafelyAsync(DesktopAuthFlow flow, ILogger logger)

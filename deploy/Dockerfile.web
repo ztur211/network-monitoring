@@ -2,10 +2,10 @@
 #
 # NodeScope appliance gateway: Caddy routing the same-origin surface - /api + /hubs
 # to the API host, /tiles to tileserver-gl, /agent from the baked agent-release
-# payload, and everything else (the browser auth page at /login) to the API host
-# too. The image kept its historical "web" name through step 6 so existing compose
-# files and pulls keep working; there has been no web app in it since the SPA was
-# demolished. Build context is the repo ROOT (for deploy/ paths only).
+# payload, and everything else to the API host too (which 404s it - no browser
+# surface exists). The image kept its historical "web" name through step 6 so
+# existing compose files and pulls keep working; there has been no web app in it
+# since the SPA was demolished. Build context is the repo ROOT (for deploy/ paths only).
 
 FROM caddy:2-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

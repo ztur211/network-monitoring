@@ -19,7 +19,7 @@ public class AiRealtimeTests
     public async Task Ai_message_streams_the_fallback_then_completes_unavailable_when_the_provider_is_down()
     {
         var org = await _fixture.ProvisionOrgAsync();
-        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerCookie);
+        await using var socket = await RealtimeScaffold.ConnectReadyAsync(org.OwnerAuth);
 
         await socket.EmitAsync("v1:ai:message", new { content = "What does my network look like?" });
 

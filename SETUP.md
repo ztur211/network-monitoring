@@ -8,7 +8,7 @@ on Windows, Linux, macOS, or WSLg.
 - Docker Engine or Docker Desktop with Compose v2
 - .NET 10 SDK
 - Git
-- A desktop session and system browser
+- A desktop session
 
 On Windows, Docker Desktop should use its WSL2 backend.
 
@@ -45,9 +45,8 @@ Sign in with:
 | Organization owner | `owner@acme.test` | `devpassword123` |
 | Platform super-admin | `admin@nodescope.test` | No interactive credential |
 
-The desktop flow opens the system browser and returns through the
-`nodescope://auth/callback` protocol. The Avalonia client registers that protocol
-for the current user when it starts.
+The desktop client signs in natively: enter the email and password in the app
+itself (or switch to "Create one" for a new account). No browser is involved.
 
 ### Script options
 
@@ -72,7 +71,6 @@ Set at least:
 ```dotenv
 PUBLIC_ORIGIN=http://localhost:8080
 POSTGRES_PASSWORD=<openssl rand -base64 24>
-BETTER_AUTH_SECRET=<openssl rand -base64 48>
 SECRET_ENCRYPTION_KEY=<openssl rand -base64 32>
 SEED_PASSWORD=devpassword123
 ```
@@ -111,8 +109,8 @@ Launch the native client:
 dotnet run --project src/NodeScope.Desktop
 ```
 
-The appliance's only browser surface is the sign-in page at
-`http://localhost:8080/login`; everything else is the desktop client.
+The appliance has no browser surface; every user-facing interaction happens in
+the desktop client.
 
 ## Local map tiles
 
@@ -166,7 +164,6 @@ compose file keeps it available for parity and future multi-node work.
 | --- | --- |
 | API rejects `SECRET_ENCRYPTION_KEY` | Generate exactly 32 random bytes and store their base64 form. |
 | `demo-seed` requires a password | Set `SEED_PASSWORD` in the env file passed to Compose. |
-| The browser does not return to the desktop app | Start Avalonia before signing in and confirm the OS registered `nodescope://` for the current user. |
 | The 3D viewport is empty | Re-run the demo seed with outbound internet available, or import an IFC from the client. |
 | The map reports missing tiles | Build the local region extract as described above. |
 | Port 8080 is occupied | Change `WEB_PORT` and `PUBLIC_ORIGIN` together, then enter the new origin in the client. |

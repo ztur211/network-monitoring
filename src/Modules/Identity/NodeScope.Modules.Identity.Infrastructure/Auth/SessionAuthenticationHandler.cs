@@ -19,37 +19,22 @@ public static class SessionAuthenticationDefaults
 
     /// <summary>Claim carrying <c>User.isSuperAdmin</c>, which gates the org-provisioning routes.</summary>
     public const string SuperAdminClaim = "nodescope:superAdmin";
-
-    /// <summary>
-    /// Set in <c>HttpContext.Items</c> when this request's sliding refresh fired. The handler
-    /// runs before every endpoint (UseAuthentication authenticates the default scheme even on
-    /// anonymous routes), so get-session can never observe a due session itself - it re-issues
-    /// the cookie off this flag instead, matching Better Auth's fresh Set-Cookie on refresh.
-    /// </summary>
-    public const string RefreshedItemKey = "nodescope:sessionRefreshed";
-}
-
-/// <summary>Options for <see cref="SessionAuthenticationHandler"/>.</summary>
-public sealed class SessionAuthenticationOptions : AuthenticationSchemeOptions
-{
-    /// <summary>The Better Auth HMAC secret (<c>BETTER_AUTH_SECRET</c>), shared with the Node stack.</summary>
-    public string Secret { get; set; } = string.Empty;
 }
 
 /// <summary>
 /// Decision 7: the hand-rolled session authenticator over the existing <c>Session</c> table.
-/// One indexed lookup per request, no cookie cache (revocation is immediate by design). On
-/// success it also resolves the requester's org membership into <see cref="OrgContextHolder"/>,
-/// folding the Node API's <c>AuthGuard</c> + <c>OrgContextGuard</c> pair into one place.
-/// Challenge and forbid responses write the Node error envelope verbatim.
+/// The credential is the raw session token as a Bearer header (native wire, 2026-07-26 -
+/// the cookie and HMAC forms died with the Better Auth shim). One indexed lookup per
+/// request, no cookie cache (revocation is immediate by design). On success it also
+/// resolves the requester's org membership into <see cref="OrgContextHolder"/>, folding
+/// the Node API's <c>AuthGuard</c> + <c>OrgContextGuard</c> pair into one place.
 /// </summary>
 /// <remarks>
-/// Sliding refresh (<c>updateAge</c>): Node's global AuthGuard resolves every request through
-/// Better Auth's getSession, which extends a session's expiry once it is more than 24 hours
-/// old - so any authenticated request slides the session, not just get-session. The same
-/// applies here: a cheap due-check on the already-loaded expiry, one UPDATE when it fires.
+/// Sliding refresh (<c>updateAge</c>): any authenticated request extends a session's
+/// expiry once it is more than 24 hours old - a cheap due-check on the already-loaded
+/// expiry, one UPDATE when it fires.
 /// </remarks>
-internal sealed class SessionAuthenticationHandler : AuthenticationHandler<SessionAuthenticationOptions>
+internal sealed class SessionAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     private readonly IdentityDbContext _db;
     private readonly IOrgMembershipResolver _members;
@@ -57,7 +42,7 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
     private readonly AuditContext _auditContext;
 
     public SessionAuthenticationHandler(
-        IOptionsMonitor<SessionAuthenticationOptions> options,
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder,
         IdentityDbContext db,
@@ -74,7 +59,7 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var token = SessionTokenCodec.Extract(Request, Options.Secret);
+        var token = SessionPolicy.ExtractBearer(Request);
         if (token is null)
         {
             return AuthenticateResult.NoResult();
@@ -94,9 +79,9 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
             return AuthenticateResult.NoResult();
         }
 
-        if (BetterAuthDefaults.RefreshDue(session.ExpiresAt, now))
+        if (SessionPolicy.RefreshDue(session.ExpiresAt, now))
         {
-            var refreshedExpiry = now + BetterAuthDefaults.SessionTtl;
+            var refreshedExpiry = now + SessionPolicy.SessionTtl;
             await _db.Sessions
                 .Where(row => row.Token == token)
                 .ExecuteUpdateAsync(
@@ -104,7 +89,6 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Sessi
                         .SetProperty(row => row.ExpiresAt, refreshedExpiry)
                         .SetProperty(row => row.UpdatedAt, now),
                     Context.RequestAborted);
-            Context.Items[SessionAuthenticationDefaults.RefreshedItemKey] = true;
         }
 
         var userId = session.Id;
