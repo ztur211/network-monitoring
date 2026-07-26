@@ -122,6 +122,93 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Organization_load_includes_the_roster_and_owner_management_queues()
+    {
+        _client.Invitations.Add(new PendingInvitation(
+            "i1",
+            "pending@acme.test",
+            "MEMBER",
+            DateTime.UtcNow.AddDays(7),
+            null,
+            DateTime.UtcNow));
+        _client.JoinRequests.Add(new OrganizationJoinRequest(
+            "j1",
+            "org-1",
+            "user-2",
+            "PENDING",
+            DateTime.UtcNow,
+            null,
+            "requester@acme.test",
+            "Requester"));
+
+        var viewModel = await CreateAsync();
+
+        Assert.Equal("Acme Networks", viewModel.Organization?.Name);
+        Assert.Equal("OWNER", viewModel.AccessRole);
+        Assert.Equal("owner@acme.test", Assert.Single(viewModel.OrganizationMembers).Email);
+        Assert.Single(viewModel.Invitations);
+        Assert.Single(viewModel.JoinRequests);
+        Assert.Equal(["MEMBER", "ADMIN", "OWNER"], viewModel.InvitationRoles);
+    }
+
+    [Fact]
+    public async Task Creating_an_invitation_reveals_a_native_code_and_updates_the_pending_list()
+    {
+        var viewModel = await CreateAsync();
+        viewModel.InviteEmail = "new-admin@acme.test";
+        viewModel.InviteRole = "ADMIN";
+
+        await viewModel.CreateInvitationCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            ("new-admin@acme.test", "ADMIN"),
+            Assert.Single(_client.CreatedInvitations));
+        Assert.Equal("nodescope-invite-v1:invite-token-1", viewModel.InvitationCode);
+        Assert.Equal("new-admin@acme.test", Assert.Single(viewModel.Invitations).Email);
+        Assert.Equal("", viewModel.InviteEmail);
+    }
+
+    [Fact]
+    public async Task An_admin_can_only_issue_member_invitations()
+    {
+        _client.AccessToReturn = new AccessSummary("ADMIN", ["site-1"], false);
+        var viewModel = await CreateAsync();
+
+        Assert.Equal(["MEMBER"], viewModel.InvitationRoles);
+        viewModel.InviteEmail = "teammate@acme.test";
+        viewModel.InviteRole = "OWNER";
+        await viewModel.CreateInvitationCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            ("teammate@acme.test", "MEMBER"),
+            Assert.Single(_client.CreatedInvitations));
+    }
+
+    [Fact]
+    public async Task Approving_a_join_request_removes_it_and_refreshes_the_roster()
+    {
+        var request = new OrganizationJoinRequest(
+            "j1",
+            "org-1",
+            "user-2",
+            "PENDING",
+            DateTime.UtcNow,
+            null,
+            "requester@acme.test",
+            "Requester");
+        _client.JoinRequests.Add(request);
+        var viewModel = await CreateAsync();
+
+        await viewModel.ApproveJoinRequestCommand.ExecuteAsync(request);
+
+        Assert.Equal(("j1", true), Assert.Single(_client.JoinRequestDecisions));
+        Assert.Empty(viewModel.JoinRequests);
+        Assert.Contains(
+            viewModel.OrganizationMembers,
+            member => member.Email == "requester@acme.test" && member.Role == "MEMBER");
+    }
+
+    [Fact]
     public async Task Enrollment_code_builds_the_install_command_from_the_server_url()
     {
         var viewModel = await CreateAsync();

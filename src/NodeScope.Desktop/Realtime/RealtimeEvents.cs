@@ -19,8 +19,8 @@ internal sealed record AiCompleteEvent(
     string Timestamp);
 
 /// <summary>
-/// A server-pushed failure (<c>v1:error</c>), the Node gateway's rejection channel. The C#
-/// host does not emit it today - the assistant's quota path never charges - but the shape
+/// A server-pushed failure (<c>v1:error</c>). The host does not emit it today because
+/// the assistant's quota path never charges, but the shape
 /// stays handled so a future rejection degrades to a message instead of a hung spinner.
 /// </summary>
 internal sealed record RealtimeErrorEvent(string Code, string Message, string? Context);

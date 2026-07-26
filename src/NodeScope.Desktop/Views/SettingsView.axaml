@@ -65,6 +65,157 @@
         </StackPanel>
       </Border>
 
+      <!-- ========================= Organization ========================= -->
+      <Border Classes="card" Name="OrganizationCard">
+        <StackPanel Spacing="10">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       Opacity="0.7"
+                       Text="{Binding AccessRole}" />
+            <StackPanel Spacing="2">
+              <TextBlock Classes="cardTitle" Text="Organization" />
+              <TextBlock Name="OrganizationName"
+                         FontSize="18"
+                         FontWeight="SemiBold"
+                         Text="{Binding Organization.Name}" />
+            </StackPanel>
+          </DockPanel>
+
+          <TextBlock FontWeight="Medium" Text="People" />
+          <ItemsControl Name="OrganizationMemberList" ItemsSource="{Binding OrganizationMembers}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="api:OrganizationMember">
+                <Border Margin="0,0,0,6"
+                        Padding="10"
+                        CornerRadius="8"
+                        Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                  <StackPanel Spacing="2">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                    <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <StackPanel Name="OrganizationManagePanel"
+                      Spacing="10"
+                      IsVisible="{Binding CanManage}">
+            <Border Height="1"
+                    Margin="0,2"
+                    Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+
+            <TextBlock FontWeight="Medium" Text="Invite someone" />
+            <TextBlock Classes="hint"
+                       Text="The code is shown once. Send it directly to the teammate, who pastes it into the native client after creating an account with the invited email." />
+            <Grid ColumnDefinitions="*,8,140">
+              <TextBox Grid.Column="0"
+                       Name="InviteEmailBox"
+                       PlaceholderText="teammate@example.com"
+                       Text="{Binding InviteEmail}"
+                       IsEnabled="{Binding !OrganizationBusy}" />
+              <ComboBox Grid.Column="2"
+                        Name="InviteRolePicker"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding InvitationRoles}"
+                        SelectedItem="{Binding InviteRole}"
+                        IsEnabled="{Binding !OrganizationBusy}" />
+            </Grid>
+            <Button Name="CreateInvitationButton"
+                    Classes="accent"
+                    Command="{Binding CreateInvitationCommand}"
+                    IsEnabled="{Binding !OrganizationBusy}"
+                    Content="Create invitation code" />
+
+            <StackPanel Spacing="4"
+                        IsVisible="{Binding InvitationCode, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock FontWeight="Medium" Text="Invitation code" />
+              <TextBox Name="InvitationCodeBox"
+                       FontFamily="Consolas,Menlo,monospace"
+                       FontSize="12"
+                       IsReadOnly="True"
+                       Text="{Binding InvitationCode}" />
+              <TextBlock Classes="hint"
+                         Text="Select the code and copy it. It is not stored in retrievable form after this response." />
+            </StackPanel>
+
+            <TextBlock FontWeight="Medium"
+                       Margin="0,4,0,0"
+                       Text="Pending invitations" />
+            <ItemsControl Name="InvitationList" ItemsSource="{Binding Invitations}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="api:PendingInvitation">
+                  <Border Margin="0,0,0,6"
+                          Padding="10"
+                          CornerRadius="8"
+                          BorderThickness="1"
+                          BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                    <DockPanel>
+                      <Button DockPanel.Dock="Right"
+                              VerticalAlignment="Center"
+                              Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).RevokeInvitationCommand}"
+                              CommandParameter="{Binding}"
+                              IsEnabled="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).CanMutateOrganization}"
+                              Content="Revoke" />
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Email}" />
+                        <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock FontWeight="Medium"
+                       Margin="0,4,0,0"
+                       Text="Access requests" />
+            <ItemsControl Name="JoinRequestList" ItemsSource="{Binding JoinRequests}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="api:OrganizationJoinRequest">
+                  <Border Margin="0,0,0,6"
+                          Padding="10"
+                          CornerRadius="8"
+                          BorderThickness="1"
+                          BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right"
+                                  Orientation="Horizontal"
+                                  VerticalAlignment="Center"
+                                  Spacing="6">
+                        <Button Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).DenyJoinRequestCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).CanMutateOrganization}"
+                                Content="Deny" />
+                        <Button Classes="accent"
+                                Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).ApproveJoinRequestCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).CanMutateOrganization}"
+                                Content="Approve" />
+                      </StackPanel>
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                        <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <ProgressBar Height="3"
+                       IsIndeterminate="True"
+                       IsVisible="{Binding OrganizationBusy}" />
+          <TextBlock Name="OrganizationError"
+                     Classes="error"
+                     IsVisible="{Binding OrganizationError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     Text="{Binding OrganizationError}" />
+        </StackPanel>
+      </Border>
+
       <!-- ========================= Home location ========================= -->
       <Border Classes="card">
         <StackPanel Spacing="8">

@@ -313,7 +313,6 @@ jobs:
           context: .
           file: deploy/Dockerfile.web
           push: true
-          build-args: EXPO_PUBLIC_API_URL=
           tags: |
             ghcr.io/${{ github.repository_owner }}/nodescope-web:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/nodescope-web:latest

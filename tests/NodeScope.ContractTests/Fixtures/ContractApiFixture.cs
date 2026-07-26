@@ -95,7 +95,7 @@ public sealed class ContractApiFixture : IAsyncLifetime, IDisposable
 
     private static string Unreachable(Exception ex) =>
         $"Contract suite could not reach the API at {TestConfig.BaseUrl}. Start the NodeScope API " +
-        $"(scratchpad/run-node-api.sh brings up the Node target against the test stack) or set " +
+        $"(scripts/run-csharp-host.sh targets the disposable test stack) or set " +
         $"{TestConfig.BaseUrlVariable} to a running instance. Underlying error: {ex.Message}";
 }
 

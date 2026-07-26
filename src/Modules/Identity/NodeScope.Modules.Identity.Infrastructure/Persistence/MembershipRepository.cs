@@ -1,7 +1,9 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using NodeScope.Modules.Identity.Application.Membership;
 using NodeScope.Modules.Identity.Domain;
 using NodeScope.Platform.Abstractions;
+using Npgsql;
 
 namespace NodeScope.Modules.Identity.Infrastructure.Persistence;
 
@@ -68,6 +70,63 @@ internal sealed class MembershipRepository : IMembershipRepository
         return row.Id;
     }
 
+    public async Task<string?> TryBootstrapOrganizationAsync(
+        string userId,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var transaction = await _db.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, cancellationToken);
+            if (await _db.Organizations.AnyAsync(cancellationToken)
+                || await _db.OrganizationMembers.AnyAsync(
+                    member => member.UserId == userId, cancellationToken))
+            {
+                return null;
+            }
+
+            var now = DateTime.UtcNow;
+            var organization = new OrganizationRow
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = name,
+                NamingMaxLen = 63,
+                Version = 1,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            _db.Organizations.Add(organization);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            _db.OrganizationMembers.Add(new OrganizationMemberRow
+            {
+                Id = Guid.NewGuid().ToString(),
+                OrganizationId = organization.Id,
+                UserId = userId,
+                Role = OrgRole.Owner,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return organization.Id;
+        }
+        catch (PostgresException failure) when (
+            failure.SqlState == PostgresErrorCodes.SerializationFailure)
+        {
+            return null;
+        }
+        catch (DbUpdateException failure) when (
+            failure.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.SerializationFailure,
+            })
+        {
+            return null;
+        }
+    }
+
     public async Task<string?> FindOrganizationByDomainAsync(string domain, CancellationToken cancellationToken) =>
         await _db.OrganizationDomains
             .Where(d => d.Domain == domain)
@@ -89,7 +148,7 @@ internal sealed class MembershipRepository : IMembershipRepository
     public async Task<UserSummary?> FindUserByEmailAsync(string email, CancellationToken cancellationToken) =>
         await _db.Users
             .Where(u => u.Email == email)
-            .Select(u => new UserSummary(u.Id, u.Email))
+            .Select(u => new UserSummary(u.Id, u.Email, u.Name))
             .SingleOrDefaultAsync(cancellationToken);
 
     public async Task<string?> UserEmailAsync(string userId, CancellationToken cancellationToken) =>
@@ -198,12 +257,26 @@ internal sealed class MembershipRepository : IMembershipRepository
     {
         var parsed = IdentityLabels.TryParseJoinRequestStatus(status)
             ?? throw ApiErrors.Validation(["status must be one of the following values: PENDING, APPROVED, DENIED"]);
-        var rows = await _db.JoinRequests
-            .Where(r => r.OrganizationId == organizationId && r.Status == parsed)
-            .OrderByDescending(r => r.CreatedAt)
+        var rows = await (
+            from request in _db.JoinRequests
+            join user in _db.Users on request.UserId equals user.Id
+            where request.OrganizationId == organizationId && request.Status == parsed
+            orderby request.CreatedAt descending
+            select new { Request = request, user.Email, user.Name })
             .AsNoTracking()
             .ToListAsync(cancellationToken);
-        return [.. rows.Select(ToRecord)];
+        return
+        [
+            .. rows.Select(row => new JoinRequestRecord(
+                row.Request.Id,
+                row.Request.OrganizationId,
+                row.Request.UserId,
+                IdentityLabels.Of(row.Request.Status),
+                row.Request.CreatedAt,
+                row.Request.DecidedAt,
+                row.Email,
+                row.Name)),
+        ];
     }
 
     public async Task<JoinRequestRecord?> FindJoinRequestAsync(

@@ -7,7 +7,7 @@ BCF interoperability.
 
 ## 1. Start from release-shaped artifacts
 
-- [ ] Build or pull the API, web, and tiles images for the candidate version.
+- [ ] Build or pull the API, gateway, and tiles images for the candidate version.
 - [ ] Stage signed agent payloads with `scripts/agent-release/build.sh`.
 - [ ] Start a clean appliance with the same Compose files used in production.
 - [ ] Run `./deploy/nodescope.sh smoke`.
@@ -30,14 +30,37 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
 - [ ] The app opens without a console or startup error.
 - [ ] The sign-in view accepts the appliance origin without `/api`.
 - [ ] Sign-in with email and password completes in the app; no browser opens.
-- [ ] Create-account mode provisions a fresh account and lands signed in.
+- [ ] Create-account mode provisions a fresh authenticated account.
+- [ ] An account without membership lands on the organization access screen.
 - [ ] Wrong credentials surface "Invalid email or password" in the form.
 - [ ] A second app launch focuses the first instance instead of opening another.
 - [ ] The session restores after closing and reopening the app.
 - [ ] Signing out revokes and removes the stored token.
 - [ ] Theme choice and appliance URL persist without storing secrets in settings.
 
-## 3. Inventory and map
+## 3. Organization access
+
+Run the bootstrap checks against a clean database that contains zero
+organizations.
+
+- [ ] The installer prints a bootstrap code and stores it in mode-0600
+      `deploy/.env`.
+- [ ] The first account creates the first organization with that code and becomes
+      OWNER.
+- [ ] A wrong code returns the specific invalid-code message without changing
+      database state.
+- [ ] A second bootstrap attempt is rejected after the first organization exists.
+- [ ] OWNER creates a MEMBER invitation and the native client displays the full
+      copyable code once.
+- [ ] A different email cannot redeem the invitation.
+- [ ] The invited account redeems the code without signing in again.
+- [ ] OWNER sees both people in the roster and can revoke a pending invitation.
+- [ ] ADMIN can invite MEMBER but cannot issue an ADMIN or OWNER invitation.
+- [ ] If a domain is configured, a matching user can request access and OWNER or
+      ADMIN can approve or deny the request.
+- [ ] Signing out from the organization access screen revokes the session.
+
+## 4. Inventory and map
 
 - [ ] Equipment, circuits, clients, and settings load without placeholder data.
 - [ ] Create, edit, and delete a device.
@@ -45,10 +68,11 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
 - [ ] The map starts at the saved user location.
 - [ ] Changing floors refreshes the viewport data immediately.
 - [ ] Device markers, fiber runs, selection, and layer toggles remain synchronized.
-- [ ] Disconnect the appliance, make an allowed offline edit, reconnect, and confirm
-      the queued mutation drains once.
+- [ ] Disconnect the appliance and attempt an edit. The client must report failure
+      without claiming the change was saved.
+- [ ] Reconnect and confirm the client reloads current appliance state.
 
-## 4. BIM and BCF
+## 5. BIM and BCF
 
 - [ ] Import a real IFC as an organization owner or admin.
 - [ ] Progress stays responsive during conversion and upload.
@@ -61,10 +85,11 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
 - [ ] Modify the issue externally, import it, and confirm GUID-based update rather
       than duplication.
 
-## 5. Realtime and monitoring
+## 6. Realtime and monitoring
 
 - [ ] Open two clients and confirm inventory and BCF changes arrive through SignalR.
-- [ ] Stream an assistant response and confirm cancel, retry, and usage state.
+- [ ] Send an assistant message and confirm the degraded response is marked
+      provider unavailable with zero tokens charged.
 - [ ] Generate a one-time agent enrollment code.
 - [ ] Install the signed agent on a clean Linux x64, Linux arm64, or Windows x64 host.
 - [ ] The installer rejects a modified binary, signature, and checksum.
@@ -74,7 +99,7 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
       the durable queue drains.
 - [ ] Revoke the agent and confirm the next authenticated request fails.
 
-## 6. Upgrade
+## 7. Upgrade
 
 - [ ] Install the previous released agent version.
 - [ ] Point it at an appliance serving the candidate manifest.
@@ -84,7 +109,7 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
 - [ ] Confirm the previous executable remains as `.old` for rollback.
 - [ ] Confirm an older or equal manifest version is ignored.
 
-## 7. Release artifacts
+## 8. Release artifacts
 
 - [ ] `nodescope-agent-linux-x64`
 - [ ] `nodescope-agent-linux-arm64`
@@ -94,8 +119,9 @@ Run the packaged desktop artifact for the host OS, not `dotnet run`.
 - [ ] Linux and Windows installers plus the systemd unit
 - [ ] `nodescope-desktop-linux-x64.tar.gz`
 - [ ] `nodescope-desktop-win-x64.zip`
-- [ ] Versioned and `latest` API, web, and tiles images in GHCR
-- [ ] The published web image serves the exact signed payload from the release
+- [ ] Versioned and `latest` API, gateway (`nodescope-web`), and tiles images in
+      GHCR
+- [ ] The published gateway image serves the exact signed payload from the release
 - [ ] The database backup script produces a restorable dump
 
 Record the OS versions, GPU, appliance version, agent version, and any deviations

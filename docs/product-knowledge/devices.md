@@ -1,29 +1,51 @@
 # NodeScope Devices
 
-NodeScope lets you document every physical device on your network. Each device has a name, category, optional location (latitude/longitude), floor, IP address, MAC address, and notes.
+Devices represent physical or logical equipment documented inside an
+organization. Each device has a unique name within the organization, a category,
+and optional network, property, map, addressing, floor, ownership, and notes
+fields.
 
 ## Device Categories
 
-- **ISP Equipment**: RAD, ONT, DSLAM — usually at the network edge
-- **Core Infrastructure**: Router, Modem, Fiber Media Converter, Firewall
-- **Network Equipment**: Switch, Access Point, WiFi Extender, Wireless Bridge, Server Rack, Patch Panel, UPS
-- **End-User Devices**: Computer, Phone, Tablet, Printer, IoT Device
-- **Other**: Custom
+- **ISP equipment:** RAD, ONT, and DSLAM
+- **Core infrastructure:** Router, modem, fiber media converter, and firewall
+- **Network equipment:** Switch, access point, WiFi extender, wireless bridge,
+  server rack, patch panel, and UPS
+- **End-user equipment:** Computer, phone, tablet, printer, and IoT device
+- **Other:** Custom equipment that does not fit a predefined category
 
-## Device Limit
+Categories determine marker color, abbreviation, map layer grouping, and the
+minimum zoom at which a device appears.
 
-Free tier accounts can document up to 50 devices. A warning appears at 45 devices.
+## Adding and Placing Devices
 
-## Adding Devices
+Use Inventory > Equipment to create a device without map coordinates, or select
+the + button on the Map and click its physical location. Name and category are
+required. A device placed on a property must use a site chartered to its network.
 
-Tap the + button on the map or use the Equipment screen. Required fields: name (must be unique), category. All other fields are optional.
-
-## Connections and Fiber Runs
-
-Devices can be linked with:
-- **Connections** (DeviceConnection): Ethernet, Fiber, WiFi, or Logical connection type between two devices
-- **Fiber Runs**: Physical cable runs between two devices, with optional cable type and length in meters
+OWNER and ADMIN members can configure equipment. Scoped permissions determine
+which properties and devices are visible and editable.
 
 ## Editing and Deleting
 
-Tap a device on the map or in the Equipment list to view its details. From the detail panel, use Edit or Delete. Edits use optimistic concurrency — if two sessions edit the same device simultaneously, one will get a conflict error.
+Select a device from Equipment or the Map to edit or delete it. Updates carry a
+base version. If another session changes the same device first, NodeScope rejects
+the stale update instead of overwriting newer data.
+
+Deleting a device removes links that depend on it where the database relationship
+requires that behavior. A linked circuit remains but loses its device reference.
+
+## Connections and Fiber Runs
+
+The appliance API supports Ethernet, Fiber, WiFi, and Logical connections between
+devices. It also supports physical fiber runs with optional cable type and length.
+The native Map renders fiber runs as orange dashed lines when both endpoints have
+coordinates.
+
+The current desktop client does not yet expose creation forms for connections or
+fiber runs.
+
+## Live Updates
+
+Device edits, deletions, placement changes, and monitoring status updates arrive
+through SignalR. The map and 3D viewer update without requiring a manual refresh.

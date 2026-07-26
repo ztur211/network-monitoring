@@ -67,6 +67,8 @@ public class JoinRequestsContractTests
         var request = pending.Data.EnumerateArray()
             .Single(r => r.GetProperty("userId").GetString() == requester.UserId);
         Assert.Equal("PENDING", request.GetProperty("status").GetString());
+        Assert.Equal(requester.Email, request.GetProperty("email").GetString());
+        Assert.Equal("Contract Join Requester", request.GetProperty("name").GetString());
         Assert.Equal(JsonValueKind.Null, request.GetProperty("decidedAt").ValueKind);
         var requestId = request.GetProperty("id").GetString();
 

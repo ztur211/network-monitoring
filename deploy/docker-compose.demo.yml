@@ -1,4 +1,4 @@
-# NodeScope 3D DEMO overlay — layered on the appliance base to pre-load the
+# NodeScope 3D DEMO overlay - layered on the appliance base to pre-load the
 # public "FZK-Haus" sample building so `up` gives you something to view right away.
 #
 #   docker compose \
@@ -25,7 +25,6 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env.demo}
-      FRONTEND_URL: ${PUBLIC_ORIGIN:-http://localhost:8080}
       STORAGE_DRIVER: fs
       STORAGE_FS_ROOT: /data/storage
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}

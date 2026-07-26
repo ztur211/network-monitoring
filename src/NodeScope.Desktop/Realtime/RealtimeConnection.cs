@@ -15,7 +15,7 @@ namespace NodeScope.Desktop.Realtime;
 /// </summary>
 internal sealed class RealtimeConnection : IRealtimeConnection
 {
-    /// <summary>The hub method serving <c>v1:ai:message</c> (socket.io events map to methods).</summary>
+    /// <summary>The hub method serving <c>v1:ai:message</c>.</summary>
     private const string AiMessageMethod = "AiMessage";
 
     /// <summary>The hub method serving <c>v1:metrics:submit</c>.</summary>

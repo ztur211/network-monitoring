@@ -29,8 +29,8 @@ Windows PowerShell:
 The script:
 
 1. Generates git-ignored development secrets in `deploy/.env.desktop-dev`.
-2. Builds and starts PostgreSQL, the ASP.NET Core API, and the same-origin web
-   entry point at `http://localhost:8080`.
+2. Builds and starts PostgreSQL, the ASP.NET Core API, and the same-origin Caddy
+   gateway at `http://localhost:8080`.
 3. Applies EF Core migrations before the API starts serving.
 4. Seeds the Acme Networks organization, sample inventory, and sample IFC.
 5. Launches `src/NodeScope.Desktop`.
@@ -47,6 +47,8 @@ Sign in with:
 
 The desktop client signs in natively: enter the email and password in the app
 itself (or switch to "Create one" for a new account). No browser is involved.
+The demo seed already owns the appliance, so a newly created account needs an
+invitation from the seeded owner.
 
 ### Script options
 
@@ -58,7 +60,7 @@ itself (or switch to "Create one" for a new account). No browser is involved.
 | `--backend-only` | `-BackendOnly` | Start and seed the appliance without a GUI |
 | `--stop` | `-Stop` | Stop the appliance and keep its volumes |
 
-## Manual appliance setup
+## Manual demo setup
 
 Copy the appliance environment template:
 
@@ -72,8 +74,12 @@ Set at least:
 PUBLIC_ORIGIN=http://localhost:8080
 POSTGRES_PASSWORD=<openssl rand -base64 24>
 SECRET_ENCRYPTION_KEY=<openssl rand -base64 32>
+BOOTSTRAP_TOKEN=<openssl rand -base64 24>
 SEED_PASSWORD=devpassword123
 ```
+
+Generate each value with the matching `openssl` command and paste its output
+after `=`. The environment file does not evaluate shell expressions.
 
 Start the locally built appliance:
 
@@ -111,6 +117,36 @@ dotnet run --project src/NodeScope.Desktop
 
 The appliance has no browser surface; every user-facing interaction happens in
 the desktop client.
+
+## Clean appliance first run
+
+To test the same first-owner path used by a new production appliance, omit the
+demo overlay and seed:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.build.yml \
+  --env-file deploy/.env \
+  up -d --build --wait db api web
+```
+
+Then launch the desktop client:
+
+```bash
+dotnet run --project src/NodeScope.Desktop
+```
+
+Create the first account. It remains authenticated at the organization access
+screen. Expand "Setting up a new appliance?", enter an organization name, and
+paste the `BOOTSTRAP_TOKEN` value from `deploy/.env`. A successful claim makes
+that account the first OWNER and opens the workspace.
+
+Bootstrap succeeds only while the database contains zero organizations. Once
+the demo seed or a prior bootstrap has created one, use an invitation code
+instead. See
+[NodeScope Organizations](docs/product-knowledge/organizations.md) for the full
+membership lifecycle.
 
 ## Local map tiles
 
@@ -150,8 +186,7 @@ In another terminal:
 
 ```bash
 NODESCOPE_BASE_URL=http://127.0.0.1:5199 \
-NODESCOPE_REALTIME_TRANSPORT=signalr \
-dotnet test tests/NodeScope.ContractTests
+  dotnet test tests/NodeScope.ContractTests
 ```
 
 The disposable services use PostgreSQL on port 5433, Redis on 6380, and MinIO on
@@ -163,6 +198,10 @@ compose file keeps it available for parity and future multi-node work.
 | Symptom | Fix |
 | --- | --- |
 | API rejects `SECRET_ENCRYPTION_KEY` | Generate exactly 32 random bytes and store their base64 form. |
+| Bootstrap reports `ORG_016` | Set `BOOTSTRAP_TOKEN` for the API and restart it. |
+| Bootstrap reports `ORG_017` | Paste the exact token, without an environment variable name or surrounding quotes. |
+| Bootstrap reports `ORG_018` | The appliance is already claimed; sign in as an owner and create an invitation code. |
+| A new account stays at organization access | This is expected until it accepts an invitation, receives domain approval, or bootstraps a clean appliance. |
 | `demo-seed` requires a password | Set `SEED_PASSWORD` in the env file passed to Compose. |
 | The 3D viewport is empty | Re-run the demo seed with outbound internet available, or import an IFC from the client. |
 | The map reports missing tiles | Build the local region extract as described above. |

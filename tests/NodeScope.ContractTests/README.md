@@ -1,11 +1,9 @@
 # NodeScope.ContractTests
 
-The black-box parity suite (migration Decision 4). It talks to a running API over
-HTTP at a single `BASE_URL` and references **no** implementation project. It was
-green against the NestJS API before the port began, gated every module as it
-landed, and since the Decision 11 cutover it is the permanent integration suite
-for the C# host (chosen only by `NODESCOPE_BASE_URL`, default
-`http://localhost:3000`).
+The permanent black-box integration suite. It talks to a running appliance over
+HTTP and SignalR at a single `BASE_URL` and references **no** implementation
+project. The target is chosen only by `NODESCOPE_BASE_URL`, which defaults to
+`http://127.0.0.1:5199`.
 
 See [`COVERAGE.md`](./COVERAGE.md) for the endpoint/event work-list and status.
 
@@ -14,22 +12,20 @@ See [`COVERAGE.md`](./COVERAGE.md) for the endpoint/event work-list and status.
 The suite is only the *client*. Bring up the target first:
 
 ```bash
-# 1. test stack: throwaway db (5433), redis (6380), minio (9100)
+# 1. Test stack: throwaway database (5433), Redis (6380), and MinIO (9100).
 docker compose -f docker-compose.test.yml up -d
 
-# 2. the C# host on :5199 - it applies EF migrations on boot (a fresh DB gets
-#    the full schema); then the one-time seed (see "Seeding" below)
-scripts/run-csharp-host.sh &
-DATABASE_URL=postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test \
-  SECRET_ENCRYPTION_KEY=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE= \
-  ASPNETCORE_URLS=http://127.0.0.1:5198 \
-  SEED_PASSWORD=devpassword123 \
-  STORAGE_ENDPOINT=http://localhost:9100 STORAGE_BUCKET=nodescope-test \
-  STORAGE_ACCESS_KEY=minioadmin STORAGE_SECRET_KEY=minioadmin \
-  dotnet run --project src/NodeScope.Api -- seed
+# 2. Apply migrations and seed the disposable database.
+SEED_PASSWORD=devpassword123 scripts/run-csharp-host.sh seed
 
-# 3. run the suite (realtime is SignalR since the cutover)
-NODESCOPE_BASE_URL=http://127.0.0.1:5199 NODESCOPE_REALTIME_TRANSPORT=signalr \
+# 3. Start the API on :5199.
+scripts/run-csharp-host.sh
+```
+
+In another terminal:
+
+```bash
+NODESCOPE_BASE_URL=http://127.0.0.1:5199 \
   dotnet test tests/NodeScope.ContractTests
 ```
 
@@ -64,8 +60,7 @@ It connects with
 contract-test DB, `postgresql://nodescope:localdevpassword@localhost:5433/nodescope_test`)
 - this **must** name the same database the target under test writes to.
 
-The seed (`dotnet run --project src/NodeScope.Api -- seed`, the port of the
-Node-era `prisma/seed.ts`) creates:
+The seed (`scripts/run-csharp-host.sh seed`) creates:
 
 - `admin@nodescope.test` - super-admin, **no credential** (created via direct
   insert, so it cannot sign in; give it a password out-of-band, or grant
@@ -91,10 +86,12 @@ Fixtures/
   OrgProvisioning.cs     super-admin bootstrap + per-test org (-> ProvisionedOrg)
   SuperAdminGrant.cs     the one non-HTTP step: the super-admin DB grant (Npgsql)
   ContractApiFixture.cs  shared client + health gate + run-scoped super-admin (collection "Contract")
-Identity/                first module covered (auth, users, organizations, admin-orgs)
+  RealtimeClient.cs      semantic realtime test contract
+  SignalRRealtimeClient.cs public SignalR wire adapter
+Identity/                auth, users, organizations, and access contracts
+Realtime/                SignalR event routing and isolation contracts
 ```
 
-Responses are asserted as `JsonElement` rather than typed DTOs: `NodeScope.Contracts`
-is referenced (Decision 4) but still an empty skeleton, and black-box assertions on
-the wire shape are what parity requires. Introduce Contracts DTOs here only once
-they stabilize.
+Responses are asserted as `JsonElement` rather than typed DTOs. The suite
+references `NodeScope.Contracts` for stable cross-process constants and agent
+contracts, while black-box assertions keep the public JSON shape under test.

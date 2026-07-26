@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
 using NodeScope.Desktop.Tests.Fakes;
 using NodeScope.Desktop.ViewModels;
@@ -73,6 +74,25 @@ public sealed class MainWindowTests : IDisposable
         Assert.Equal("Owner", workspace.FindControl<TextBlock>("UserChip")!.Text);
         Assert.Equal("Map", workspace.FindControl<TextBlock>("SectionTitle")!.Text);
         Assert.Equal("Signed in as Owner - appliance.local", window.FindControl<TextBlock>("StatusText")!.Text);
+    }
+
+    [AvaloniaFact]
+    public async Task An_orgless_sign_in_switches_to_the_native_organization_gate()
+    {
+        var window = new MainWindow { DataContext = _shell };
+        window.Show();
+        _clients.Configure = client =>
+            client.AccessFailure = new ApplianceApiException("ORG_002", "NOT_AN_ORG_MEMBER", 403);
+
+        await _flow.SignInAsync(
+            Server, "teammate@acme.test", "devpassword123", CancellationToken.None);
+
+        Assert.IsType<OrganizationAccessViewModel>(_shell.Content);
+        Assert.Single(window.GetVisualDescendants().OfType<OrganizationAccessView>());
+        Assert.Empty(window.GetVisualDescendants().OfType<WorkspaceView>());
+        Assert.Equal(
+            "Organization access needed - appliance.local",
+            window.FindControl<TextBlock>("StatusText")!.Text);
     }
 
     [AvaloniaFact]

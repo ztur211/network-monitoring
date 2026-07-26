@@ -32,6 +32,8 @@ public class InvitationsContractTests
             org.OwnerAuth);
         Assert.Equal(HttpStatusCode.Created, invite.Status);
         var invitationId = invite.Data.GetProperty("invitation").GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(invite.Data.GetProperty("token").GetString()));
+        Assert.False(invite.Data.TryGetProperty("url", out _));
 
         var list = await _api.GetAsync("v1/organizations/me/invitations", org.OwnerAuth);
         Assert.Equal(HttpStatusCode.OK, list.Status);

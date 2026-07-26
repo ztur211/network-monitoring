@@ -10,6 +10,9 @@ internal enum SessionPhase
     /// <summary>The credential post (sign-in or sign-up) is in flight.</summary>
     SigningIn,
 
+    /// <summary>The session is valid, but the account does not belong to an organization yet.</summary>
+    NeedsOrganization,
+
     SignedIn,
 
     /// <summary>A stored session exists but the appliance did not answer; retry keeps it.</summary>
@@ -48,9 +51,10 @@ internal sealed class DesktopAuthFlow(
     public SessionSnapshot Current { get; private set; } = SessionSnapshot.SignedOut();
 
     /// <summary>
-    /// The live client + Bearer credential while <see cref="Current"/> is SignedIn; null
-    /// otherwise. Feature view models (map, inventory, …) call the API through this
-    /// instead of re-reading the vault per request.
+    /// The live client and Bearer credential while <see cref="Current"/> is
+    /// <see cref="SessionPhase.SignedIn"/> or <see cref="SessionPhase.NeedsOrganization"/>;
+    /// null otherwise. View models call the API through this instead of re-reading the
+    /// vault per request.
     /// </summary>
     public ApplianceSession? Session { get; private set; }
 
@@ -74,7 +78,8 @@ internal sealed class DesktopAuthFlow(
             var user = await client.GetCurrentUserAsync(entry.Token, cancellationToken);
             AuthLog.SessionRestored(logger, user.Email, entry.ServerUrl);
             Session = new ApplianceSession(client, entry.Token);
-            Publish(new SessionSnapshot(SessionPhase.SignedIn, entry.ServerUrl, user, null));
+            Publish(await ResolveOrganizationAsync(
+                client, entry.ServerUrl, user, entry.Token, cancellationToken));
         }
         catch (ApplianceApiException failure) when (failure.Status == 401)
         {
@@ -161,7 +166,8 @@ internal sealed class DesktopAuthFlow(
             var user = await client.GetCurrentUserAsync(token, cancellationToken);
             AuthLog.SignedIn(logger, user.Email, serverUrl);
             Session = new ApplianceSession(client, token);
-            Publish(new SessionSnapshot(SessionPhase.SignedIn, serverUrl, user, null));
+            Publish(await ResolveOrganizationAsync(
+                client, serverUrl, user, token, cancellationToken));
         }
         catch (ApplianceApiException failure)
         {
@@ -174,6 +180,41 @@ internal sealed class DesktopAuthFlow(
             Publish(new SessionSnapshot(
                 SessionPhase.SignedOut, serverUrl, null,
                 $"Could not reach the appliance: {failure.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Rechecks membership after the native access screen redeems an invitation. The
+    /// existing token and user stay in place; no credential round trip is needed.
+    /// </summary>
+    public async Task RefreshOrganizationAsync(CancellationToken cancellationToken)
+    {
+        if (Session is not { } session
+            || Current is not { User: { } user, ServerUrl: { } serverUrl }
+            || Current.Phase is not (SessionPhase.NeedsOrganization or SessionPhase.SignedIn))
+        {
+            return;
+        }
+
+        Publish(await ResolveOrganizationAsync(
+            session.Client, serverUrl, user, session.Token, cancellationToken));
+    }
+
+    private static async Task<SessionSnapshot> ResolveOrganizationAsync(
+        IApplianceClient client,
+        Uri serverUrl,
+        CurrentUser user,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await client.GetAccessSummaryAsync(token, cancellationToken);
+            return new SessionSnapshot(SessionPhase.SignedIn, serverUrl, user, null);
+        }
+        catch (ApplianceApiException failure) when (failure.Code == "ORG_002")
+        {
+            return new SessionSnapshot(SessionPhase.NeedsOrganization, serverUrl, user, null);
         }
     }
 
@@ -203,9 +244,9 @@ internal sealed class DesktopAuthFlow(
 
     private void Publish(SessionSnapshot snapshot)
     {
-        if (snapshot.Phase != SessionPhase.SignedIn)
+        if (snapshot.Phase is not (SessionPhase.SignedIn or SessionPhase.NeedsOrganization))
         {
-            Session = null; // invariant: a session exists exactly while signed in
+            Session = null; // authenticated phases are the only ones that own a live session
         }
 
         Current = snapshot;

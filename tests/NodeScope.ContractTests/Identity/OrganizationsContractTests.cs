@@ -48,6 +48,8 @@ public class OrganizationsContractTests
             .FirstOrDefault(m => m.GetProperty("userId").GetString() == owner.UserId);
         Assert.Equal(JsonValueKind.Object, ownerMembership.ValueKind);
         Assert.Equal("OWNER", ownerMembership.GetProperty("role").GetString());
+        Assert.Equal(owner.Email, ownerMembership.GetProperty("email").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(ownerMembership.GetProperty("name").GetString()));
     }
 
     [Fact]

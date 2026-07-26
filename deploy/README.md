@@ -1,7 +1,7 @@
 # NodeScope self-hosted appliance
 
 The supported deployment is a single Linux host running Docker Compose. Caddy
-serves one public origin and routes the web shell, ASP.NET Core API, SignalR hubs,
+serves one public origin and routes the ASP.NET Core API, SignalR hubs,
 local map tiles, and signed agent downloads.
 
 ## Requirements
@@ -26,13 +26,15 @@ The installer:
 
 1. Generates missing secrets in `deploy/.env`.
 2. Detects the host LAN address and records `PUBLIC_ORIGIN`.
-3. Pulls the versioned API, web, and tiles images.
+3. Pulls the versioned API, gateway, and tiles images.
 4. Builds the configured local map region.
 5. Starts the stack and waits for health checks.
 6. Smoke-tests the real same-origin routes through Caddy.
 
-Open the printed origin, create the first account, and enter that same origin in
-the native desktop client. Do not append `/api`.
+Open the native desktop client, enter the printed origin without an `/api`
+suffix, and create the first account. Expand "Setting up a new appliance?" and
+paste the bootstrap code printed by the installer to create the first
+organization and become its OWNER.
 
 Use an explicit origin for a fixed hostname or reverse proxy:
 
@@ -45,6 +47,51 @@ Skip the initial map extract when bringing up the rest of the product first:
 ```bash
 ./deploy/nodescope.sh install --no-tiles
 ```
+
+## Claiming the first organization
+
+The bootstrap credential is not an alternate sign-in password. It authorizes one
+specific transition from an empty database to the first organization.
+
+1. Run `./deploy/nodescope.sh install` and keep its final output private.
+2. Open NodeScope Desktop and create the first user account.
+3. Expand "Setting up a new appliance?" on the organization access screen.
+4. Enter the organization name and the printed bootstrap code.
+5. Select "Create first organization."
+
+The API creates the organization and OWNER membership atomically. It rejects
+every later bootstrap attempt once any organization exists, even if the
+credential is correct.
+
+If the terminal output is no longer available, a trusted host administrator can
+read `BOOTSTRAP_TOKEN` from the mode-0600 `deploy/.env` file. Do not send that
+file or its contents through chat, issue trackers, or screenshots.
+
+An upgraded appliance may gain a generated `BOOTSTRAP_TOKEN` in its environment.
+That does not reopen bootstrap when the database already contains an
+organization.
+
+## Adding people
+
+In NodeScope Desktop, an OWNER or ADMIN opens Settings > Organization and enters
+the teammate's email address.
+
+- OWNER can create MEMBER, ADMIN, or OWNER invitations.
+- ADMIN can create MEMBER invitations.
+- The resulting `nodescope-invite-v1:<token>` code is shown only once.
+- The code expires after seven days and only the invited email can redeem it.
+- Creating a replacement invitation for the same email invalidates the previous
+  pending code.
+
+Send the code directly to the intended person. They create an account or sign in
+with the invited email and paste the code at the native organization access
+screen.
+
+Domain-based access requests are available only for domains already claimed by
+platform administration. The desktop does not currently expose domain claiming,
+so invitation codes are the normal self-hosted workflow. See
+[NodeScope Organizations](../docs/product-knowledge/organizations.md) for role
+rules, approval behavior, and error meanings.
 
 ## Appliance commands
 
@@ -102,6 +149,7 @@ Important values:
 | `PUBLIC_ORIGIN` | Exact desktop-facing origin |
 | `POSTGRES_PASSWORD` | Appliance database password |
 | `SECRET_ENCRYPTION_KEY` | Base64 encoding of exactly 32 random bytes |
+| `BOOTSTRAP_TOKEN` | Credential accepted only while zero organizations exist |
 | `WEB_PORT` | Host port mapped to Caddy, default 8080 |
 | `TRUST_PROXY` | Number of trusted proxy hops in front of the API |
 | `STORAGE_DRIVER` | `fs` by default, or `s3` |
@@ -114,11 +162,12 @@ Generate secrets with:
 
 ```bash
 openssl rand -base64 24
-openssl rand -base64 48
 openssl rand -base64 32
+openssl rand -base64 24
 ```
 
-The third output is suitable for `SECRET_ENCRYPTION_KEY`.
+Use the first output for `POSTGRES_PASSWORD`, the second for
+`SECRET_ENCRYPTION_KEY`, and the third for `BOOTSTRAP_TOKEN`.
 
 ## Map tiles
 
@@ -183,7 +232,7 @@ docker compose \
   up -d --build --wait
 ```
 
-The web image includes whatever signed payload is present in
+The gateway image includes whatever signed payload is present in
 `deploy/agent-dist/`. Create it before building a release image:
 
 ```bash
@@ -222,6 +271,7 @@ PEM signature verification.
 
 - `docker compose ... ps` should show every long-running service healthy.
 - `./deploy/nodescope.sh smoke` should pass through the public origin.
+- The appliance root should return 404 because there is no browser surface.
 - Container logs are size-limited by the Compose configuration.
 - Services use `restart: unless-stopped`.
 - Keep `deploy/.env`, signing keys, and backups out of version control.

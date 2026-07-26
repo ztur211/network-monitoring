@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             x:Class="NodeScope.Desktop.Views.OrganizationAccessView"
+             x:DataType="vm:OrganizationAccessViewModel">
+
+  <Grid RowDefinitions="Auto,*">
+    <Border Grid.Row="0" Padding="12,8">
+      <DockPanel>
+        <Button Name="SignOutButton"
+                DockPanel.Dock="Right"
+                Command="{Binding SignOutCommand}"
+                Content="Sign out" />
+        <TextBlock VerticalAlignment="Center"
+                   FontWeight="SemiBold"
+                   Text="NodeScope" />
+      </DockPanel>
+    </Border>
+
+    <Border Grid.Row="1"
+            Width="500"
+            Padding="28"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            CornerRadius="14"
+            BorderThickness="1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel Spacing="14">
+        <TextBlock FontSize="24"
+                   FontWeight="SemiBold"
+                   Text="Join your organization" />
+        <TextBlock Opacity="0.72"
+                   TextWrapping="Wrap"
+                   Text="{Binding UserLabel, StringFormat='Signed in as {0}. Your account is ready, but it does not belong to an organization yet.'}" />
+
+        <Border Height="1"
+                Margin="0,4"
+                Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+
+        <TextBlock FontWeight="SemiBold" Text="Use an invitation" />
+        <TextBlock FontSize="12"
+                   Opacity="0.65"
+                   TextWrapping="Wrap"
+                   Text="Paste the invitation code from an owner or administrator. Full invite links from older NodeScope versions work too." />
+        <TextBox Name="InvitationCodeBox"
+                 PlaceholderText="Invitation code"
+                 Text="{Binding InvitationInput}"
+                 IsEnabled="{Binding !Busy}" />
+        <Button Name="AcceptInvitationButton"
+                Classes="accent"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding AcceptInvitationCommand}"
+                IsEnabled="{Binding !Busy}"
+                Content="Join organization" />
+
+        <Border Height="1"
+                Margin="0,4"
+                Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+
+        <TextBlock FontWeight="SemiBold" Text="Request access by email domain" />
+        <TextBlock FontSize="12"
+                   Opacity="0.65"
+                   TextWrapping="Wrap"
+                   Text="If your organization has claimed your email domain, send its administrators an access request." />
+        <Button Name="RequestAccessButton"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding RequestAccessCommand}"
+                IsEnabled="{Binding !Busy}"
+                Content="Request access" />
+
+        <Expander Name="BootstrapExpander"
+                  Header="Setting up a new appliance?">
+          <StackPanel Margin="0,10,0,0" Spacing="8">
+            <TextBlock FontSize="12"
+                       Opacity="0.65"
+                       TextWrapping="Wrap"
+                       Text="The first user can create the first organization with the one-time bootstrap code printed by nodescope.sh install. This closes permanently after one organization exists." />
+            <TextBox Name="OrganizationNameBox"
+                     PlaceholderText="Organization name"
+                     Text="{Binding OrganizationName}"
+                     IsEnabled="{Binding !Busy}" />
+            <TextBox Name="BootstrapTokenBox"
+                     PlaceholderText="Bootstrap code"
+                     PasswordChar="•"
+                     Text="{Binding BootstrapToken}"
+                     IsEnabled="{Binding !Busy}" />
+            <Button Name="BootstrapOrganizationButton"
+                    Command="{Binding BootstrapOrganizationCommand}"
+                    IsEnabled="{Binding !Busy}"
+                    Content="Create first organization" />
+          </StackPanel>
+        </Expander>
+
+        <ProgressBar Name="BusyIndicator"
+                     Height="3"
+                     IsIndeterminate="True"
+                     IsVisible="{Binding Busy}" />
+        <TextBlock Name="AccessStatus"
+                   Foreground="{DynamicResource SystemAccentColor}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding Status}" />
+        <TextBlock Name="AccessError"
+                   Foreground="{DynamicResource SystemErrorTextColor}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding Error}" />
+      </StackPanel>
+    </Border>
+  </Grid>
+
+</UserControl>

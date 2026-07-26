@@ -26,6 +26,78 @@ internal interface IApplianceClient : IDisposable
     /// <summary><c>POST /api/v1/auth/sign-out</c>: deletes the session behind the token.</summary>
     public Task SignOutAsync(string bearerToken, CancellationToken cancellationToken);
 
+    // --- organization access ----------------------------------------------
+
+    /// <summary>
+    /// <c>GET /api/v1/organizations/me</c>. An authenticated account that has not
+    /// joined an organization receives 403 <c>ORG_002</c>.
+    /// </summary>
+    public Task<OrganizationSummary> GetOrganizationAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/bootstrap/organization</c>: claims a fresh appliance with
+    /// its installer-generated one-time credential.
+    /// </summary>
+    public Task<OrganizationSummary> BootstrapOrganizationAsync(
+        string bearerToken,
+        string organizationName,
+        string bootstrapToken,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/organizations/me/members</c>.</summary>
+    public Task<IReadOnlyList<OrganizationMember>> GetOrganizationMembersAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/organizations/me/invitations</c>. The token is returned
+    /// exactly once so an administrator can pass it to the invited person.
+    /// </summary>
+    public Task<CreatedInvitation> CreateInvitationAsync(
+        string bearerToken,
+        string email,
+        string role,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/organizations/me/invitations</c>.</summary>
+    public Task<IReadOnlyList<PendingInvitation>> GetInvitationsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>DELETE /api/v1/organizations/me/invitations/{id}</c>.</summary>
+    public Task RevokeInvitationAsync(
+        string bearerToken,
+        string invitationId,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>POST /api/v1/invitations/accept</c>.</summary>
+    public Task AcceptInvitationAsync(
+        string bearerToken,
+        string invitationToken,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>POST /api/v1/join-requests</c>: asks the organization claiming the
+    /// caller's email domain for access.
+    /// </summary>
+    public Task SubmitJoinRequestAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    /// <summary><c>GET /api/v1/organizations/me/join-requests</c>.</summary>
+    public Task<IReadOnlyList<OrganizationJoinRequest>> GetJoinRequestsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    /// <summary>Approves or denies one pending organization join request.</summary>
+    public Task DecideJoinRequestAsync(
+        string bearerToken,
+        string joinRequestId,
+        bool approve,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// True when the appliance serves the rasterized map style - false means the region
     /// extract has not been built yet (<c>nodescope.sh tiles</c>) and tiles would 404.

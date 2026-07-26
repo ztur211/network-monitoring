@@ -3,11 +3,9 @@ using NodeScope.ContractTests.Inventory;
 namespace NodeScope.ContractTests.Realtime;
 
 /// <summary>
-/// Contract for the realtime surface behind the transport-agnostic
-/// <see cref="IRealtimeClient"/> (Decision 4). Parity here is asserted on semantics -
-/// which event fires, with which payload, to which subscribers - not on the wire, so the
-/// same tests carry from socket.io (Node) to SignalR (C#) by swapping the client impl.
-/// This first slice proves the adapter end to end: bearer-authenticated connect, both
+/// Contract for the realtime surface behind <see cref="IRealtimeClient"/>. The suite
+/// asserts which event fires, with which payload, to which subscribers. This first
+/// slice proves the SignalR adapter end to end: bearer-authenticated connect, both
 /// server-to-client fan-out modes (scoped entity events and the owner-room network event),
 /// the client-to-server ping/pong round-trip, and - the load-bearing one - that events do
 /// not cross the org boundary. Each test provisions its own isolated org(s).

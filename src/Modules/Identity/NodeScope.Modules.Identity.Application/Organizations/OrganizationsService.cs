@@ -20,7 +20,9 @@ public sealed record OrganizationMemberDto(
     string UserId,
     string OrganizationId,
     string Role,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? Email,
+    string? Name);
 
 /// <summary>The changeset surface of an Organization (Node's <c>ORG_WRITABLE_FIELDS</c>).</summary>
 public static class OrganizationFields
@@ -191,9 +193,12 @@ public sealed record OrganizationMemberRecord(
     string UserId,
     string OrganizationId,
     string Role,
-    DateTime CreatedAt)
+    DateTime CreatedAt,
+    string? Email = null,
+    string? Name = null)
 {
-    public OrganizationMemberDto ToDto() => new(Id, UserId, OrganizationId, Role, CreatedAt);
+    public OrganizationMemberDto ToDto() => new(
+        Id, UserId, OrganizationId, Role, CreatedAt, Email, Name);
 }
 
 /// <summary>Organization and membership persistence.</summary>

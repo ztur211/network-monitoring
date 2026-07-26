@@ -39,7 +39,7 @@ docker compose \
 ```
 
 Add `-f deploy/docker-compose.build.yml` before `--env-file` to build the API and
-web images from the current checkout.
+gateway images from the current checkout.
 
 Verify the user-facing route:
 

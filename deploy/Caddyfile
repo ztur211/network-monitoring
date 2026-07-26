@@ -11,7 +11,7 @@
 {$SITE_ADDRESS::80} {
 	encode zstd gzip
 
-	# API + realtime → the ASP.NET Core service (same origin as the web app).
+	# API + realtime → the ASP.NET Core service on the appliance origin.
 	# reverse_proxy transparently handles the SignalR WebSocket upgrade.
 	handle /api/* {
 		reverse_proxy {$API_UPSTREAM:api:3000}
@@ -31,14 +31,14 @@
 	# Agent distribution (Decision 13): binaries, manifest, and installers baked
 	# into this image at /srv/agent, staged by scripts/agent-release/build.sh.
 	# A dedicated handle so a missing file 404s - the agent's update check must
-	# see 404, never the SPA's index.html fallback.
+	# never receive an unrelated response.
 	handle /agent/* {
 		root * /srv
 		file_server
 	}
 
 	# Everything else → the API host, which answers with its JSON 404: no browser
-	# surface exists (the desktop signs in natively against /api/auth), and no
+	# surface exists (the desktop signs in natively against /api/v1/auth), and no
 	# catchall HTML either - which is also what the agent's update check and the
 	# desktop's error mapping want.
 	handle {

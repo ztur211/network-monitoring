@@ -2,7 +2,7 @@
 # One command to launch the NodeScope appliance and native desktop client.
 #
 # The appliance compose provides PostgreSQL, the ASP.NET Core API, and the
-# same-origin transition web client at http://localhost:8080. The foreground
+# same-origin Caddy gateway at http://localhost:8080. The foreground
 # application is the Avalonia client in src/NodeScope.Desktop.
 #
 # The desktop viewer needs a real display + GPU, so run this where you have a GUI.
@@ -59,6 +59,7 @@ if [ "$DO_BACKEND" = 1 ]; then
       echo "PUBLIC_ORIGIN=${ORIGIN}"
       echo "POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '\n')"
       echo "SECRET_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')"
+      echo "BOOTSTRAP_TOKEN=desktop-dev-bootstrap"
       echo "SEED_PASSWORD=${SEED_PASSWORD:-devpassword123}"
     } >"$ENV_FILE"
   fi

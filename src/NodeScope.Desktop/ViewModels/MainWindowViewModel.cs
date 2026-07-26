@@ -61,8 +61,8 @@ internal sealed partial class MainWindowViewModel : IDisposable
 
     private void Apply(SessionSnapshot snapshot)
     {
-        // A replaced workspace releases its feature view models (map layers, timers).
-        var previous = Content as WorkspaceViewModel;
+        // Replaced signed-in surfaces release feature view models, timers, and tokens.
+        var previous = Content as IDisposable;
 
         if (snapshot is { Phase: SessionPhase.SignedIn, User: not null, ServerUrl: not null }
             && _flow.Session is { } session)
@@ -80,6 +80,18 @@ internal sealed partial class MainWindowViewModel : IDisposable
                 _realtimeFactory.Create(snapshot.ServerUrl, session.Token));
             Content = workspace;
             Status = $"Signed in as {workspace.UserLabel} - {snapshot.ServerUrl.Host}";
+            previous?.Dispose();
+            return;
+        }
+
+        if (snapshot is { Phase: SessionPhase.NeedsOrganization, User: not null, ServerUrl: not null }
+            && _flow.Session is { } pendingSession)
+        {
+            SignIn.Apply(snapshot);
+            var access = new OrganizationAccessViewModel(
+                _flow, pendingSession, snapshot.User, snapshot.ServerUrl);
+            Content = access;
+            Status = $"Organization access needed - {snapshot.ServerUrl.Host}";
             previous?.Dispose();
             return;
         }

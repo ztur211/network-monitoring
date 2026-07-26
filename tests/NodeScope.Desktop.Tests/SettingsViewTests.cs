@@ -57,14 +57,32 @@ public sealed class SettingsViewTests : IDisposable
     public async Task Manage_sections_show_for_an_owner_and_hide_for_a_member()
     {
         var owner = await CreateShownViewAsync();
+        Assert.True(owner.FindControl<StackPanel>("OrganizationManagePanel")!.IsVisible);
         Assert.True(owner.FindControl<Border>("AgentsCard")!.IsVisible);
         Assert.True(owner.FindControl<Border>("SnmpCard")!.IsVisible);
         _viewModel!.Dispose();
 
         _client.AccessToReturn = new AccessSummary("MEMBER", [], false);
         var member = await CreateShownViewAsync();
+        Assert.Equal("Acme Networks", member.FindControl<TextBlock>("OrganizationName")!.Text);
+        Assert.False(member.FindControl<StackPanel>("OrganizationManagePanel")!.IsVisible);
         Assert.False(member.FindControl<Border>("AgentsCard")!.IsVisible);
         Assert.False(member.FindControl<Border>("SnmpCard")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task Creating_an_invitation_reveals_the_copyable_native_code()
+    {
+        var view = await CreateShownViewAsync();
+        _viewModel!.InviteEmail = "teammate@acme.test";
+
+        await _viewModel.CreateInvitationCommand.ExecuteAsync(null);
+        view.UpdateLayout();
+
+        Assert.Equal(
+            "nodescope-invite-v1:invite-token-1",
+            view.FindControl<TextBox>("InvitationCodeBox")!.Text);
+        Assert.Equal(1, view.FindControl<ItemsControl>("InvitationList")!.ItemCount);
     }
 
     [AvaloniaFact]

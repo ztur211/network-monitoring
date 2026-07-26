@@ -1,14 +1,13 @@
 # Contract suite coverage
 
-Tracks the black-box contract suite (migration Decision 4 / Sequencing step 2)
-against the NestJS API: **121 HTTP endpoints + the Better Auth surface + 49
-websocket events**, green against Node before the C# port begins, then re-run
-against the C# host as modules land.
+Tracks the permanent black-box contract suite for the ASP.NET Core appliance.
+The suite began as a migration parity catalogue for 121 HTTP endpoints, the
+retired auth surface, and 49 realtime events. It now verifies the native auth,
+HTTP, and SignalR contracts directly against the current host.
 
 Status legend: `[x]` covered · `[~]` partial · `[ ]` not started.
 
-Grouped by the **target C# module** (Decision 2), not by the current Nest
-controller, so the tracker doubles as the port work-list.
+Grouped by the owning C# module.
 
 ---
 
@@ -23,6 +22,12 @@ shim on 2026-07-26; envelope + raw Bearer token, no cookies)
 - [x] POST `/api/v1/auth/sign-out` (204; token dead immediately; repeat is 401 `AUTH_002`)
 - get-session and request-password-reset died with the shim: the desktop reads
   `/api/v1/users/me` instead, and no email sender exists to make reset real
+
+**First-organization bootstrap**
+- [x] POST `/api/v1/bootstrap/organization` (authenticated, but intentionally
+      outside the organization guard; invalid token `ORG_017`, already-claimed
+      appliance `ORG_018`; the success path is proven by the desktop
+      empty-database E2E)
 
 **users.controller** (6)
 - [x] GET `/api/v1/users/me`
@@ -197,13 +202,12 @@ credential families (Decision 7) carried by `Auth.WithHeader`.
 
 ## Realtime  (49 websocket events, under `Realtime/`)
 
-Protocol changes socket.io -> SignalR, so parity is asserted on **semantics**
-(which event fires, with which payload, to which subscribers) behind one client
-adapter, not at the wire level (Decision 4).
-- [x] Adapter interface + socket.io implementation (`Fixtures/RealtimeClient.cs`:
-      `IRealtimeClient` + `SocketIoRealtimeClient` over SocketIOClient; cookie-authed
-      connect, buffered consume-once `WaitForEventAsync`, ping/pong, unauth rejection,
-      **cross-org scope isolation**, and the onHome readiness barrier - `Realtime/RealtimeScaffold.cs`)
+The suite asserts **semantics**: which event fires, with which payload, to which
+subscribers.
+- [x] SignalR adapter (`Fixtures/{RealtimeClient,SignalRRealtimeClient}.cs`):
+      Bearer-authenticated connect, buffered consume-once `WaitForEventAsync`,
+      ping/pong, unauthenticated rejection, **cross-org scope isolation**, and the
+      onHome readiness barrier in `Realtime/RealtimeScaffold.cs`
 - [x] Device / circuit / fiber-run / connection / network mutation events
       (device, circuit, fiber-run, and connection updated + deleted, network updated on
       create, charter added + removed - added carries the charter id, removed only the pair;
@@ -241,17 +245,17 @@ adapter, not at the wire level (Decision 4).
 
 ---
 
-**Done so far:** 260 tests green - every HTTP endpoint and websocket event in the
+**Current result:** 259 tests green - every HTTP endpoint and reachable SignalR event in the
 tracker is covered (or explicitly excluded with its reason inline above). The suite
-is the complete parity gate for the C# port.
+is the permanent black-box integration gate for the appliance.
 
 Running the full suite trips the interactive-client rate limits (hundreds of
 sign-ups from one IP), so the non-production throttle limits are env-overridable
 (`THROTTLE_DEFAULT_LIMIT`/`THROTTLE_AUTH_LIMIT` - the route-level strict auth and
-enroll throttles honor the same variable) and `run-contract-target.sh` lifts them.
-Production limits stay hardcoded.
+enroll throttles honor the same variable), and `scripts/run-csharp-host.sh` lifts
+them for the local non-production target. Production limits stay hardcoded.
 
-- **Identity (24 → 64):** org-free and seeded-owner read/mutation paths, both auth
+- **Identity:** org-free and seeded-owner read/mutation paths, native auth
   credential forms, the success and error (`AUTH_002`, `ORG_002`) envelopes, plus
   the **super-admin bootstrap + per-test org provisioning** harness
   (`Fixtures/{SuperAdminGrant,OrgProvisioning}.cs`,
@@ -260,12 +264,12 @@ Production limits stay hardcoded.
   full member-management matrix with the ORG_013 last-owner invariant, the
   invitation/join-request error envelopes, the access summary, the team surface
   (idempotent associations, scope-filtered list, TEAM_002/SYNC_001), the
-  member-assignment guards (PERM_002/PERM_003), and the desktop PKCE flow end to
-  end - the exchanged code yields a working Bearer session that revoke kills.
-- **Inventory (44 → 86):** properties, networks, circuits, and devices under
+  member-assignment guards (PERM_002/PERM_003), native sign-up and sign-in, and
+  first-organization bootstrap closure.
+- **Inventory:** properties, networks, circuits, and devices under
   `tests/NodeScope.ContractTests/Inventory/`. Each test grabs an isolated org via
-  `fixture.ProvisionOrgAsync()` (fresh org + fresh OWNER, `org.OwnerCookie` /
-  `org.OwnerBearer`). Device placement needs a chartered site, so
+  `fixture.ProvisionOrgAsync()` (fresh org + fresh OWNER, `org.OwnerAuth`).
+  Device placement needs a chartered site, so
   `Inventory/InventoryScaffold.cs` assembles a SITE + the org's network + a charter
   (a real operator flow over HTTP) - the arrange step for every device test and the
   device-linked circuit. Covers the CRUD envelopes, the changeset `SYNC_001`
@@ -308,9 +312,8 @@ Production limits stay hardcoded.
 - **Assistant (3):** the AI HTTP surface in the degraded mode the target runs in - the
   usage counters with their limits, the auth gate, and the GEN_002 conversation-delete
   envelope (the only reachable one while the provider never persists conversations).
-- **Realtime adapter (47):** the transport-agnostic `IRealtimeClient` and its socket.io
-  implementation (`Fixtures/RealtimeClient.cs`, over the SocketIOClient NuGet), proven end
-  to end against the Node gateway: a cookie-authenticated connect, all three fan-out modes
+- **Realtime adapter (47):** the `IRealtimeClient` SignalR implementation, proven end
+  to end against the ASP.NET Core host with Bearer authentication and all three fan-out modes
   (the scoped device/circuit/fiber-run/connection updated + deleted events, the owner-room
   network event, and the org-room member added/updated/removed events), a property-created
   event, the org rename asserted realtime-silent, the ping/pong round-trip, an unauthenticated
@@ -350,5 +353,5 @@ Production limits stay hardcoded.
   a socket has joined its rooms, so waiting for it guarantees a later mutation can be seen.
   The interface is the invariant; the SignalR implementation drops in behind it at the port.
 
-With the tracker closed, the suite's next job is its real one: run unchanged
-against the C# host as each module lands, and stay green.
+With the migration closed, the suite remains the release gate for every API and
+realtime change.

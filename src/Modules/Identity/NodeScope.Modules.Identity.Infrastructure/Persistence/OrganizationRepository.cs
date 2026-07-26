@@ -27,12 +27,25 @@ internal sealed class OrganizationRepository : IOrganizationRepository
         string organizationId,
         CancellationToken cancellationToken)
     {
-        var rows = await _db.OrganizationMembers
-            .Where(m => m.OrganizationId == organizationId)
-            .OrderBy(m => m.CreatedAt)
+        var rows = await (
+            from member in _db.OrganizationMembers
+            join user in _db.Users on member.UserId equals user.Id
+            where member.OrganizationId == organizationId
+            orderby member.CreatedAt
+            select new { Member = member, user.Email, user.Name })
             .AsNoTracking()
             .ToListAsync(cancellationToken);
-        return [.. rows.Select(ToRecord)];
+        return
+        [
+            .. rows.Select(row => new OrganizationMemberRecord(
+                row.Member.Id,
+                row.Member.UserId,
+                row.Member.OrganizationId,
+                IdentityLabels.Of(row.Member.Role),
+                row.Member.CreatedAt,
+                row.Email,
+                row.Name)),
+        ];
     }
 
     public async Task<OrganizationMemberRecord?> FindMemberAsync(

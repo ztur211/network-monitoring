@@ -23,8 +23,8 @@ internal sealed class ApplianceClientFactory : IApplianceClientFactory, IDisposa
 
     private readonly SocketsHttpHandler _handler = new()
     {
-        // The appliance sets cookies for the browser flow; the desktop client is Bearer-only
-        // and must never accidentally hold a cookie session.
+        // Native user auth is Bearer-only. Keeping cookies disabled prevents a proxy or
+        // unrelated upstream response from creating ambient authentication state.
         UseCookies = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
     };

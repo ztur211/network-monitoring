@@ -55,6 +55,43 @@ public sealed class DesktopAuthFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task An_orgless_account_keeps_its_session_and_lands_at_the_access_gate()
+    {
+        _clients.Configure = client =>
+        {
+            client.UserToReturn = new CurrentUser(
+                "user-2", "teammate@acme.test", "New Teammate");
+            client.AccessFailure = new ApplianceApiException("ORG_002", "NOT_AN_ORG_MEMBER", 403);
+        };
+
+        await _flow.SignUpAsync(
+            Server, "New Teammate", "teammate@acme.test", "devpassword123", CancellationToken.None);
+
+        Assert.Equal(SessionPhase.NeedsOrganization, _flow.Current.Phase);
+        Assert.Equal("teammate@acme.test", _flow.Current.User?.Email);
+        Assert.Equal(new VaultEntry(Server, "session-token-1"), _vault.Entry);
+        Assert.Equal("session-token-1", _flow.Session?.Token);
+    }
+
+    [Fact]
+    public async Task Refresh_after_invitation_acceptance_enters_the_workspace_without_reauthenticating()
+    {
+        _clients.Configure = client =>
+            client.AccessFailure = new ApplianceApiException("ORG_002", "NOT_AN_ORG_MEMBER", 403);
+        await _flow.SignInAsync(
+            Server, "teammate@acme.test", "devpassword123", CancellationToken.None);
+        var client = _clients.Last;
+        Assert.Equal(SessionPhase.NeedsOrganization, _flow.Current.Phase);
+
+        client.AccessFailure = null;
+        await _flow.RefreshOrganizationAsync(CancellationToken.None);
+
+        Assert.Equal(SessionPhase.SignedIn, _flow.Current.Phase);
+        Assert.Equal(1, client.CredentialPosts);
+        Assert.Equal("session-token-1", _flow.Session?.Token);
+    }
+
+    [Fact]
     public async Task Rejected_credentials_surface_the_server_message_and_stay_signed_out()
     {
         _clients.Configure = client =>
@@ -117,6 +154,20 @@ public sealed class DesktopAuthFlowTests : IDisposable
         Assert.Equal(SessionPhase.SignedIn, _flow.Current.Phase);
         Assert.Equal("vaulted-token", _clients.Last.LastBearerToken);
         Assert.NotNull(_vault.Entry); // still vaulted
+    }
+
+    [Fact]
+    public async Task Restore_resumes_an_orgless_account_at_the_access_gate()
+    {
+        _vault.Entry = new VaultEntry(Server, "vaulted-token");
+        _clients.Configure = client =>
+            client.AccessFailure = new ApplianceApiException("ORG_002", "NOT_AN_ORG_MEMBER", 403);
+
+        await _flow.RestoreAsync(CancellationToken.None);
+
+        Assert.Equal(SessionPhase.NeedsOrganization, _flow.Current.Phase);
+        Assert.Equal("vaulted-token", _flow.Session?.Token);
+        Assert.NotNull(_vault.Entry);
     }
 
     [Fact]

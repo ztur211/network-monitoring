@@ -1,16 +1,11 @@
 namespace NodeScope.ContractTests.Fixtures;
 
 /// <summary>
-/// Which realtime wire the suite speaks. The parity contract is semantic (which event, which
-/// payload, which subscriber), so the same tests run against Node's socket.io gateway and the
-/// C# host's SignalR hub - this picks the client for the target under test.
+/// Names the SignalR wire contract exercised by the black-box suite.
 /// </summary>
 public static class RealtimeTransport
 {
-    /// <summary>Set to <c>signalr</c> when the target is the C# host.</summary>
-    public const string Variable = "NODESCOPE_REALTIME_TRANSPORT";
-
-    /// <summary>Where the C# host serves the hub.</summary>
+    /// <summary>Where the appliance serves the hub.</summary>
     public const string HubPath = "/hubs/v1";
 
     /// <summary>
@@ -36,11 +31,7 @@ public static class RealtimeTransport
         "v1:bcf:topic:created", "v1:bcf:topic:updated", "v1:bcf:comment:added",
     ];
 
-    public static bool UseSignalR =>
-        string.Equals(
-            Environment.GetEnvironmentVariable(Variable), "signalr", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>A client-to-server socket.io event mapped to the hub method serving it.</summary>
+    /// <summary>A client event name mapped to the hub method serving it.</summary>
     public static string ClientMethod(string eventName) => eventName switch
     {
         "v1:ping" => "Ping",
@@ -52,9 +43,6 @@ public static class RealtimeTransport
     /// <summary>True when the hub method takes the emitted payload as its argument.</summary>
     public static bool MethodTakesPayload(string eventName) => eventName is not "v1:ping";
 
-    /// <summary>A client for the configured transport, unconnected.</summary>
-    public static IRealtimeClient Create() =>
-        UseSignalR
-            ? new SignalRRealtimeClient(new Uri(TestConfig.BaseUrl))
-            : new SocketIoRealtimeClient(new Uri(TestConfig.BaseUrl));
+    /// <summary>An unconnected client for the current appliance.</summary>
+    public static IRealtimeClient Create() => new SignalRRealtimeClient(new Uri(TestConfig.BaseUrl));
 }

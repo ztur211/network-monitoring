@@ -23,6 +23,9 @@ internal static class MembershipEndpoints
         admin.MapPost("/{id}/domains", AddDomainAsync);
         admin.MapPost("/{id}/owner", DesignateOwnerAsync);
 
+        app.MapPost("/api/v1/bootstrap/organization", BootstrapOrganizationAsync)
+            .RequireAuthorization();
+
         var invitations = app.MapGroup("/api/v1/organizations/me/invitations")
             .RequireOrgRoles(OrgRoleNames.Owner, OrgRoleNames.Admin);
         invitations.MapPost("", CreateInvitationAsync);
@@ -60,6 +63,17 @@ internal static class MembershipEndpoints
         Validate(body.Validate());
         await service.AddDomainAsync(id, body.NormalizedDomain, cancellationToken);
         return ApiEnvelope.Created(null);
+    }
+
+    private static async Task<IResult> BootstrapOrganizationAsync(
+        BootstrapOrganizationRequest body,
+        ClaimsPrincipal user,
+        MembershipService service,
+        CancellationToken cancellationToken)
+    {
+        Validate(body.Validate());
+        return ApiEnvelope.Created(await service.BootstrapOrganizationAsync(
+            UserId(user), body.Name!.Trim(), body.Token!, cancellationToken));
     }
 
     private static async Task<IResult> DesignateOwnerAsync(

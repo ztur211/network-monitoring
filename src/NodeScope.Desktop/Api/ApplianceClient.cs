@@ -56,6 +56,101 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
         await ReadEnvelopeDataAsync(response, cancellationToken);
     }
 
+    // --- organization access ----------------------------------------------
+
+    public Task<OrganizationSummary> GetOrganizationAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataAsync<OrganizationSummary>(
+            "api/v1/organizations/me", bearerToken, cancellationToken);
+
+    public Task<OrganizationSummary> BootstrapOrganizationAsync(
+        string bearerToken,
+        string organizationName,
+        string bootstrapToken,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<BootstrapOrganizationRequest, OrganizationSummary>(
+            HttpMethod.Post,
+            "api/v1/bootstrap/organization",
+            bearerToken,
+            new BootstrapOrganizationRequest(organizationName, bootstrapToken),
+            cancellationToken);
+
+    public Task<IReadOnlyList<OrganizationMember>> GetOrganizationMembersAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<OrganizationMember>(
+            "api/v1/organizations/me/members", bearerToken, cancellationToken);
+
+    public Task<CreatedInvitation> CreateInvitationAsync(
+        string bearerToken,
+        string email,
+        string role,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateInvitationRequest, CreatedInvitation>(
+            HttpMethod.Post,
+            "api/v1/organizations/me/invitations",
+            bearerToken,
+            new CreateInvitationRequest(email, role),
+            cancellationToken);
+
+    public Task<IReadOnlyList<PendingInvitation>> GetInvitationsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<PendingInvitation>(
+            "api/v1/organizations/me/invitations", bearerToken, cancellationToken);
+
+    public Task RevokeInvitationAsync(
+        string bearerToken,
+        string invitationId,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Delete,
+            $"api/v1/organizations/me/invitations/{Uri.EscapeDataString(invitationId)}",
+            bearerToken,
+            body: null,
+            cancellationToken);
+
+    public Task AcceptInvitationAsync(
+        string bearerToken,
+        string invitationToken,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Post,
+            "api/v1/invitations/accept",
+            bearerToken,
+            new AcceptInvitationRequest(invitationToken),
+            cancellationToken);
+
+    public Task SubmitJoinRequestAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Post,
+            "api/v1/join-requests",
+            bearerToken,
+            body: null,
+            cancellationToken);
+
+    public Task<IReadOnlyList<OrganizationJoinRequest>> GetJoinRequestsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<OrganizationJoinRequest>(
+            "api/v1/organizations/me/join-requests", bearerToken, cancellationToken);
+
+    public Task DecideJoinRequestAsync(
+        string bearerToken,
+        string joinRequestId,
+        bool approve,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Post,
+            $"api/v1/organizations/me/join-requests/{Uri.EscapeDataString(joinRequestId)}/"
+            + (approve ? "approve" : "deny"),
+            bearerToken,
+            body: null,
+            cancellationToken);
+
     public async Task<bool> ProbeTilesAsync(CancellationToken cancellationToken)
     {
         // Plain reachability, no envelope: the tile server speaks raw HTTP behind /tiles.
@@ -807,6 +902,24 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
                 (int)response.StatusCode);
     }
 
+    private async Task SendForNoDataAsync(
+        HttpMethod method,
+        string relativeUrl,
+        string bearerToken,
+        object? body,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, new Uri(relativeUrl, UriKind.Relative));
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body, options: Json);
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        _ = await ReadEnvelopeDataAsync(response, cancellationToken);
+    }
+
     private static HttpRequestMessage AuthorizedGet(string relativeUrl, string bearerToken)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, new Uri(relativeUrl, UriKind.Relative));
@@ -900,6 +1013,12 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
     private sealed record SignInRequest(string Email, string Password);
 
     private sealed record SignUpRequest(string Name, string Email, string Password);
+
+    private sealed record CreateInvitationRequest(string Email, string Role);
+
+    private sealed record AcceptInvitationRequest(string Token);
+
+    private sealed record BootstrapOrganizationRequest(string Name, string Token);
 
     private sealed record ActivateModelVersionRequest(string VersionId);
 

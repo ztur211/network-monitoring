@@ -4,9 +4,8 @@ using Microsoft.AspNetCore.SignalR.Client;
 namespace NodeScope.ContractTests.Fixtures;
 
 /// <summary>
-/// SignalR implementation of <see cref="IRealtimeClient"/>, the C# host's side of the same
-/// parity contract the socket.io client covers against Node (Decision 4). Inbound events are
-/// captured through one catch-all handler per known event name into a shared buffer, so an
+/// SignalR implementation of <see cref="IRealtimeClient"/>. Inbound events are captured
+/// through one handler per known event name into a shared buffer, so an
 /// event arriving between connect and the wait meant for it is never lost, and each event is
 /// handed to at most one waiter.
 /// </summary>
@@ -74,9 +73,8 @@ public sealed class SignalRRealtimeClient : IRealtimeClient
         }
         catch (HttpRequestException)
         {
-            // An unauthenticated connection is refused during the handshake rather than
-            // connected-then-closed as socket.io does. Both are "the server rejected me",
-            // which is the contract these tests assert.
+            // An unauthenticated connection is refused during the handshake. Normalize
+            // that refusal to the same disconnected state asserted by the tests.
             _disconnected.TrySetResult();
         }
     }
@@ -107,8 +105,7 @@ public sealed class SignalRRealtimeClient : IRealtimeClient
         _disconnected.Task.WaitAsync(timeout ?? DefaultEventTimeout);
 
     /// <summary>
-    /// Invokes a hub method. SignalR has named methods where socket.io has client-to-server
-    /// events, so the event name maps to the method of the same purpose.
+    /// Invokes the hub method mapped to the semantic event name used by the tests.
     /// </summary>
     public async Task EmitAsync(string eventName, object? data = null)
     {

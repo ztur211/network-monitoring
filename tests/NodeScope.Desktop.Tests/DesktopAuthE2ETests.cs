@@ -7,7 +7,7 @@ namespace NodeScope.Desktop.Tests;
 
 /// <summary>
 /// The real client code against the real C# host, nothing faked: native sign-up creates
-/// the account in place, the token is vaulted and works as a live Bearer credential,
+/// the account in place, the org-less session is vaulted and works as a live Bearer credential,
 /// rejected credentials surface the server's message, and sign-out revokes server-side.
 /// </summary>
 /// <remarks>
@@ -45,7 +45,7 @@ public sealed class DesktopAuthE2ETests : IDisposable
         var email = $"desktop-e2e-{Guid.NewGuid():N}@example.com";
         await flow.SignUpAsync(server, "Desktop E2E", email, "Password123!", CancellationToken.None);
 
-        Assert.Equal(SessionPhase.SignedIn, flow.Current.Phase);
+        Assert.Equal(SessionPhase.NeedsOrganization, flow.Current.Phase);
         Assert.Equal(email, flow.Current.User?.Email);
         Assert.Equal(server, settings.Load().ApplianceUrl);
         var vaulted = vault.Load();

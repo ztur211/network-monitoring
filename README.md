@@ -12,9 +12,13 @@ The current product stack is:
 - A small NativeAOT monitoring agent in `src/NodeScope.Agent`
 - A single-host Docker appliance under `deploy/`
 
-See [docs/PRD.md](docs/PRD.md) for the product requirements and
-[docs/migration/csharp-migration-decisions.md](docs/migration/csharp-migration-decisions.md)
-for the migration decisions.
+See [the product roadmap](docs/product-knowledge/roadmap.md) for current and
+planned capabilities, and the
+[systems architecture record](docs/design/2026-07-19-systems-architecture-and-data-flows.md)
+for the migration rationale.
+
+[Organization access](docs/product-knowledge/organizations.md) explains clean
+appliance bootstrap, invitation codes, domain requests, and role rules.
 
 ## Quick start
 
@@ -22,7 +26,7 @@ Requirements:
 
 - Docker Engine or Docker Desktop with Compose v2
 - .NET 10 SDK
-- A desktop session for Avalonia and browser-based PKCE sign-in
+- A desktop session for Avalonia
 
 Start the local appliance, seed demo data, and launch the native client:
 
@@ -44,6 +48,11 @@ The seeded owner is:
 
 - Email: `owner@acme.test`
 - Password: `devpassword123`
+
+This development flow seeds an existing organization, so use the seeded owner.
+A newly created account correctly stops at the organization access screen and
+needs an invitation from that owner. Clean-appliance bootstrap is covered in
+[SETUP.md](SETUP.md#clean-appliance-first-run).
 
 Useful script options:
 
@@ -100,20 +109,27 @@ do
 done
 ```
 
-The contract suite is intentionally black-box and requires a running API:
+Most desktop tests are self-contained. The live appliance tests are opt-in and
+documented in
+[tests/NodeScope.Desktop.Tests/README.md](tests/NodeScope.Desktop.Tests/README.md).
+
+The contract suite is intentionally black-box and requires a running API. Start
+the disposable services, seed, and host in one terminal:
 
 ```bash
 docker compose -f docker-compose.test.yml up -d
 SEED_PASSWORD=devpassword123 scripts/run-csharp-host.sh seed
 scripts/run-csharp-host.sh
-
-NODESCOPE_BASE_URL=http://127.0.0.1:5199 \
-NODESCOPE_REALTIME_TRANSPORT=signalr \
-dotnet test tests/NodeScope.ContractTests
 ```
 
-Run the host in a separate terminal before the last command. The complete contract
-test recipe is in
+Run the suite from another terminal:
+
+```bash
+NODESCOPE_BASE_URL=http://127.0.0.1:5199 \
+  dotnet test tests/NodeScope.ContractTests
+```
+
+The complete contract test recipe is in
 [tests/NodeScope.ContractTests/README.md](tests/NodeScope.ContractTests/README.md).
 
 ## Deployment and releases
@@ -144,7 +160,7 @@ tests/
   NodeScope.ContractTests/        black-box HTTP and SignalR contract suite
   NodeScope.*.Tests/              unit, architecture, and client tests
 deploy/                           self-hosted appliance and agent installers
-docs/                             product, architecture, and migration decisions
+docs/                             product guidance and architecture records
 ```
 
 ## License

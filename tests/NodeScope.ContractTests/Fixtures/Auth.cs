@@ -2,8 +2,8 @@ namespace NodeScope.ContractTests.Fixtures;
 
 /// <summary>
 /// How a single request authenticates. The API accepts two credential families:
-/// a user session as a raw Bearer token (the native wire - the cookie form died
-/// with the Better Auth shim), and machine tokens carried in custom headers. This
+/// a user session as a raw Bearer token and machine tokens carried in custom
+/// headers. This
 /// models both at the wire level so the tests never assume which implementation
 /// is answering.
 /// </summary>

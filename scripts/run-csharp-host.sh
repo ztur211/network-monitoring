@@ -7,7 +7,7 @@
 #   1. docker compose -f docker-compose.test.yml up -d      # db/redis/minio
 #
 # Then:   scripts/run-csharp-host.sh
-# And:    NODESCOPE_BASE_URL=http://127.0.0.1:5199 NODESCOPE_REALTIME_TRANSPORT=signalr \
+# And:    NODESCOPE_BASE_URL=http://127.0.0.1:5199 \
 #           dotnet test tests/NodeScope.ContractTests
 #
 set -euo pipefail
@@ -23,6 +23,7 @@ export DATABASE_URL="${DATABASE_URL:-postgresql://nodescope:localdevpassword@loc
 export THROTTLE_DEFAULT_LIMIT="${THROTTLE_DEFAULT_LIMIT:-100000}"
 export THROTTLE_AUTH_LIMIT="${THROTTLE_AUTH_LIMIT:-100000}"
 export SECRET_ENCRYPTION_KEY="${SECRET_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}"
+export BOOTSTRAP_TOKEN="${BOOTSTRAP_TOKEN:-test-bootstrap-token}"
 export REFRESH_INTERVAL_SECONDS="${REFRESH_INTERVAL_SECONDS:-2}"
 export STORAGE_ENDPOINT="${STORAGE_ENDPOINT:-http://localhost:9100}"
 export STORAGE_REGION="${STORAGE_REGION:-us-east-1}"

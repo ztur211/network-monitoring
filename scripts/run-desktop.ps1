@@ -70,6 +70,7 @@ if (-not $DesktopOnly) {
             "PUBLIC_ORIGIN=$Origin"
             "POSTGRES_PASSWORD=$(New-Base64Secret 24)"
             "SECRET_ENCRYPTION_KEY=$(New-Base64Secret 32)"
+            'BOOTSTRAP_TOKEN=desktop-dev-bootstrap'
             "SEED_PASSWORD=$seedPassword"
         ) | Set-Content -Path $EnvFile -Encoding ascii
     }

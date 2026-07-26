@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using NodeScope.Contracts.Realtime;
 using NodeScope.Platform.Abstractions;
@@ -18,7 +19,7 @@ public sealed class MembershipService
     private readonly IMembershipRepository _repo;
     private readonly Organizations.IOrganizationRepository _organizations;
     private readonly IRealtimeService _realtime;
-    private readonly string _frontendUrl;
+    private readonly string? _bootstrapToken;
 
     public MembershipService(
         IMembershipRepository repo,
@@ -30,7 +31,7 @@ public sealed class MembershipService
         _repo = repo;
         _organizations = organizations;
         _realtime = realtime;
-        _frontendUrl = configuration["FRONTEND_URL"] ?? "http://localhost:8081";
+        _bootstrapToken = configuration["BOOTSTRAP_TOKEN"];
     }
 
     public async Task<Organizations.OrganizationDto> ProvisionOrganizationAsync(
@@ -39,6 +40,37 @@ public sealed class MembershipService
     {
         var id = await _repo.CreateOrganizationAsync(name, cancellationToken);
         var organization = await _organizations.FindAsync(id, cancellationToken)
+            ?? throw IdentityErrors.OrganizationNotFound();
+        return organization.ToDto();
+    }
+
+    /// <summary>
+    /// Claims a brand-new appliance. The installer credential is necessary but not
+    /// sufficient: the database transaction also requires zero organizations and an
+    /// org-less caller, so the endpoint permanently closes after its first success.
+    /// </summary>
+    public async Task<Organizations.OrganizationDto> BootstrapOrganizationAsync(
+        string userId,
+        string name,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_bootstrapToken))
+        {
+            throw new ApiException("ORG_016", "BOOTSTRAP_NOT_CONFIGURED", 503);
+        }
+
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(_bootstrapToken));
+        var presentedHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        if (!CryptographicOperations.FixedTimeEquals(expectedHash, presentedHash))
+        {
+            throw new ApiException("ORG_017", "BOOTSTRAP_TOKEN_INVALID", 403);
+        }
+
+        var organizationId = await _repo.TryBootstrapOrganizationAsync(
+            userId, name, cancellationToken)
+            ?? throw new ApiException("ORG_018", "ORGANIZATION_ALREADY_BOOTSTRAPPED", 409);
+        var organization = await _organizations.FindAsync(organizationId, cancellationToken)
             ?? throw IdentityErrors.OrganizationNotFound();
         return organization.ToDto();
     }
@@ -84,7 +116,13 @@ public sealed class MembershipService
         var memberId = await _repo.CreateMemberAsync(
             organizationId, user.Id, OrgRoleNames.Owner, cancellationToken);
         return new Organizations.OrganizationMemberDto(
-            memberId, user.Id, organizationId, OrgRoleNames.Owner, DateTime.UtcNow);
+            memberId,
+            user.Id,
+            organizationId,
+            OrgRoleNames.Owner,
+            DateTime.UtcNow,
+            user.Email,
+            user.Name);
     }
 
     public async Task<CreatedInvitationDto> CreateInvitationAsync(
@@ -125,7 +163,7 @@ public sealed class MembershipService
             WsEvents.OrgInvitationCreated,
             new { id = invitation.Id, email, timestamp = IsoTimestamp.Now() },
             cancellationToken);
-        return new CreatedInvitationDto(invitation.ToDto(), token, $"{_frontendUrl}/invite/{token}");
+        return new CreatedInvitationDto(invitation.ToDto(), token);
     }
 
     public async Task<IReadOnlyList<InvitationDto>> ListInvitationsAsync(

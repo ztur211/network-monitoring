@@ -127,6 +127,59 @@ public sealed class ApplianceClientTests : IDisposable
     }
 
     [Fact]
+    public async Task Organization_access_uses_native_routes_and_maps_roster_identity()
+    {
+        _respond = request => request.RequestUri!.AbsolutePath switch
+        {
+            "/sub/api/v1/organizations/me" => Envelope(
+                HttpStatusCode.OK,
+                """{"success":true,"data":{"id":"org-1","name":"Acme","version":2},"timestamp":"t"}"""),
+            "/sub/api/v1/organizations/me/members" => Envelope(
+                HttpStatusCode.OK,
+                """{"success":true,"data":[{"id":"m1","userId":"u1","organizationId":"org-1","role":"OWNER","createdAt":"2026-07-26T00:00:00Z","email":"owner@acme.test","name":"Owner"}],"timestamp":"t"}"""),
+            "/sub/api/v1/organizations/me/invitations" when request.Method == HttpMethod.Post => Envelope(
+                HttpStatusCode.Created,
+                """{"success":true,"data":{"invitation":{"id":"i1","email":"new@acme.test","role":"MEMBER","expiresAt":"2026-08-02T00:00:00Z","acceptedAt":null,"createdAt":"2026-07-26T00:00:00Z"},"token":"invite-1"},"timestamp":"t"}"""),
+            _ => Envelope(
+                HttpStatusCode.Created,
+                """{"success":true,"data":null,"timestamp":"t"}"""),
+        };
+
+        var organization = await _client.GetOrganizationAsync("tok", CancellationToken.None);
+        var members = await _client.GetOrganizationMembersAsync("tok", CancellationToken.None);
+        var invitation = await _client.CreateInvitationAsync(
+            "tok", "new@acme.test", "MEMBER", CancellationToken.None);
+
+        Assert.Equal("Acme", organization.Name);
+        Assert.Equal("owner@acme.test", Assert.Single(members).Email);
+        Assert.Equal("invite-1", invitation.Token);
+        Assert.Contains("\"email\":\"new@acme.test\"", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"role\":\"MEMBER\"", _lastRequestBody, StringComparison.Ordinal);
+
+        await _client.AcceptInvitationAsync("tok", "invite-1", CancellationToken.None);
+        Assert.EndsWith(
+            "/api/v1/invitations/accept",
+            _lastRequest!.RequestUri!.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Equal("""{"token":"invite-1"}""", _lastRequestBody);
+        Assert.Equal("Bearer tok", _lastRequest.Headers.Authorization!.ToString());
+
+        _respond = _ => Envelope(
+            HttpStatusCode.Created,
+            """{"success":true,"data":{"id":"org-1","name":"First Org","version":1},"timestamp":"t"}""");
+        var bootstrapped = await _client.BootstrapOrganizationAsync(
+            "tok", "First Org", "bootstrap-1", CancellationToken.None);
+        Assert.Equal("First Org", bootstrapped.Name);
+        Assert.EndsWith(
+            "/api/v1/bootstrap/organization",
+            _lastRequest.RequestUri!.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            """{"name":"First Org","token":"bootstrap-1"}""",
+            _lastRequestBody);
+    }
+
+    [Fact]
     public void The_factory_normalizes_a_slashless_base_url()
     {
         using var factory = new ApplianceClientFactory();

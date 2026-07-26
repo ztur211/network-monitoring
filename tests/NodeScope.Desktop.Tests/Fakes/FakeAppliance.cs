@@ -31,6 +31,8 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
 
     public string? SignedOutToken { get; private set; }
 
+    public Exception? AccessFailure { get; set; }
+
     public void Dispose()
     {
     }
@@ -72,6 +74,172 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         }
 
         return SignInFailure is null ? Task.FromResult(TokenToReturn) : Task.FromException<string>(SignInFailure);
+    }
+
+    // --- organization access ---------------------------------------------
+
+    public OrganizationSummary OrganizationToReturn { get; set; } =
+        new("org-1", "Acme Networks", 1);
+
+    public List<OrganizationMember> OrganizationMembers { get; } =
+    [
+        new("member-1", "user-1", "org-1", "OWNER", DateTime.UtcNow, "owner@acme.test", "Owner"),
+    ];
+
+    public List<PendingInvitation> Invitations { get; } = [];
+
+    public List<OrganizationJoinRequest> JoinRequests { get; } = [];
+
+    public List<(string Email, string Role)> CreatedInvitations { get; } = [];
+
+    public List<string> AcceptedInvitationTokens { get; } = [];
+
+    public List<string> RevokedInvitationIds { get; } = [];
+
+    public List<(string Id, bool Approve)> JoinRequestDecisions { get; } = [];
+
+    public int JoinRequestSubmissions { get; private set; }
+
+    public List<(string Name, string Token)> BootstrapRequests { get; } = [];
+
+    public Task<OrganizationSummary> GetOrganizationAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AccessFailure is null
+            ? Task.FromResult(OrganizationToReturn)
+            : Task.FromException<OrganizationSummary>(AccessFailure);
+
+    public Task<OrganizationSummary> BootstrapOrganizationAsync(
+        string bearerToken,
+        string organizationName,
+        string bootstrapToken,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null
+            && AccessFailure is not ApplianceApiException { Code: "ORG_002" })
+        {
+            return Task.FromException<OrganizationSummary>(AccessFailure);
+        }
+
+        BootstrapRequests.Add((organizationName, bootstrapToken));
+        OrganizationToReturn = OrganizationToReturn with { Name = organizationName };
+        AccessFailure = null;
+        return Task.FromResult(OrganizationToReturn);
+    }
+
+    public Task<IReadOnlyList<OrganizationMember>> GetOrganizationMembersAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AccessFailure is null
+            ? Task.FromResult<IReadOnlyList<OrganizationMember>>([.. OrganizationMembers])
+            : Task.FromException<IReadOnlyList<OrganizationMember>>(AccessFailure);
+
+    public Task<CreatedInvitation> CreateInvitationAsync(
+        string bearerToken,
+        string email,
+        string role,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null)
+        {
+            return Task.FromException<CreatedInvitation>(AccessFailure);
+        }
+
+        CreatedInvitations.Add((email, role));
+        var invitation = new PendingInvitation(
+            $"invitation-{CreatedInvitations.Count}",
+            email,
+            role,
+            DateTime.UtcNow.AddDays(7),
+            null,
+            DateTime.UtcNow);
+        Invitations.Insert(0, invitation);
+        return Task.FromResult(new CreatedInvitation(invitation, "invite-token-1"));
+    }
+
+    public Task<IReadOnlyList<PendingInvitation>> GetInvitationsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AccessFailure is null
+            ? Task.FromResult<IReadOnlyList<PendingInvitation>>([.. Invitations])
+            : Task.FromException<IReadOnlyList<PendingInvitation>>(AccessFailure);
+
+    public Task RevokeInvitationAsync(
+        string bearerToken,
+        string invitationId,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null)
+        {
+            return Task.FromException(AccessFailure);
+        }
+
+        RevokedInvitationIds.Add(invitationId);
+        Invitations.RemoveAll(invitation => invitation.Id == invitationId);
+        return Task.CompletedTask;
+    }
+
+    public Task AcceptInvitationAsync(
+        string bearerToken,
+        string invitationToken,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null)
+        {
+            return Task.FromException(AccessFailure);
+        }
+
+        AcceptedInvitationTokens.Add(invitationToken);
+        return Task.CompletedTask;
+    }
+
+    public Task SubmitJoinRequestAsync(
+        string bearerToken,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null)
+        {
+            return Task.FromException(AccessFailure);
+        }
+
+        JoinRequestSubmissions++;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<OrganizationJoinRequest>> GetJoinRequestsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AccessFailure is null
+            ? Task.FromResult<IReadOnlyList<OrganizationJoinRequest>>([.. JoinRequests])
+            : Task.FromException<IReadOnlyList<OrganizationJoinRequest>>(AccessFailure);
+
+    public Task DecideJoinRequestAsync(
+        string bearerToken,
+        string joinRequestId,
+        bool approve,
+        CancellationToken cancellationToken)
+    {
+        if (AccessFailure is not null)
+        {
+            return Task.FromException(AccessFailure);
+        }
+
+        var request = JoinRequests.SingleOrDefault(candidate => candidate.Id == joinRequestId);
+        JoinRequestDecisions.Add((joinRequestId, approve));
+        if (approve && request is not null)
+        {
+            OrganizationMembers.Add(new OrganizationMember(
+                $"member-{OrganizationMembers.Count + 1}",
+                request.UserId,
+                request.OrganizationId,
+                "MEMBER",
+                DateTime.UtcNow,
+                request.Email,
+                request.Name));
+        }
+
+        JoinRequests.RemoveAll(request => request.Id == joinRequestId);
+        return Task.CompletedTask;
     }
 
     // --- map surface -------------------------------------------------------
@@ -362,9 +530,9 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
     public Task<AccessSummary> GetAccessSummaryAsync(
         string bearerToken,
         CancellationToken cancellationToken) =>
-        BimOperationsFailure is null
+        AccessFailure is null && BimOperationsFailure is null
             ? Task.FromResult(AccessToReturn)
-            : Task.FromException<AccessSummary>(BimOperationsFailure);
+            : Task.FromException<AccessSummary>(AccessFailure ?? BimOperationsFailure!);
 
     public Task<IReadOnlyList<BimDevice>> GetBuildingDevicesAsync(
         string bearerToken,

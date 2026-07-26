@@ -54,11 +54,10 @@ ensure_env() {
   [ -n "$(get_kv POSTGRES_DB)" ]           || set_kv POSTGRES_DB nodescope
   [ -n "$(get_kv POSTGRES_PASSWORD)" ]     || set_kv POSTGRES_PASSWORD "$(gen_secret 24)"
   [ -n "$(get_kv SECRET_ENCRYPTION_KEY)" ] || set_kv SECRET_ENCRYPTION_KEY "$(gen_secret 32)"
+  [ -n "$(get_kv BOOTSTRAP_TOKEN)" ]       || set_kv BOOTSTRAP_TOKEN "$(gen_secret 24)"
   [ -n "$(get_kv STORAGE_DRIVER)" ]        || set_kv STORAGE_DRIVER fs
   [ -n "$(get_kv NODESCOPE_VERSION)" ]     || set_kv NODESCOPE_VERSION latest
   [ -n "$(get_kv WEB_PORT)" ]              || set_kv WEB_PORT "${WEB_PORT_DEFAULT}"
-  [ -n "$(get_kv AI_PROVIDER)" ]           || set_kv AI_PROVIDER claude
-  grep -q '^ANTHROPIC_API_KEY=' "${ENV_FILE}" || set_kv ANTHROPIC_API_KEY ""
   # Map region (Decision 15): defaults cover the demo seed's NYC devices.
   # TILES_BBOX may be legitimately empty (= the whole TILES_AREA), so only seed it.
   [ -n "$(get_kv TILES_AREA)" ]            || set_kv TILES_AREA new-york
@@ -126,7 +125,8 @@ cmd_install() {
   log "running smoke test…"
   smoke_test "${origin_url}" "${tiles}"
   log "NodeScope is up at ${origin_url}"
-  log "create your first account there, then enter ${origin_url} in the desktop app"
+  log "open the native desktop app and enter ${origin_url}"
+  log "first-organization bootstrap code: $(get_kv BOOTSTRAP_TOKEN)"
 }
 
 # Build the map-tile region extract (Decision 15). One-shot planetiler run that
@@ -193,7 +193,7 @@ smoke_test() {
     || die "smoke: unauthenticated /api/v1/users/me should be the AUTH_002 envelope, got: ${body}"
   log "  ✔ API auth stack (anonymous 401 envelope)"
 
-  # No browser surface exists: the desktop signs in natively against /api/auth,
+  # No browser surface exists: the desktop signs in natively against /api/v1/auth,
   # so the root - like every junk path - must be an honest 404 (the agent's
   # update check and the desktop's error mapping both rely on never seeing HTML
   # where JSON belongs).

@@ -1,14 +1,13 @@
 namespace NodeScope.ContractTests.Realtime;
 
 /// <summary>
-/// Connection helpers for the realtime parity tests. The one non-obvious piece is the
+/// Connection helpers for the realtime contract tests. The one non-obvious piece is the
 /// readiness barrier: <see cref="IRealtimeClient.ConnectAsync"/> resolves as soon as the
-/// socket is connected, but the gateway joins the org/scope rooms asynchronously in its
-/// connection handler and only then emits <c>v1:network:onHome:changed</c> to the socket's
-/// user room. Waiting for that event proves the rooms are joined, so a mutation triggered
+/// connection is active, but the hub joins the org and scope groups in its connection
+/// handler and only then emits <c>v1:network:onHome:changed</c> to the user's
+/// room. Waiting for that event proves the groups are joined, so a mutation triggered
 /// afterwards is guaranteed a chance to reach this subscriber - removing the connect/emit
-/// race deterministically instead of with a sleep. (This barrier is socket.io/Node-specific
-/// and deliberately lives here, not in the transport-agnostic client.)
+/// race deterministically instead of with a sleep.
 /// </summary>
 internal static class RealtimeScaffold
 {

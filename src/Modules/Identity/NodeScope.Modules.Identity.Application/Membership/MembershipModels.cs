@@ -12,12 +12,11 @@ public sealed record InvitationDto(
     DateTime? AcceptedAt,
     DateTime CreatedAt);
 
-/// <summary>The create response: the invitation, its one-time token, and the link to send.</summary>
-// The member is named Url and typed string because that is the wire contract the client reads;
-// CA1054/CA1056 are about API ergonomics, which a DTO does not have.
-#pragma warning disable CA1054, CA1056
-public sealed record CreatedInvitationDto(InvitationDto Invitation, string Token, string Url);
-#pragma warning restore CA1054, CA1056
+/// <summary>
+/// The create response. The token is revealed exactly once and is pasted into the native
+/// client; there is intentionally no browser URL because the appliance has no browser surface.
+/// </summary>
+public sealed record CreatedInvitationDto(InvitationDto Invitation, string Token);
 
 public sealed record JoinRequestDto(
     string Id,
@@ -25,7 +24,9 @@ public sealed record JoinRequestDto(
     string UserId,
     string Status,
     DateTime CreatedAt,
-    DateTime? DecidedAt);
+    DateTime? DecidedAt,
+    string? Email,
+    string? Name);
 
 /// <summary>Body of <c>POST /api/v1/organizations/me/invitations</c>.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -71,6 +72,27 @@ public sealed class AcceptInvitationRequest
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
+        RequestValidation.RequireNonEmptyString(errors, Token, "token");
+        return errors;
+    }
+}
+
+/// <summary>
+/// Body of the one-time first-organization bootstrap. The installer writes the
+/// credential to its mode-0600 environment file and prints it for the operator.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class BootstrapOrganizationRequest
+{
+    public string? Name { get; init; }
+
+    public string? Token { get; init; }
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+        RequestValidation.RequireNonEmptyString(errors, Name, "name");
+        RequestValidation.MaxLength(errors, Name, "name", 120);
         RequestValidation.RequireNonEmptyString(errors, Token, "token");
         return errors;
     }
@@ -144,9 +166,12 @@ public sealed record JoinRequestRecord(
     string UserId,
     string Status,
     DateTime CreatedAt,
-    DateTime? DecidedAt)
+    DateTime? DecidedAt,
+    string? Email = null,
+    string? Name = null)
 {
-    public JoinRequestDto ToDto() => new(Id, OrganizationId, UserId, Status, CreatedAt, DecidedAt);
+    public JoinRequestDto ToDto() => new(
+        Id, OrganizationId, UserId, Status, CreatedAt, DecidedAt, Email, Name);
 }
 
 /// <summary>Invitation, join-request, and org-provisioning persistence.</summary>
@@ -165,6 +190,15 @@ public interface IMembershipRepository
     public Task<bool> OrganizationExistsAsync(string organizationId, CancellationToken cancellationToken);
 
     public Task<string> CreateOrganizationAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Atomically creates the appliance's first organization and makes the caller its
+    /// owner. Returns null once any organization exists or the caller is already a member.
+    /// </summary>
+    public Task<string?> TryBootstrapOrganizationAsync(
+        string userId,
+        string name,
+        CancellationToken cancellationToken);
 
     /// <summary>The organization that has claimed the domain, if any (domains are globally unique).</summary>
     public Task<string?> FindOrganizationByDomainAsync(string domain, CancellationToken cancellationToken);
@@ -232,4 +266,4 @@ public interface IMembershipRepository
 /// <summary>The membership facts other flows need about a user.</summary>
 public sealed record OrganizationMemberSummary(string MemberId, string OrganizationId, string Role);
 
-public sealed record UserSummary(string Id, string Email);
+public sealed record UserSummary(string Id, string Email, string? Name);

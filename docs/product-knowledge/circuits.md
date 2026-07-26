@@ -1,20 +1,25 @@
 # NodeScope Circuits
 
-Circuits represent ISP or carrier connections — the pipes that bring internet to your network.
+Circuits document ISP or carrier services that terminate on the network.
 
 ## Circuit Fields
 
-- **ISP Name**: The provider (e.g., Comcast, AT&T, Lumen)
-- **Circuit ID**: The carrier's circuit identifier for support calls
-- **Service Type**: Description (e.g., "1 Gbps Fiber", "100 Mbps Cable")
-- **Bandwidth**: Numeric value in Mbps
-- **Device**: Optional link to the device this circuit terminates on (usually a router or firewall)
-- **Notes**: Free text for SLA details, contract info, support numbers
+- **ISP name:** Required provider name, up to 100 characters
+- **Service type:** Required free text or a Fiber, Cable, DSL, Leased Line,
+  Wireless, or Other preset
+- **Circuit ID:** Optional carrier identifier, up to 100 characters
+- **Bandwidth:** Optional value from 0.1 to 100,000 Mbps
+- **Device:** Optional link to the terminating device
+- **Notes:** Optional operational and support details, up to 500 characters
 
-## Usage
+## Desktop Workflow
 
-Circuits appear in the Circuits screen. They can be associated with a device to show the connection on the map. If the associated device is deleted, the circuit remains but loses the device link.
+Open Inventory > Circuits to create, edit, or delete a circuit. The list is
+cursor-paginated in pages of 50. Select "Load more" when another page is
+available.
 
-## Pagination
+Deleting a linked device does not delete the circuit. NodeScope clears the
+device reference and keeps the carrier record.
 
-The circuits list uses cursor-based pagination. Older circuits load on scroll.
+Circuit updates and deletions are versioned and delivered to connected clients
+through SignalR.

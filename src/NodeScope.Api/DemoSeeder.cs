@@ -21,7 +21,7 @@ namespace NodeScope.Api;
 /// <remarks>
 /// Database writes go through <see cref="MigrationsDbContext"/> (the one full model of the
 /// schema), mirroring seed.ts's direct Prisma writes. The two steps Node routed through
-/// the app instead of the database - the owner sign-up (argon2 + Better Auth row shapes)
+/// the app instead of the database - the owner sign-up (Argon2 credential records)
 /// and the sample-model upload - run against THIS host started on a loopback port, so the
 /// seed exercises the same code paths a real client does.
 /// </remarks>

@@ -1,8 +1,8 @@
 namespace NodeScope.ContractTests.Identity;
 
 /// <summary>
-/// Contract for the native auth surface at <c>/api/v1/auth</c> (2026-07-26, replacing
-/// the Better Auth shim wire) and the session-protected <c>/api/v1/users/me</c>. A
+/// Contract for the native auth surface at <c>/api/v1/auth</c> and the
+/// session-protected <c>/api/v1/users/me</c>. A
 /// credential post answers with the envelope carrying only <c>{ token }</c>; the raw
 /// token as <c>Authorization: Bearer</c> is the one session credential - no cookies
 /// exist on this wire.

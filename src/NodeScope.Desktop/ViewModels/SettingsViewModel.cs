@@ -124,6 +124,11 @@ internal sealed record AssignOption(string? Id, string Label);
 [INotifyPropertyChanged]
 internal sealed partial class SettingsViewModel : IDisposable
 {
+    public static readonly IReadOnlyList<string> AllInvitationRoles =
+        ["MEMBER", "ADMIN", "OWNER"];
+
+    public static readonly IReadOnlyList<string> MemberInvitationRole = ["MEMBER"];
+
     public static readonly IReadOnlyList<string> SecurityLevels =
         ["NO_AUTH_NO_PRIV", "AUTH_NO_PRIV", "AUTH_PRIV"];
 
@@ -173,6 +178,38 @@ internal sealed partial class SettingsViewModel : IDisposable
 
     [ObservableProperty]
     private ThemeOption _selectedTheme;
+
+    // --- organization + access -------------------------------------------
+
+    [ObservableProperty]
+    private OrganizationSummary? _organization;
+
+    [ObservableProperty]
+    private string _accessRole = "MEMBER";
+
+    [ObservableProperty]
+    private IReadOnlyList<OrganizationMember> _organizationMembers = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<PendingInvitation> _invitations = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<OrganizationJoinRequest> _joinRequests = [];
+
+    [ObservableProperty]
+    private string _inviteEmail = "";
+
+    [ObservableProperty]
+    private string _inviteRole = "MEMBER";
+
+    [ObservableProperty]
+    private string? _invitationCode;
+
+    [ObservableProperty]
+    private string? _organizationError;
+
+    [ObservableProperty]
+    private bool _organizationBusy;
 
     // --- access + agents --------------------------------------------------
 
@@ -303,6 +340,11 @@ internal sealed partial class SettingsViewModel : IDisposable
         new("dark", "Dark"),
     ];
 
+    public IReadOnlyList<string> InvitationRoles =>
+        AccessRole == "OWNER" ? AllInvitationRoles : MemberInvitationRole;
+
+    public bool CanMutateOrganization => !OrganizationBusy;
+
     /// <summary>The copy-paste agent install command, built from this appliance's URL.</summary>
     public string? InstallCommand => EnrollmentCode is null
         ? null
@@ -328,11 +370,23 @@ internal sealed partial class SettingsViewModel : IDisposable
         {
             var access = await _session.Client.GetAccessSummaryAsync(_session.Token, _lifetime.Token);
             CanManage = access.CanConfigure;
-            DataSources = await _session.Client.GetDataSourcesAsync(_session.Token, _lifetime.Token);
+            AccessRole = access.Role;
+
+            var organizationTask = _session.Client.GetOrganizationAsync(
+                _session.Token, _lifetime.Token);
+            var membersTask = _session.Client.GetOrganizationMembersAsync(
+                _session.Token, _lifetime.Token);
+            var dataSourcesTask = _session.Client.GetDataSourcesAsync(
+                _session.Token, _lifetime.Token);
+            await Task.WhenAll(organizationTask, membersTask, dataSourcesTask);
+            Organization = await organizationTask;
+            OrganizationMembers = await membersTask;
+            DataSources = await dataSourcesTask;
         }
         catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
         {
             SettingsLog.LoadFailed(_logger, "access", failure);
+            OrganizationError = failure.Message;
         }
 
         if (!CanManage)
@@ -340,9 +394,120 @@ internal sealed partial class SettingsViewModel : IDisposable
             return; // agents + snmp are OWNER/ADMIN-only server-side
         }
 
+        await LoadOrganizationManagementAsync();
         await LoadAgentsAsync();
         await LoadSnmpAsync();
     }
+
+    // --- organization -----------------------------------------------------
+
+    [RelayCommand]
+    private async Task CreateInvitationAsync()
+    {
+        var email = InviteEmail.Trim();
+        OrganizationError = null;
+        InvitationCode = null;
+        if (email.Length == 0 || !email.Contains('@', StringComparison.Ordinal))
+        {
+            OrganizationError = "Enter the teammate's email address.";
+            return;
+        }
+
+        var role = InvitationRoles.Contains(InviteRole, StringComparer.Ordinal)
+            ? InviteRole
+            : "MEMBER";
+        OrganizationBusy = true;
+        try
+        {
+            var created = await _session.Client.CreateInvitationAsync(
+                _session.Token, email, role, _lifetime.Token);
+            Invitations =
+            [
+                created.Invitation,
+                .. Invitations.Where(invitation =>
+                    !string.Equals(invitation.Email, created.Invitation.Email, StringComparison.OrdinalIgnoreCase)),
+            ];
+            InvitationCode = $"nodescope-invite-v1:{created.Token}";
+            InviteEmail = "";
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            OrganizationError = failure.Message;
+            SettingsLog.MutationFailed(_logger, "invitation-create", failure);
+        }
+        finally
+        {
+            OrganizationBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RevokeInvitationAsync(PendingInvitation invitation)
+    {
+        OrganizationError = null;
+        OrganizationBusy = true;
+        try
+        {
+            await _session.Client.RevokeInvitationAsync(
+                _session.Token, invitation.Id, _lifetime.Token);
+            Invitations = [.. Invitations.Where(candidate => candidate.Id != invitation.Id)];
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            OrganizationError = failure.Message;
+            SettingsLog.MutationFailed(_logger, "invitation-revoke", failure);
+        }
+        finally
+        {
+            OrganizationBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private Task ApproveJoinRequestAsync(OrganizationJoinRequest request) =>
+        DecideJoinRequestAsync(request, approve: true);
+
+    [RelayCommand]
+    private Task DenyJoinRequestAsync(OrganizationJoinRequest request) =>
+        DecideJoinRequestAsync(request, approve: false);
+
+    private async Task DecideJoinRequestAsync(OrganizationJoinRequest request, bool approve)
+    {
+        OrganizationError = null;
+        OrganizationBusy = true;
+        try
+        {
+            await _session.Client.DecideJoinRequestAsync(
+                _session.Token, request.Id, approve, _lifetime.Token);
+            JoinRequests = [.. JoinRequests.Where(candidate => candidate.Id != request.Id)];
+            if (approve)
+            {
+                OrganizationMembers = await _session.Client.GetOrganizationMembersAsync(
+                    _session.Token, _lifetime.Token);
+            }
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            OrganizationError = failure.Message;
+            SettingsLog.MutationFailed(_logger, "join-request-decision", failure);
+        }
+        finally
+        {
+            OrganizationBusy = false;
+        }
+    }
+
+    partial void OnAccessRoleChanged(string value)
+    {
+        OnPropertyChanged(nameof(InvitationRoles));
+        if (!InvitationRoles.Contains(InviteRole, StringComparer.Ordinal))
+        {
+            InviteRole = "MEMBER";
+        }
+    }
+
+    partial void OnOrganizationBusyChanged(bool value) =>
+        OnPropertyChanged(nameof(CanMutateOrganization));
 
     // --- profile ----------------------------------------------------------
 
@@ -658,6 +823,25 @@ internal sealed partial class SettingsViewModel : IDisposable
     {
         AssignTargets = value ? _deviceTargets : _networkTargets;
         AssignTarget = AssignTargets.Count > 0 ? AssignTargets[0] : null;
+    }
+
+    private async Task LoadOrganizationManagementAsync()
+    {
+        try
+        {
+            var invitationsTask = _session.Client.GetInvitationsAsync(
+                _session.Token, _lifetime.Token);
+            var joinRequestsTask = _session.Client.GetJoinRequestsAsync(
+                _session.Token, _lifetime.Token);
+            await Task.WhenAll(invitationsTask, joinRequestsTask);
+            Invitations = await invitationsTask;
+            JoinRequests = await joinRequestsTask;
+        }
+        catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
+        {
+            OrganizationError = failure.Message;
+            SettingsLog.LoadFailed(_logger, "organization-management", failure);
+        }
     }
 
     private async Task LoadAgentsAsync()
