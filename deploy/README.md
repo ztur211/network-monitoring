@@ -135,7 +135,9 @@ is required.
 ## Configuration
 
 `deploy/nodescope.sh install` creates `deploy/.env` and never overwrites an
-existing secret. To configure manually:
+existing secret. Keep that file with the appliance volumes and include a
+protected copy in the backup plan. Losing or replacing its database password or
+encryption key can make persisted data inaccessible. To configure manually:
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -161,7 +163,7 @@ Important values:
 Generate secrets with:
 
 ```bash
-openssl rand -base64 24
+openssl rand -hex 32
 openssl rand -base64 32
 openssl rand -base64 24
 ```

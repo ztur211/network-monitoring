@@ -25,7 +25,8 @@ jobs:
           cat >deploy/.env <<'ENV'
           PUBLIC_ORIGIN=http://localhost:8080
           POSTGRES_USER=nodescope
-          POSTGRES_PASSWORD=ci-test-password
+          # Reserved URI characters prove Compose passes the password as data.
+          POSTGRES_PASSWORD=ci/test+password==
           POSTGRES_DB=nodescope
           SECRET_ENCRYPTION_KEY=Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=
           BOOTSTRAP_TOKEN=ci-bootstrap-token

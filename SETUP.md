@@ -35,6 +35,10 @@ The script:
 4. Seeds the Acme Networks organization, sample inventory, and sample IFC.
 5. Launches `src/NodeScope.Desktop`.
 
+Keep `deploy/.env.desktop-dev` for as long as you keep the local appliance
+volumes. Use `--reset` or `-Reset` when you intentionally want both new secrets
+and a fresh local database.
+
 Enter `http://localhost:8080` in the desktop client. The client adds `/api`,
 `/hubs`, and `/tiles` itself, so do not enter an `/api` suffix.
 
@@ -72,7 +76,7 @@ Set at least:
 
 ```dotenv
 PUBLIC_ORIGIN=http://localhost:8080
-POSTGRES_PASSWORD=<openssl rand -base64 24>
+POSTGRES_PASSWORD=<openssl rand -hex 32>
 SECRET_ENCRYPTION_KEY=<openssl rand -base64 32>
 BOOTSTRAP_TOKEN=<openssl rand -base64 24>
 SEED_PASSWORD=devpassword123

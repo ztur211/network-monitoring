@@ -84,7 +84,10 @@ services:
       # Still read by the C# host: it gates the production rate limits on Node's exact
       # NODE_ENV check, so the wire behavior of the Node era carries over unchanged.
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-nodescope}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nodescope}
+      # Use Npgsql's native form so generated Base64 passwords are data, not
+      # unescaped URI syntax. In a PostgreSQL URL, "/" in the password changes
+      # the authority and prevents the API from starting.
+      DATABASE_URL: Host=db;Port=5432;Database=${POSTGRES_DB:-nodescope};Username=${POSTGRES_USER:-nodescope};Password=${POSTGRES_PASSWORD}
       # SNMP credential encryption refuses to boot without a base64-encoded
       # 32-byte key: `openssl rand -base64 32`.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in deploy/.env (openssl rand -base64 32)}

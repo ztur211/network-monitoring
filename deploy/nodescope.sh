@@ -45,6 +45,7 @@ set_kv() { # set_kv KEY VALUE -> add or replace KEY=VALUE in ENV_FILE
 }
 
 gen_secret() { openssl rand -base64 "$1" | tr -d '\n'; }
+gen_database_secret() { openssl rand -hex 32; }
 
 # Fill any missing secret / default WITHOUT overwriting existing values, so
 # re-running install is safe (idempotent).
@@ -52,7 +53,7 @@ ensure_env() {
   touch "${ENV_FILE}"
   [ -n "$(get_kv POSTGRES_USER)" ]         || set_kv POSTGRES_USER nodescope
   [ -n "$(get_kv POSTGRES_DB)" ]           || set_kv POSTGRES_DB nodescope
-  [ -n "$(get_kv POSTGRES_PASSWORD)" ]     || set_kv POSTGRES_PASSWORD "$(gen_secret 24)"
+  [ -n "$(get_kv POSTGRES_PASSWORD)" ]     || set_kv POSTGRES_PASSWORD "$(gen_database_secret)"
   [ -n "$(get_kv SECRET_ENCRYPTION_KEY)" ] || set_kv SECRET_ENCRYPTION_KEY "$(gen_secret 32)"
   [ -n "$(get_kv BOOTSTRAP_TOKEN)" ]       || set_kv BOOTSTRAP_TOKEN "$(gen_secret 24)"
   [ -n "$(get_kv STORAGE_DRIVER)" ]        || set_kv STORAGE_DRIVER fs
@@ -105,6 +106,9 @@ cmd_install() {
     esac
   done
   preflight
+  if [ ! -f "${ENV_FILE}" ] && docker volume inspect nodescope_pgdata >/dev/null 2>&1; then
+    die "${ENV_FILE} is missing while the NodeScope database volume exists; restore the appliance env file before installing again"
+  fi
   ensure_env
   set_origin "${origin}"
   local key; key="$(get_kv SECRET_ENCRYPTION_KEY)"
