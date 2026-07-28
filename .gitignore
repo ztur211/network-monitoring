@@ -17,6 +17,7 @@ docs/*
 
 # Local runtime artifacts (e.g. a Redis server started in-repo drops its dump here)
 *.rdb
+docker-compose.override.yml
 
 # Agent release staging - built + signed by scripts/agent-release/build.sh,
 # copied into the web image by deploy/Dockerfile.web. Never committed.

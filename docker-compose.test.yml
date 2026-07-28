@@ -1,3 +1,5 @@
+name: nodescope-test
+
 services:
   db-test:
     image: timescale/timescaledb-ha:pg16

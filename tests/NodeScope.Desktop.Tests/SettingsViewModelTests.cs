@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeScope.Desktop.Api;
 using NodeScope.Desktop.Auth;
@@ -90,7 +91,7 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.Equal("Geocoding failed. Try a more specific address.", viewModel.LocationError);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task The_theme_choice_persists_locally_and_survives_a_url_resave()
     {
         var viewModel = await CreateAsync();

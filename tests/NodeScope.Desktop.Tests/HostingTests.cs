@@ -72,4 +72,3 @@ public sealed class ActivationQueueTests
         Assert.Equal(["first", "second", "third"], seen);
     }
 }
-
