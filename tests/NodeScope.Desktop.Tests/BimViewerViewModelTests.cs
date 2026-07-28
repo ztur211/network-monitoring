@@ -154,6 +154,162 @@ public sealed class BimViewerViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_seeds_the_georeference_the_ifc_carries()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        _tessellator.Georeference = new BimGeoreference(49.1, 8.44, 10, 20, 90, 0.001);
+        var viewModel = await CreateAsync();
+        var sourcePath = WriteTemporaryIfc();
+        try
+        {
+            await viewModel.ImportFileAsync(sourcePath, "headquarters.ifc");
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+
+        Assert.Equal(
+            ["ifc", "geometry", "metadata", "activate", "georeference"],
+            _client.BuildingModelOperations);
+        var georeference = _client.BuildingModels["b1"].Georeference;
+        Assert.NotNull(georeference);
+        Assert.Equal(49.1, georeference!.AnchorLatitude);
+        Assert.Equal(90, georeference.RotationDegrees);
+        Assert.Equal(georeference, viewModel.Model?.Georeference);
+        Assert.Equal(BimViewerState.Ready, viewModel.State);
+    }
+
+    [Fact]
+    public async Task Import_never_overwrites_an_existing_georeference()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        var manual = new ModelGeoreferenceSummary(50.0, 7.0, 0, 0, 0, 1);
+        _client.BuildingModels["b1"] = Model("b1") with { Georeference = manual };
+        _tessellator.Georeference = new BimGeoreference(49.1, 8.44, 10, 20, 90, 0.001);
+        var viewModel = await CreateAsync();
+        var sourcePath = WriteTemporaryIfc();
+        try
+        {
+            await viewModel.ImportFileAsync(sourcePath, "headquarters.ifc");
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+
+        Assert.DoesNotContain("georeference", _client.BuildingModelOperations);
+        Assert.Equal(manual, _client.BuildingModels["b1"].Georeference);
+        Assert.Equal(BimViewerState.Ready, viewModel.State);
+    }
+
+    [Fact]
+    public async Task A_failed_georeference_seed_does_not_fail_the_import()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        _tessellator.Georeference = new BimGeoreference(49.1, 8.44, 10, 20, 90, 0.001);
+        _client.GeoreferenceFailure = new HttpRequestException("connection reset");
+        var viewModel = await CreateAsync();
+        var sourcePath = WriteTemporaryIfc();
+        try
+        {
+            await viewModel.ImportFileAsync(sourcePath, "headquarters.ifc");
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+
+        Assert.Equal(BimViewerState.Ready, viewModel.State);
+        Assert.Null(viewModel.ImportError);
+        Assert.Empty(_client.DeletedVersions);
+    }
+
+    [Fact]
+    public async Task Applying_a_first_map_anchor_pins_the_scene_centre()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        AddModel("b1", WexBimFixture.CubeA());
+        var viewModel = await CreateAsync();
+
+        viewModel.GeoreferenceLatitudeInput = "49.1";
+        viewModel.GeoreferenceLongitudeInput = "8.44";
+        viewModel.GeoreferenceRotationInput = "90";
+        await viewModel.ApplyGeoreferenceCommand.ExecuteAsync(null);
+
+        var georeference = _client.BuildingModels["b1"].Georeference;
+        Assert.NotNull(georeference);
+        Assert.Equal(49.1, georeference!.AnchorLatitude);
+        Assert.Equal(8.44, georeference.AnchorLongitude);
+        Assert.Equal(90, georeference.RotationDegrees);
+        var scene = viewModel.Scene!;
+        Assert.Equal(scene.Bounds.Center.X, georeference.AnchorX, 3);
+        Assert.Equal(scene.Bounds.Center.Y, georeference.AnchorY, 3);
+        Assert.Equal(1.0 / scene.Meter, georeference.MetersPerUnit, 9);
+        Assert.True(viewModel.HasGeoreference);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    [Fact]
+    public async Task Editing_an_existing_anchor_keeps_its_model_frame_point()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        AddModel("b1", WexBimFixture.CubeA());
+        _client.BuildingModels["b1"] = _client.BuildingModels["b1"] with
+        {
+            Georeference = new ModelGeoreferenceSummary(50, 7, 12.5, -3.5, 15, 0.001),
+        };
+        var viewModel = await CreateAsync();
+
+        Assert.Equal("50", viewModel.GeoreferenceLatitudeInput);
+        viewModel.GeoreferenceLatitudeInput = "51.5";
+        await viewModel.ApplyGeoreferenceCommand.ExecuteAsync(null);
+
+        var georeference = _client.BuildingModels["b1"].Georeference;
+        Assert.NotNull(georeference);
+        Assert.Equal(51.5, georeference!.AnchorLatitude);
+        Assert.Equal(12.5, georeference.AnchorX);
+        Assert.Equal(-3.5, georeference.AnchorY);
+        Assert.Equal(0.001, georeference.MetersPerUnit);
+        Assert.Equal(15, georeference.RotationDegrees);
+    }
+
+    [Fact]
+    public async Task Invalid_anchor_input_never_reaches_the_appliance()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        AddModel("b1", WexBimFixture.CubeA());
+        var viewModel = await CreateAsync();
+
+        viewModel.GeoreferenceLatitudeInput = "not-a-number";
+        viewModel.GeoreferenceLongitudeInput = "8.44";
+        await viewModel.ApplyGeoreferenceCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.OperationError);
+        Assert.DoesNotContain("georeference", _client.BuildingModelOperations);
+        Assert.Null(_client.BuildingModels["b1"].Georeference);
+    }
+
+    [Fact]
+    public async Task Clearing_the_anchor_removes_it_and_empties_the_inputs()
+    {
+        _client.Properties.Add(Building("b1", "HQ"));
+        AddModel("b1", WexBimFixture.CubeA());
+        _client.BuildingModels["b1"] = _client.BuildingModels["b1"] with
+        {
+            Georeference = new ModelGeoreferenceSummary(50, 7, 0, 0, 0, 1),
+        };
+        var viewModel = await CreateAsync();
+
+        await viewModel.ClearGeoreferenceCommand.ExecuteAsync(null);
+
+        Assert.Null(_client.BuildingModels["b1"].Georeference);
+        Assert.False(viewModel.HasGeoreference);
+        Assert.Equal("", viewModel.GeoreferenceLatitudeInput);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    [Fact]
     public async Task Failed_geometry_upload_deletes_the_inactive_ifc_version()
     {
         _client.Properties.Add(Building("b1", "HQ"));
@@ -578,7 +734,7 @@ public sealed class BimViewerViewModelTests : IDisposable
         new(id, "site", "BUILDING", name, null);
 
     private static BuildingModelSummary Model(string propertyId) =>
-        new($"model-{propertyId}", propertyId, $"Model {propertyId}", $"version-{propertyId}", 1);
+        new($"model-{propertyId}", propertyId, $"Model {propertyId}", $"version-{propertyId}", null, 1);
 
     private static string WriteTemporaryIfc()
     {

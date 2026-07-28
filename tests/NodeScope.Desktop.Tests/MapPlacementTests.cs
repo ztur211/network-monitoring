@@ -117,6 +117,48 @@ public sealed class MapPlacementTests : IDisposable
     }
 
     [Fact]
+    public async Task A_derived_pin_hides_relocation_and_says_where_it_comes_from()
+    {
+        // Placed in a georeferenced model: the pin is a projection of x/y/z, so the map
+        // must not offer to move it - the 3D viewer owns that position.
+        _client.BimDevices.Add(new BimDevice(
+            "d1", "n1", "bldg-1", null, null, "Core Router", "ROUTER", 49.1, 8.44, null, null,
+            1.0, 2.0, 0.5, null, null, null, null, 1, DateTime.UtcNow, DateTime.UtcNow));
+        _client.Devices.Add(new MapDevice("d1", "Core Router", "ROUTER", 49.1, 8.44, null, null, null, "bldg-1"));
+        _client.BuildingModels["bldg-1"] = new BuildingModelSummary(
+            "m1", "bldg-1", "Main Building", "v1",
+            new ModelGeoreferenceSummary(49.1, 8.44, 0, 0, 0, 1), 1);
+        var viewModel = await CreateAsync();
+        viewModel.SelectDeviceById("d1");
+
+        await viewModel.EditSelectedCommand.ExecuteAsync(null);
+
+        var form = viewModel.DeviceForm!;
+        Assert.True(form.LocationDerived);
+        Assert.False(form.CanRelocate);
+        Assert.Contains("3D", form.CoordinateLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_placed_device_without_a_georeference_still_relocates_from_the_map()
+    {
+        _client.BimDevices.Add(new BimDevice(
+            "d1", "n1", "bldg-1", null, null, "Core Router", "ROUTER", 40.7, -74.0, null, null,
+            1.0, 2.0, 0.5, null, null, null, null, 1, DateTime.UtcNow, DateTime.UtcNow));
+        _client.Devices.Add(new MapDevice("d1", "Core Router", "ROUTER", 40.7, -74.0, null, null, null, "bldg-1"));
+        _client.BuildingModels["bldg-1"] = new BuildingModelSummary(
+            "m1", "bldg-1", "Main Building", "v1", null, 1);
+        var viewModel = await CreateAsync();
+        viewModel.SelectDeviceById("d1");
+
+        await viewModel.EditSelectedCommand.ExecuteAsync(null);
+
+        var form = viewModel.DeviceForm!;
+        Assert.False(form.LocationDerived);
+        Assert.True(form.CanRelocate);
+    }
+
+    [Fact]
     public async Task A_relocation_tap_feeds_the_form_and_the_edit_moves_the_marker()
     {
         _client.BimDevices.Add(new BimDevice(

@@ -35,7 +35,26 @@ internal static class BuildingModelsEndpoints
         writes.MapPut("/versions/{versionId}/geometry", UploadGeometryAsync);
         writes.MapPut("/versions/{versionId}/metadata", UploadMetadataAsync);
         writes.MapPut("/active", ActivateAsync);
+        writes.MapPut("/georeference", SetGeoreferenceAsync);
         writes.MapDelete("/versions/{versionId}", DeleteVersionAsync);
+    }
+
+    private static async Task<IResult> SetGeoreferenceAsync(
+        string propertyId,
+        SetGeoreferenceRequest body,
+        IOrgContextAccessor org,
+        GeoreferenceService service,
+        CancellationToken cancellationToken)
+    {
+        RouteParams.RequireUuid(propertyId);
+        var errors = body.Validate();
+        if (errors.Count > 0)
+        {
+            throw ApiErrors.Validation(errors);
+        }
+
+        return ApiEnvelope.Ok(
+            await service.SetGeoreferenceAsync(org.OrgMember!, propertyId, body, cancellationToken));
     }
 
     private static async Task<IResult> GetModelAsync(

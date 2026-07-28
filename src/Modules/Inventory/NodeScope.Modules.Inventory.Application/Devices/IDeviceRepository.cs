@@ -36,13 +36,33 @@ public interface IDeviceRepository
         int expectedVersion,
         CancellationToken cancellationToken);
 
-    /// <summary>Writes the model-local coordinate triple and bumps the version; null when the device is gone.</summary>
+    /// <summary>
+    /// Writes the model-local coordinate triple and bumps the version; null when the device is
+    /// gone. A non-null <paramref name="location"/> also overwrites latitude/longitude in the
+    /// same update (its null members clear them), keeping a derived map pin atomic with the
+    /// 3D placement it comes from.
+    /// </summary>
     public Task<DeviceRecord?> SetPositionAsync(
         string organizationId,
         string deviceId,
         double? x,
         double? y,
         double? z,
+        DerivedLocation? location,
+        CancellationToken cancellationToken);
+
+    /// <summary>Devices with a full x/y/z placement on any of the given properties.</summary>
+    public Task<IReadOnlyList<DeviceRecord>> ListPlacedAsync(
+        string organizationId,
+        IReadOnlyCollection<string> propertyIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>Overwrites the derived latitude/longitude pair and bumps the version.</summary>
+    public Task<DeviceRecord?> SetDerivedLocationAsync(
+        string organizationId,
+        string deviceId,
+        double latitude,
+        double longitude,
         CancellationToken cancellationToken);
 
     /// <summary>Sets (or clears) the linked IFC element GlobalId and bumps the version.</summary>

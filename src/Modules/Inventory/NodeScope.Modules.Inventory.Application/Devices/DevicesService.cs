@@ -1,4 +1,5 @@
 using NodeScope.Contracts.Realtime;
+using NodeScope.Modules.Inventory.Application.BuildingModels;
 using NodeScope.Modules.Inventory.Application.Properties;
 using NodeScope.Modules.Inventory.Domain;
 using NodeScope.Platform.Abstractions;
@@ -11,6 +12,7 @@ public sealed class DevicesService
     private readonly IDeviceRepository _devices;
     private readonly IPropertyRepository _properties;
     private readonly IOrgNamingPolicyReader _orgs;
+    private readonly IBuildingModelRepository _models;
     private readonly ContainmentService _containment;
     private readonly IPermissionScopeService _permissions;
     private readonly IRealtimeService _realtime;
@@ -20,6 +22,7 @@ public sealed class DevicesService
         IDeviceRepository devices,
         IPropertyRepository properties,
         IOrgNamingPolicyReader orgs,
+        IBuildingModelRepository models,
         ContainmentService containment,
         IPermissionScopeService permissions,
         IRealtimeService realtime,
@@ -28,6 +31,7 @@ public sealed class DevicesService
         _devices = devices;
         _properties = properties;
         _orgs = orgs;
+        _models = models;
         _containment = containment;
         _permissions = permissions;
         _realtime = realtime;
@@ -176,6 +180,19 @@ public sealed class DevicesService
         var clearModelCoordinates = nextPropertyId != device.PropertyId
             && await GoverningBuildingIdAsync(organizationId, device.PropertyId, cancellationToken)
                 != await GoverningBuildingIdAsync(organizationId, nextPropertyId, cancellationToken);
+
+        // While a device is placed in a georeferenced model, its map pin is a projection of the
+        // 3D placement - a direct latitude/longitude write would silently diverge from it.
+        if ((payload.ContainsKey("latitude") || payload.ContainsKey("longitude"))
+            && !clearModelCoordinates
+            && device is { X: not null, Y: not null, Z: not null }
+            && await GoverningBuildingIdAsync(organizationId, device.PropertyId, cancellationToken)
+                is { } governingBuildingId
+            && (await _models.FindByPropertyAsync(organizationId, governingBuildingId, cancellationToken))
+                ?.Georeference is not null)
+        {
+            throw InventoryErrors.DeviceLocationDerived();
+        }
 
         var updated = await _devices.UpdateWithVersionAsync(
             organizationId, deviceId, payload, clearModelCoordinates, patch.BaseVersion!.Value, cancellationToken)

@@ -318,6 +318,8 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
 
     public Exception? MetadataUploadFailure { get; set; }
 
+    public Exception? GeoreferenceFailure { get; set; }
+
     public byte[]? UploadedIfc { get; private set; }
 
     public byte[]? UploadedGeometry { get; private set; }
@@ -481,6 +483,7 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
             propertyId,
             $"Model {propertyId}",
             versionId,
+            BuildingModels.TryGetValue(propertyId, out var existing) ? existing.Georeference : null,
             1);
         BuildingModels[propertyId] = model;
         if (UploadedGeometry is not null)
@@ -495,6 +498,29 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         }
 
         return model;
+    }
+
+    public Task<BuildingModelSummary> SetModelGeoreferenceAsync(
+        string bearerToken,
+        string propertyId,
+        ModelGeoreferenceSummary? georeference,
+        CancellationToken cancellationToken)
+    {
+        BuildingModelOperations.Add("georeference");
+        if (GeoreferenceFailure is not null)
+        {
+            return Task.FromException<BuildingModelSummary>(GeoreferenceFailure);
+        }
+
+        if (!BuildingModels.TryGetValue(propertyId, out var model))
+        {
+            return Task.FromException<BuildingModelSummary>(
+                new ApplianceApiException("MODEL_001", "BUILDING_MODEL_NOT_FOUND", 404));
+        }
+
+        var updated = model with { Georeference = georeference, Version = model.Version + 1 };
+        BuildingModels[propertyId] = updated;
+        return Task.FromResult(updated);
     }
 
     public Task DeleteModelVersionAsync(

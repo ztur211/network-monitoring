@@ -86,6 +86,13 @@ public static class InventoryErrors
     /// <summary>422 <c>SPATIAL_002</c>: a partial x/y/z triple.</summary>
     public static ApiException IncompletePosition() => new("SPATIAL_002", "INCOMPLETE_POSITION", 422);
 
+    /// <summary>
+    /// 422 <c>SPATIAL_003</c>: latitude/longitude are derived from the 3D placement while the
+    /// device is placed in a georeferenced model - move it in the 3D viewer instead.
+    /// </summary>
+    public static ApiException DeviceLocationDerived() =>
+        new("SPATIAL_003", "DEVICE_LOCATION_DERIVED", 422);
+
     /// <summary>409 <c>NETWORK_001</c>: the one-network-per-org limit.</summary>
     public static ApiException NetworkLimitExceeded() =>
         new("NETWORK_001", "NETWORK_LIMIT_EXCEEDED", 409);

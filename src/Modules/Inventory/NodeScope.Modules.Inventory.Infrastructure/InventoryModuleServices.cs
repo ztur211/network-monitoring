@@ -67,6 +67,7 @@ public static class InventoryModuleServices
         services.AddScoped<DevicesService>();
         services.AddScoped<NameSuggestionService>();
         services.AddScoped<SpatialService>();
+        services.AddScoped<GeoreferenceService>();
         services.AddScoped<LinkEndpoints>();
         services.AddScoped<CircuitsService>();
         services.AddScoped<FiberRunsService>();

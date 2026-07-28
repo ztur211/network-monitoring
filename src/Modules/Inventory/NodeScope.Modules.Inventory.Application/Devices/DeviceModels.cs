@@ -209,6 +209,12 @@ public sealed record NewDevice(
     string? MacAddress,
     string? Notes);
 
+/// <summary>
+/// A latitude/longitude overwrite riding along a position write. Null members clear the pair
+/// (a cleared 3D placement takes its derived map pin with it).
+/// </summary>
+public sealed record DerivedLocation(double? Latitude, double? Longitude);
+
 /// <summary>The offset-paginated list shape <c>{ items, total }</c>.</summary>
 public sealed record DeviceListDto(IReadOnlyList<DeviceDto> Items, int Total);
 

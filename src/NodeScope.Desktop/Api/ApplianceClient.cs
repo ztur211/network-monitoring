@@ -409,6 +409,33 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
                 (int)response.StatusCode);
     }
 
+    public async Task<BuildingModelSummary> SetModelGeoreferenceAsync(
+        string bearerToken,
+        string propertyId,
+        ModelGeoreferenceSummary? georeference,
+        CancellationToken cancellationToken)
+    {
+        var relativeUrl =
+            $"api/v1/buildings/{Uri.EscapeDataString(propertyId)}/model/georeference";
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put,
+            new Uri(relativeUrl, UriKind.Relative))
+        {
+            // A null georeference clears: the wire form is the all-null body.
+            Content = georeference is null
+                ? JsonContent.Create(new { }, options: Json)
+                : JsonContent.Create(georeference, options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var data = await ReadEnvelopeDataAsync(response, cancellationToken);
+        return data.Deserialize<BuildingModelSummary>(Json)
+            ?? throw new ApplianceApiException(
+                ApplianceApiException.ProtocolErrorCode,
+                "The georeference response carried no model.",
+                (int)response.StatusCode);
+    }
+
     public async Task DeleteModelVersionAsync(
         string bearerToken,
         string propertyId,

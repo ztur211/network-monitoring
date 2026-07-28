@@ -322,6 +322,18 @@ internal sealed class BuildingModelRow
 
     public string? ActiveVersionId { get; set; }
 
+    public double? AnchorLatitude { get; set; }
+
+    public double? AnchorLongitude { get; set; }
+
+    public double? AnchorX { get; set; }
+
+    public double? AnchorY { get; set; }
+
+    public double? RotationDegrees { get; set; }
+
+    public double? MetersPerUnit { get; set; }
+
     public int Version { get; set; }
 
     public DateTime CreatedAt { get; set; }

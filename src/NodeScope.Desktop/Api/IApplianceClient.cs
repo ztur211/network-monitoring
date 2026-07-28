@@ -179,6 +179,16 @@ internal interface IApplianceClient : IDisposable
         string versionId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>PUT /api/v1/buildings/{id}/model/georeference</c>: sets (or, with null, clears) the
+    /// model's map anchor. The appliance re-derives every placed device's pin from it.
+    /// </summary>
+    public Task<BuildingModelSummary> SetModelGeoreferenceAsync(
+        string bearerToken,
+        string propertyId,
+        ModelGeoreferenceSummary? georeference,
+        CancellationToken cancellationToken);
+
     /// <summary>Compensates a failed import by removing its still-inactive version.</summary>
     public Task DeleteModelVersionAsync(
         string bearerToken,

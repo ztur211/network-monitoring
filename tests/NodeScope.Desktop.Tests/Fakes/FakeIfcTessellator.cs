@@ -11,6 +11,8 @@ internal sealed class FakeIfcTessellator : IIfcTessellator
 
     public byte[] Geometry { get; set; } = WexBimFixture.CubeA();
 
+    public BimGeoreference? Georeference { get; set; }
+
     public IReadOnlyList<BuildingModelElementMetadata>? ElementsOverride { get; set; }
 
     public IReadOnlyList<BuildingModelElementMetadata> Elements
@@ -47,6 +49,6 @@ internal sealed class FakeIfcTessellator : IIfcTessellator
         }
 
         var scene = WexBimReader.Read(Geometry, cancellationToken);
-        return Task.FromResult(new IfcTessellationResult(Geometry, scene, Elements));
+        return Task.FromResult(new IfcTessellationResult(Geometry, scene, Elements, Georeference));
     }
 }

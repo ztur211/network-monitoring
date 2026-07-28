@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <None Update="Fixtures/wall.ifc" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/georeferenced-site.ifc" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

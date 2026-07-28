@@ -79,18 +79,37 @@ public sealed class SpatialService
             throw InventoryErrors.IncompletePosition();
         }
 
-        if (allSet)
+        var model = await GoverningModelAsync(member.OrganizationId, device.PropertyId, cancellationToken);
+        if (allSet && model is null)
         {
-            await AssertModeledBuildingAsync(member.OrganizationId, device.PropertyId, cancellationToken);
+            throw InventoryErrors.DeviceNotInModeledBuilding();
+        }
+
+        // A georeferenced model makes the map pin a projection of the 3D placement: setting a
+        // position derives latitude/longitude, clearing a derived position clears them with it.
+        DerivedLocation? location = null;
+        if (model?.Georeference is { } georeference)
+        {
+            if (allSet)
+            {
+                var (latitude, longitude) = georeference.Project(position.X!.Value, position.Y!.Value);
+                location = new DerivedLocation(latitude, longitude);
+            }
+            else if (device is { X: not null, Y: not null, Z: not null })
+            {
+                location = new DerivedLocation(null, null);
+            }
         }
 
         var updated = await _devices.SetPositionAsync(
-            member.OrganizationId, deviceId, position.X, position.Y, position.Z, cancellationToken)
+            member.OrganizationId, deviceId, position.X, position.Y, position.Z, location, cancellationToken)
             ?? throw InventoryErrors.DeviceNotFound();
 
         object[] changes = [.. new[]
             {
                 ("x", device.X, updated.X), ("y", device.Y, updated.Y), ("z", device.Z, updated.Z),
+                ("latitude", device.Latitude, updated.Latitude),
+                ("longitude", device.Longitude, updated.Longitude),
             }
             .Where(change => change.Item2 != change.Item3)
             .Select(change => new { field = change.Item1, oldValue = change.Item2, newValue = change.Item3 })];
@@ -145,13 +164,23 @@ public sealed class SpatialService
         string propertyId,
         CancellationToken cancellationToken)
     {
-        var chain = await _properties.AncestorChainAsync(organizationId, propertyId, cancellationToken);
-        var buildingId = chain.FirstOrDefault(node => node.Type == PropertyType.Building)?.Id;
-        if (buildingId is null
-            || !await _models.ExistsForPropertyAsync(organizationId, buildingId, cancellationToken))
+        if (await GoverningModelAsync(organizationId, propertyId, cancellationToken) is null)
         {
             throw InventoryErrors.DeviceNotInModeledBuilding();
         }
+    }
+
+    /// <summary>The model on the property's governing BUILDING, when both exist.</summary>
+    private async Task<BuildingModelRecord?> GoverningModelAsync(
+        string organizationId,
+        string propertyId,
+        CancellationToken cancellationToken)
+    {
+        var chain = await _properties.AncestorChainAsync(organizationId, propertyId, cancellationToken);
+        var buildingId = chain.FirstOrDefault(node => node.Type == PropertyType.Building)?.Id;
+        return buildingId is null
+            ? null
+            : await _models.FindByPropertyAsync(organizationId, buildingId, cancellationToken);
     }
 
     private async Task<DeviceDto> EmitUpdatedAsync(

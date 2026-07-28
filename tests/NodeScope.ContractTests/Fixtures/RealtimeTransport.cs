@@ -28,6 +28,7 @@ public static class RealtimeTransport
         "v1:team:property:assigned", "v1:team:property:unassigned",
         "v1:member:property:assigned", "v1:member:property:unassigned", "v1:access:changed",
         "v1:buildingModel:versionUploaded", "v1:buildingModel:activated", "v1:buildingModel:deleted",
+        "v1:buildingModel:georeference",
         "v1:bcf:topic:created", "v1:bcf:topic:updated", "v1:bcf:comment:added",
     ];
 

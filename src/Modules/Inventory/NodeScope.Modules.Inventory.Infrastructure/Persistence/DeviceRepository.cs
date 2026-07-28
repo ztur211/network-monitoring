@@ -156,15 +156,57 @@ internal sealed class DeviceRepository : IDeviceRepository
         double? x,
         double? y,
         double? z,
+        DerivedLocation? location,
+        CancellationToken cancellationToken)
+    {
+        var updated = await _db.Devices
+            .Where(d => d.Id == deviceId && d.OrganizationId == organizationId)
+            .ExecuteUpdateAsync(
+                setters =>
+                {
+                    setters.SetProperty(d => d.X, x);
+                    setters.SetProperty(d => d.Y, y);
+                    setters.SetProperty(d => d.Z, z);
+                    setters.SetProperty(d => d.Version, d => d.Version + 1);
+                    setters.SetProperty(d => d.UpdatedAt, DateTime.UtcNow);
+                    if (location is not null)
+                    {
+                        setters.SetProperty(d => d.Latitude, location.Latitude);
+                        setters.SetProperty(d => d.Longitude, location.Longitude);
+                    }
+                },
+                cancellationToken);
+        return updated == 0 ? null : await FindAsync(organizationId, deviceId, null, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<DeviceRecord>> ListPlacedAsync(
+        string organizationId,
+        IReadOnlyCollection<string> propertyIds,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _db.Devices
+            .Where(d => d.OrganizationId == organizationId
+                && propertyIds.Contains(d.PropertyId)
+                && d.X != null && d.Y != null && d.Z != null)
+            .OrderByDescending(d => d.CreatedAt)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        return [.. rows.Select(ToRecord)];
+    }
+
+    public async Task<DeviceRecord?> SetDerivedLocationAsync(
+        string organizationId,
+        string deviceId,
+        double latitude,
+        double longitude,
         CancellationToken cancellationToken)
     {
         var updated = await _db.Devices
             .Where(d => d.Id == deviceId && d.OrganizationId == organizationId)
             .ExecuteUpdateAsync(
                 setters => setters
-                    .SetProperty(d => d.X, x)
-                    .SetProperty(d => d.Y, y)
-                    .SetProperty(d => d.Z, z)
+                    .SetProperty(d => d.Latitude, latitude)
+                    .SetProperty(d => d.Longitude, longitude)
                     .SetProperty(d => d.Version, d => d.Version + 1)
                     .SetProperty(d => d.UpdatedAt, DateTime.UtcNow),
                 cancellationToken);

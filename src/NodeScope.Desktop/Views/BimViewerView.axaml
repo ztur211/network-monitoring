@@ -608,6 +608,48 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                 </StackPanel>
+
+                <Border Height="1" Background="#2D3A50" />
+
+                <StackPanel Name="MapAnchorPanel"
+                            Spacing="7">
+                  <TextBlock Classes="eyebrow" Text="MAP ANCHOR" />
+                  <TextBlock Classes="muted"
+                             FontSize="10"
+                             TextWrapping="Wrap"
+                             Text="{Binding GeoreferenceCaption}" />
+                  <StackPanel Spacing="6"
+                              IsVisible="{Binding CanEditGeoreference}">
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="6">
+                      <TextBox Name="GeoreferenceLatitudeBox"
+                               PlaceholderText="Latitude"
+                               Text="{Binding GeoreferenceLatitudeInput}" />
+                      <TextBox Grid.Column="1"
+                               PlaceholderText="Longitude"
+                               Text="{Binding GeoreferenceLongitudeInput}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto,Auto"
+                          ColumnSpacing="6">
+                      <TextBox PlaceholderText="True north °"
+                               Text="{Binding GeoreferenceRotationInput}" />
+                      <Button Grid.Column="1"
+                              Name="ApplyGeoreferenceButton"
+                              Classes="bim-action"
+                              VerticalAlignment="Stretch"
+                              Command="{Binding ApplyGeoreferenceCommand}"
+                              IsEnabled="{Binding !IsSavingGeoreference}"
+                              Content="Apply" />
+                      <Button Grid.Column="2"
+                              Classes="bim-action"
+                              VerticalAlignment="Stretch"
+                              Command="{Binding ClearGeoreferenceCommand}"
+                              IsEnabled="{Binding !IsSavingGeoreference}"
+                              IsVisible="{Binding HasGeoreference}"
+                              Content="Clear" />
+                    </Grid>
+                  </StackPanel>
+                </StackPanel>
               </StackPanel>
             </ScrollViewer>
           </TabItem>

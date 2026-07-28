@@ -57,6 +57,7 @@ public static class WsEvents
     public const string BuildingModelVersionUploaded = "v1:buildingModel:versionUploaded";
     public const string BuildingModelActivated = "v1:buildingModel:activated";
     public const string BuildingModelDeleted = "v1:buildingModel:deleted";
+    public const string BuildingModelGeoreferenceSet = "v1:buildingModel:georeference";
     public const string BcfTopicCreated = "v1:bcf:topic:created";
     public const string BcfTopicUpdated = "v1:bcf:topic:updated";
     public const string BcfCommentAdded = "v1:bcf:comment:added";

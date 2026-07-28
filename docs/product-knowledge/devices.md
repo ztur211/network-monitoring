@@ -23,6 +23,11 @@ Use Inventory > Equipment to create a device without map coordinates, or select
 the + button on the Map and click its physical location. Name and category are
 required. A device placed on a property must use a site chartered to its network.
 
+Devices in a modeled building can additionally be placed in the 3D viewer. When
+that building's model has a map anchor, the map pin is derived from the 3D
+placement and direct latitude/longitude edits are refused (SPATIAL_003) until the
+3D placement is cleared. See the Map documentation for how derived pins work.
+
 OWNER and ADMIN members can configure equipment. Scoped permissions determine
 which properties and devices are visible and editable.
 

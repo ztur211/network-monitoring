@@ -102,7 +102,8 @@ internal sealed partial class DeviceFormViewModel
         Func<DeviceFormViewModel, CancellationToken, Task<bool>> submit,
         Action close,
         Func<string, string, CancellationToken, Task<string>>? suggestName = null,
-        Action? relocate = null)
+        Action? relocate = null,
+        bool locationDerived = false)
     {
         Original = original;
         Properties = properties;
@@ -110,6 +111,7 @@ internal sealed partial class DeviceFormViewModel
         _close = close;
         _suggestName = suggestName;
         Relocate = relocate;
+        LocationDerived = locationDerived;
 
         _selectedCategory = DeviceCategories.Resolve("ROUTER");
         if (original is not null)
@@ -143,7 +145,14 @@ internal sealed partial class DeviceFormViewModel
     /// <summary>Set by the map owner; the equipment tab has no map to relocate on.</summary>
     public Action? Relocate { get; }
 
-    public bool CanRelocate => Relocate is not null && IsEdit;
+    /// <summary>
+    /// True while the pin is a projection of the device's 3D placement in a georeferenced
+    /// model. The map cannot move such a pin - only the 3D viewer can, so relocation hides
+    /// and the location line says where the pin comes from.
+    /// </summary>
+    public bool LocationDerived { get; }
+
+    public bool CanRelocate => Relocate is not null && IsEdit && !LocationDerived;
 
     /// <summary>The read-only location line; coordinates are only ever set by a map pick.</summary>
     public string CoordinateLine
@@ -159,9 +168,12 @@ internal sealed partial class DeviceFormViewModel
 
             var north = lat >= 0 ? "N" : "S";
             var east = lng >= 0 ? "E" : "W";
-            return string.Create(
+            var line = string.Create(
                 CultureInfo.InvariantCulture,
                 $"{Math.Abs(lat):F5}° {north}, {Math.Abs(lng):F5}° {east}");
+            return LocationDerived
+                ? $"{line} - derived from the 3D placement; move it in the 3D viewer"
+                : line;
         }
     }
 

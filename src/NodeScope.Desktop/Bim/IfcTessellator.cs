@@ -14,11 +14,20 @@ internal static class IfcImportLimits
     public const long MaximumBytes = 209_715_200;
 }
 
+/// <summary>Source-generated log messages for IFC tessellation (CA1848).</summary>
+internal static partial class TessellatorLog
+{
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "IFC georeference extraction failed; the model imports without a map anchor: {Reason}")]
+    public static partial void GeoreferenceExtractionFailed(ILogger logger, string reason);
+}
+
 /// <summary>The validated portable artifact produced from one IFC source file.</summary>
 internal sealed record IfcTessellationResult(
     byte[] WexBim,
     BimScene Scene,
-    IReadOnlyList<BuildingModelElementMetadata> Elements);
+    IReadOnlyList<BuildingModelElementMetadata> Elements,
+    BimGeoreference? Georeference);
 
 /// <summary>
 /// Replaceable Windows-bound half of Decision 16. Consumers only see the
@@ -131,7 +140,8 @@ internal sealed class XbimIfcTessellator(ILoggerFactory loggerFactory) : IIfcTes
                     Truncate(product.Name?.ToString(), 512)));
             }
 
-            return new IfcTessellationResult(wexBim, scene, elements);
+            return new IfcTessellationResult(
+                wexBim, scene, elements, ExtractGeoreference(model, scene));
         }
         catch (OperationCanceledException)
         {
@@ -147,6 +157,26 @@ internal sealed class XbimIfcTessellator(ILoggerFactory loggerFactory) : IIfcTes
                 $"The selected IFC could not be tessellated: {failure.Message}",
                 failure);
         }
+    }
+
+    /// <summary>
+    /// Extraction failure must never fail an import that tessellated fine - the model still
+    /// renders; only the automatic map anchor is lost.
+    /// </summary>
+    private BimGeoreference? ExtractGeoreference(IfcStore model, BimScene scene)
+    {
+#pragma warning disable CA1031
+        try
+        {
+            return IfcGeoreferenceExtractor.Extract(model, scene.WorldCoordinateSystem);
+        }
+        catch (Exception failure)
+        {
+            TessellatorLog.GeoreferenceExtractionFailed(
+                loggerFactory.CreateLogger<XbimIfcTessellator>(), failure.Message);
+            return null;
+        }
+#pragma warning restore CA1031
     }
 
     private static string? Truncate(string? value, int maximumLength) =>

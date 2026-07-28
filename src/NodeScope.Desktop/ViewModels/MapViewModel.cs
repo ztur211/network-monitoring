@@ -978,6 +978,8 @@ internal sealed partial class MapViewModel : IDisposable
         try
         {
             var device = await _session.Client.GetDeviceAsync(_session.Token, selected.Id, _lifetime.Token);
+            var locationDerived = device.IsPlaced
+                && await GoverningBuildingIsGeoreferencedAsync(device.PropertyId, _lifetime.Token);
             DeviceFormViewModel? form = null;
             form = new DeviceFormViewModel(
                 device,
@@ -990,13 +992,49 @@ internal sealed partial class MapViewModel : IDisposable
                     _relocatingForm = form;
                     DeviceForm = null;
                     IsPlacing = true;
-                });
+                },
+                locationDerived: locationDerived);
             DeviceForm = form;
         }
         catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
         {
             OperationError = $"Loading the device failed: {failure.Message}";
         }
+    }
+
+    /// <summary>
+    /// Whether the device's pin is a projection of its 3D placement: its governing BUILDING
+    /// carries a georeferenced model. Unknown (missing tree, failed read) counts as false -
+    /// relocation then still offers itself and the server stays the authority.
+    /// </summary>
+    private async Task<bool> GoverningBuildingIsGeoreferencedAsync(
+        string propertyId,
+        CancellationToken cancellationToken)
+    {
+        var byId = _properties.ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var current = byId.GetValueOrDefault(propertyId);
+        var depth = 0;
+        while (current is not null && depth++ < 32)
+        {
+            if (string.Equals(current.Type, "BUILDING", StringComparison.Ordinal))
+            {
+                try
+                {
+                    var model = await _session.Client.GetBuildingModelAsync(
+                        _session.Token, current.Id, cancellationToken);
+                    return model.Georeference is not null;
+                }
+                catch (Exception failure) when (
+                    failure is ApplianceApiException or HttpRequestException)
+                {
+                    return false;
+                }
+            }
+
+            current = current.ParentId is null ? null : byId.GetValueOrDefault(current.ParentId);
+        }
+
+        return false;
     }
 
     /// <summary>First press arms ("Confirm?"), second press deletes - mirrors the list rows.</summary>

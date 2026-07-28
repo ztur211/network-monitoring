@@ -202,7 +202,7 @@ public sealed class BimViewerViewTests : IDisposable
     {
         _client.Properties.Add(new PropertySummary("b1", null, "BUILDING", "HQ", "01"));
         _client.BuildingModels["b1"] =
-            new BuildingModelSummary("m1", "b1", "HQ model", "v1", 1);
+            new BuildingModelSummary("m1", "b1", "HQ model", "v1", null, 1);
         _client.BuildingGeometry["b1"] = WexBimFixture.CubeA();
         var productLabel = WexBimReader.Read(
             _client.BuildingGeometry["b1"],

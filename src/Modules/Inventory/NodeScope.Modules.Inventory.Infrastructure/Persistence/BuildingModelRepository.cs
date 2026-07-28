@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NodeScope.Modules.Inventory.Application.BuildingModels;
+using NodeScope.Modules.Inventory.Domain;
 
 namespace NodeScope.Modules.Inventory.Infrastructure.Persistence;
 
@@ -129,14 +130,55 @@ internal sealed class BuildingModelRepository : IBuildingModelRepository
                     .SetProperty(m => m.UpdatedAt, DateTime.UtcNow),
                 cancellationToken) > 0;
 
+    public async Task<bool> SetGeoreferenceAsync(
+        string organizationId,
+        string modelId,
+        ModelGeoreference? georeference,
+        int expectedVersion,
+        CancellationToken cancellationToken)
+    {
+        double? anchorLatitude = georeference?.AnchorLatitude;
+        double? anchorLongitude = georeference?.AnchorLongitude;
+        double? anchorX = georeference?.AnchorX;
+        double? anchorY = georeference?.AnchorY;
+        double? rotationDegrees = georeference?.RotationDegrees;
+        double? metersPerUnit = georeference?.MetersPerUnit;
+        return await _db.BuildingModels
+            .Where(m => m.Id == modelId && m.OrganizationId == organizationId && m.Version == expectedVersion)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(m => m.AnchorLatitude, anchorLatitude)
+                    .SetProperty(m => m.AnchorLongitude, anchorLongitude)
+                    .SetProperty(m => m.AnchorX, anchorX)
+                    .SetProperty(m => m.AnchorY, anchorY)
+                    .SetProperty(m => m.RotationDegrees, rotationDegrees)
+                    .SetProperty(m => m.MetersPerUnit, metersPerUnit)
+                    .SetProperty(m => m.Version, m => m.Version + 1)
+                    .SetProperty(m => m.UpdatedAt, DateTime.UtcNow),
+                cancellationToken) > 0;
+    }
+
     public Task DeleteVersionAsync(string organizationId, string versionId, CancellationToken cancellationToken) =>
         _db.BuildingModelVersions
             .Where(v => v.Id == versionId && v.OrganizationId == organizationId)
             .ExecuteDeleteAsync(cancellationToken);
 
     private static BuildingModelRecord ToRecord(BuildingModelRow row) => new(
-        row.Id, row.OrganizationId, row.PropertyId, row.Name, row.ActiveVersionId, row.Version,
-        row.CreatedAt, row.UpdatedAt);
+        row.Id, row.OrganizationId, row.PropertyId, row.Name, row.ActiveVersionId, ToGeoreference(row),
+        row.Version, row.CreatedAt, row.UpdatedAt);
+
+    private static ModelGeoreference? ToGeoreference(BuildingModelRow row) =>
+        row is
+        {
+            AnchorLatitude: { } latitude,
+            AnchorLongitude: { } longitude,
+            AnchorX: { } anchorX,
+            AnchorY: { } anchorY,
+            RotationDegrees: { } rotation,
+            MetersPerUnit: { } metersPerUnit,
+        }
+            ? new ModelGeoreference(latitude, longitude, anchorX, anchorY, rotation, metersPerUnit)
+            : null;
 
     private static BuildingModelVersionRecord ToRecord(BuildingModelVersionRow row) => new(
         row.Id, row.OrganizationId, row.BuildingModelId, row.VersionNumber, row.StorageKey, row.FileName,

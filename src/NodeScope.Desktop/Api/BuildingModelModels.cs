@@ -14,7 +14,21 @@ internal sealed record BuildingModelSummary(
     string PropertyId,
     string Name,
     string? ActiveVersionId,
+    ModelGeoreferenceSummary? Georeference,
     int Version);
+
+/// <summary>
+/// The appliance's model-frame to WGS84 bridge: the scene point (anchorX, anchorY) sits at
+/// (anchorLatitude, anchorLongitude), rotation is clockwise from scene +Y to true north.
+/// While set, placed devices' map pins are projections of their 3D placement.
+/// </summary>
+internal sealed record ModelGeoreferenceSummary(
+    double AnchorLatitude,
+    double AnchorLongitude,
+    double AnchorX,
+    double AnchorY,
+    double RotationDegrees,
+    double MetersPerUnit);
 
 /// <summary>The version metadata returned after an immutable IFC upload lands.</summary>
 internal sealed record BuildingModelVersionSummary(

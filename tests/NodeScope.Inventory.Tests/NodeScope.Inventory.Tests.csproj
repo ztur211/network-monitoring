@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the Inventory module's pure domain logic. Today that is the
+    building-model georeference: the model-frame to WGS84 projection that turns
+    a 3D device placement into its map pin, and the all-or-nothing wire
+    validation of the georeference itself. The end-to-end behavior (derive on
+    position write, re-derive on georeference change, derived-pin write guard)
+    lives in the contract suite.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Modules/Inventory/NodeScope.Modules.Inventory.Application/NodeScope.Modules.Inventory.Application.csproj" />
+  </ItemGroup>
+
+</Project>

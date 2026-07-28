@@ -28,6 +28,25 @@ same map placement interaction.
 
 Only users with configuration access see placement and edit controls.
 
+## Derived Pins from the 3D Model
+
+When a building model carries a map anchor (a georeference), every device placed
+in the 3D viewer gets its map pin derived from that placement: the appliance
+projects the model-frame position onto WGS84 and keeps the pin in lockstep with
+the 3D position. Setting or changing the anchor re-derives every placed device in
+the building, and the map updates live over SignalR.
+
+A derived pin cannot be moved from the map - the edit form hides Relocate and the
+location line says the position comes from the 3D placement. Moving the device in
+the 3D viewer (or clearing its 3D position) is the way to move or release the
+pin. Devices in buildings without an anchor keep ordinary manual pins.
+
+The anchor comes from the IFC itself when the file is georeferenced (IfcSite
+latitude/longitude plus the model's TrueNorth), extracted automatically at
+import. It can also be set or corrected in the 3D viewer's Model tab under Map
+anchor: enter the building's coordinates and true-north rotation, and the model's
+footprint centre is pinned there.
+
 ## Fiber Runs
 
 Fiber runs are orange dashed lines between placed endpoint devices. They become

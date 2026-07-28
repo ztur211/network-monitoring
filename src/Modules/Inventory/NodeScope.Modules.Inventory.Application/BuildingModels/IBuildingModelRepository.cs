@@ -1,3 +1,5 @@
+using NodeScope.Modules.Inventory.Domain;
+
 namespace NodeScope.Modules.Inventory.Application.BuildingModels;
 
 /// <summary>BuildingModel persistence (Node's <c>BuildingModelsRepository</c>).</summary>
@@ -46,6 +48,14 @@ public interface IBuildingModelRepository
         string organizationId,
         string modelId,
         string versionId,
+        int expectedVersion,
+        CancellationToken cancellationToken);
+
+    /// <summary>Optimistic georeference write (null clears); false on a version conflict.</summary>
+    public Task<bool> SetGeoreferenceAsync(
+        string organizationId,
+        string modelId,
+        ModelGeoreference? georeference,
         int expectedVersion,
         CancellationToken cancellationToken);
 

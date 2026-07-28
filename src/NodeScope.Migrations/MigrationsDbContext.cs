@@ -333,11 +333,17 @@ public partial class MigrationsDbContext : DbContext
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.ActiveVersionId).HasColumnName("activeVersionId");
+            entity.Property(e => e.AnchorLatitude).HasColumnName("anchorLatitude");
+            entity.Property(e => e.AnchorLongitude).HasColumnName("anchorLongitude");
+            entity.Property(e => e.AnchorX).HasColumnName("anchorX");
+            entity.Property(e => e.AnchorY).HasColumnName("anchorY");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp(3) without time zone")
                 .HasColumnName("createdAt");
+            entity.Property(e => e.MetersPerUnit).HasColumnName("metersPerUnit");
             entity.Property(e => e.Name).HasColumnName("name");
+            entity.Property(e => e.RotationDegrees).HasColumnName("rotationDegrees");
             entity.Property(e => e.OrganizationId).HasColumnName("organizationId");
             entity.Property(e => e.PropertyId).HasColumnName("propertyId");
             entity.Property(e => e.UpdatedAt)

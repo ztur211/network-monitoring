@@ -139,6 +139,18 @@ internal sealed partial class BimViewerViewModel : IDisposable
     [ObservableProperty]
     private bool _isCreatingIssue;
 
+    [ObservableProperty]
+    private string _georeferenceLatitudeInput = "";
+
+    [ObservableProperty]
+    private string _georeferenceLongitudeInput = "";
+
+    [ObservableProperty]
+    private string _georeferenceRotationInput = "";
+
+    [ObservableProperty]
+    private bool _isSavingGeoreference;
+
     public BimViewerViewModel(
         ApplianceSession session,
         ILogger<BimViewerViewModel> logger,
@@ -206,6 +218,17 @@ internal sealed partial class BimViewerViewModel : IDisposable
     public bool CanFocusSelection =>
         Scene is not null
         && (SelectedProduct is not null || SelectedDevice is { IsPlaced: true });
+
+    public bool HasGeoreference => Model?.Georeference is not null;
+
+    public bool CanEditGeoreference => CanConfigure && Model is not null;
+
+    /// <summary>The map-anchor state line shown in the Model tab.</summary>
+    public string GeoreferenceCaption => Model?.Georeference is { } georeference
+        ? string.Create(
+            CultureInfo.InvariantCulture,
+            $"Anchored at {georeference.AnchorLatitude:0.######}°, {georeference.AnchorLongitude:0.######}° · true north {georeference.RotationDegrees:0.##}°. Placed devices appear on the map at their model position.")
+        : "Not georeferenced. Set the building's coordinates so placed devices appear on the map where they stand in the model.";
 
     public bool IsInteractionPending => InteractionMode is not BimInteractionMode.Select;
 
@@ -356,8 +379,23 @@ internal sealed partial class BimViewerViewModel : IDisposable
         RefreshRenderOptions();
     }
 
-    partial void OnModelChanged(BuildingModelSummary? value) =>
+    partial void OnModelChanged(BuildingModelSummary? value)
+    {
         OnPropertyChanged(nameof(ModelCaption));
+        OnPropertyChanged(nameof(HasGeoreference));
+        OnPropertyChanged(nameof(GeoreferenceCaption));
+        OnPropertyChanged(nameof(CanEditGeoreference));
+        var georeference = value?.Georeference;
+        GeoreferenceLatitudeInput = georeference is null
+            ? ""
+            : georeference.AnchorLatitude.ToString("0.######", CultureInfo.InvariantCulture);
+        GeoreferenceLongitudeInput = georeference is null
+            ? ""
+            : georeference.AnchorLongitude.ToString("0.######", CultureInfo.InvariantCulture);
+        GeoreferenceRotationInput = georeference is null
+            ? ""
+            : georeference.RotationDegrees.ToString("0.##", CultureInfo.InvariantCulture);
+    }
 
     partial void OnErrorDetailsChanged(string? value) =>
         OnPropertyChanged(nameof(StatusMessage));
@@ -625,6 +663,37 @@ internal sealed partial class BimViewerViewModel : IDisposable
     [RelayCommand]
     private void DismissImportError() => ImportError = null;
 
+    /// <summary>
+    /// A failed seed must not fail an import whose model already landed - the viewer works,
+    /// only the automatic map anchor is missing, and the georeference panel can set it later.
+    /// </summary>
+    private async Task<BuildingModelSummary> SeedGeoreferenceAsync(
+        string buildingId,
+        BimGeoreference extracted,
+        BuildingModelSummary fallback)
+    {
+        try
+        {
+            return await _session.Client.SetModelGeoreferenceAsync(
+                _session.Token,
+                buildingId,
+                new ModelGeoreferenceSummary(
+                    extracted.AnchorLatitude,
+                    extracted.AnchorLongitude,
+                    extracted.AnchorX,
+                    extracted.AnchorY,
+                    extracted.RotationDegrees,
+                    extracted.MetersPerUnit),
+                _lifetime.Token);
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or JsonException)
+        {
+            BimLog.GeoreferenceSeedFailed(_logger, buildingId, failure.Message);
+            return fallback;
+        }
+    }
+
     internal async Task ImportFileAsync(string sourcePath, string fileName)
     {
         if (!IsImportSupported)
@@ -693,6 +762,14 @@ internal sealed partial class BimViewerViewModel : IDisposable
                 version.Id,
                 _lifetime.Token);
             incompleteVersionId = null;
+
+            // Seed the map anchor from the IFC's own georeferencing, but never clobber one
+            // already set (a manual anchor outranks whatever a re-imported file claims).
+            if (tessellated.Georeference is { } extracted && activatedModel.Georeference is null)
+            {
+                ImportStatus = "Georeferencing the model from the IFC site";
+                activatedModel = await SeedGeoreferenceAsync(building.Id, extracted, activatedModel);
+            }
             if (!string.Equals(
                     SelectedBuilding?.Id,
                     building.Id,
@@ -1061,6 +1138,7 @@ internal sealed partial class BimViewerViewModel : IDisposable
         OnPropertyChanged(nameof(CanClearSelectedDevicePosition));
         OnPropertyChanged(nameof(CanClearSelectedDeviceLink));
         OnPropertyChanged(nameof(CanCreateIssue));
+        OnPropertyChanged(nameof(CanEditGeoreference));
         ClearDevicePositionCommand.NotifyCanExecuteChanged();
         ClearDeviceLinkCommand.NotifyCanExecuteChanged();
         ApplyDeviceData(devicesResult.Value, statusesResult.Value);
@@ -1185,6 +1263,101 @@ internal sealed partial class BimViewerViewModel : IDisposable
             OperationError = "Live device health updates paused. Existing status data is still shown.";
         }
     }
+
+    /// <summary>
+    /// Applies the entered map anchor. An existing georeference keeps its model-frame anchor
+    /// point and unit scale (only the coordinates and rotation change); a first-time anchor
+    /// pins the loaded scene's footprint centre to the entered coordinates.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyGeoreferenceAsync()
+    {
+        if (!CanEditGeoreference || SelectedBuilding is not { } building || Model is not { } model)
+        {
+            return;
+        }
+
+        OperationError = null;
+        if (!TryParseCoordinate(GeoreferenceLatitudeInput, -90, 90, out var latitude)
+            || !TryParseCoordinate(GeoreferenceLongitudeInput, -180, 180, out var longitude))
+        {
+            OperationError = "Enter the building's latitude (-90 to 90) and longitude (-180 to 180).";
+            return;
+        }
+
+        double rotation = 0;
+        if (GeoreferenceRotationInput.Trim().Length > 0
+            && !TryParseCoordinate(GeoreferenceRotationInput, -360, 360, out rotation))
+        {
+            OperationError = "True north rotation must be between -360 and 360 degrees.";
+            return;
+        }
+
+        ModelGeoreferenceSummary request;
+        if (model.Georeference is { } existing)
+        {
+            request = existing with
+            {
+                AnchorLatitude = latitude,
+                AnchorLongitude = longitude,
+                RotationDegrees = rotation,
+            };
+        }
+        else if (Scene is { } scene && !scene.Bounds.IsEmpty)
+        {
+            var center = scene.Bounds.Center;
+            request = new ModelGeoreferenceSummary(
+                latitude, longitude, center.X, center.Y, rotation, 1.0 / scene.Meter);
+        }
+        else
+        {
+            OperationError = "Load the model geometry before anchoring it on the map.";
+            return;
+        }
+
+        await SaveGeoreferenceAsync(building.Id, request);
+    }
+
+    /// <summary>Clears the anchor; already-derived pins keep their last position.</summary>
+    [RelayCommand]
+    private async Task ClearGeoreferenceAsync()
+    {
+        if (!CanEditGeoreference || SelectedBuilding is not { } building || Model?.Georeference is null)
+        {
+            return;
+        }
+
+        OperationError = null;
+        await SaveGeoreferenceAsync(building.Id, null);
+    }
+
+    private async Task SaveGeoreferenceAsync(string buildingId, ModelGeoreferenceSummary? request)
+    {
+        IsSavingGeoreference = true;
+        try
+        {
+            Model = await _session.Client.SetModelGeoreferenceAsync(
+                _session.Token, buildingId, request, _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or JsonException)
+        {
+            SetOperationFailure("The map anchor could not be saved.", failure);
+        }
+        finally
+        {
+            IsSavingGeoreference = false;
+        }
+    }
+
+    private static bool TryParseCoordinate(string input, double minimum, double maximum, out double value) =>
+        double.TryParse(input.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+        && double.IsFinite(value)
+        && value >= minimum
+        && value <= maximum;
 
     private async Task UpdateDevicePositionAsync(
         BimDeviceItem original,
@@ -1788,6 +1961,7 @@ internal sealed partial class BimViewerViewModel : IDisposable
         OnPropertyChanged(nameof(CanClearSelectedDevicePosition));
         OnPropertyChanged(nameof(CanClearSelectedDeviceLink));
         OnPropertyChanged(nameof(CanCreateIssue));
+        OnPropertyChanged(nameof(CanEditGeoreference));
         ClearDevicePositionCommand.NotifyCanExecuteChanged();
         ClearDeviceLinkCommand.NotifyCanExecuteChanged();
     }
@@ -1852,6 +2026,10 @@ internal static partial class BimLog
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "BIM viewer failed while {Operation}: {Reason}")]
     public static partial void LoadFailed(ILogger logger, string operation, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Seeding the georeference for building {PropertyId} failed: {Reason}")]
+    public static partial void GeoreferenceSeedFailed(ILogger logger, string propertyId, string reason);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Imported building {PropertyId} model version {VersionId} with {GeometryBytes} bytes of wexBIM geometry")]
