@@ -15,16 +15,7 @@ public sealed class XbimIfcTessellatorTests
             return;
         }
 
-        var sourcePath = FindRepositoryFile(
-            "apps",
-            "desktop",
-            "src",
-            "renderer",
-            "viewport",
-            "ifc",
-            "__tests__",
-            "fixtures",
-            "wall.ifc");
+        var sourcePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "wall.ifc");
         var tessellator = new XbimIfcTessellator(NullLoggerFactory.Instance);
 
         var result = await tessellator.TessellateAsync(
@@ -42,20 +33,4 @@ public sealed class XbimIfcTessellatorTests
         Assert.StartsWith("Ifc", element.TypeName, StringComparison.Ordinal);
     }
 
-    private static string FindRepositoryFile(params string[] segments)
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
-             directory is not null;
-             directory = directory.Parent)
-        {
-            var candidate = Path.Combine([directory.FullName, .. segments]);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        throw new FileNotFoundException(
-            $"Could not find repository fixture '{Path.Combine(segments)}'.");
-    }
 }

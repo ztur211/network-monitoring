@@ -13,7 +13,7 @@
   'powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop.ps1'.
 
 .PARAMETER Reset        Wipe the stack's volumes first (fresh DB + blobstore).
-.PARAMETER NoModel      Skip the FZK-Haus sample-model upload.
+.PARAMETER NoModel      Skip the Sample House model upload.
 .PARAMETER DesktopOnly  Backend already up elsewhere; just open the desktop.
 .PARAMETER BackendOnly  Bring the appliance up, no GUI.
 .PARAMETER Stop         Stop the appliance stack (volumes kept).
@@ -71,7 +71,7 @@ function New-HexSecret([int]$bytes) {
 
 if ($Stop) {
     if (-not (Test-Path $EnvFile)) { Fail "no $EnvFile - nothing this script started" }
-    docker @ComposeArgs down
+    docker @ComposeArgs down --remove-orphans
     exit $LASTEXITCODE
 }
 
@@ -105,7 +105,7 @@ if (-not $DesktopOnly) {
     }
 
     Log 'building + starting the appliance (db -> api -> web); the first build takes a while ...'
-    docker @ComposeArgs up -d --build --wait db api web
+    docker @ComposeArgs up -d --build --wait --remove-orphans db api web
     if ($LASTEXITCODE -ne 0) { Fail 'compose up failed' }
 
     Log 'seeding demo data (org, devices, building model, sample model) ...'

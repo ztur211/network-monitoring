@@ -1,5 +1,5 @@
 # NodeScope 3D DEMO overlay - layered on the appliance base to pre-load the
-# public "FZK-Haus" sample building so `up` gives you something to view right away.
+# public xBIM Sample House so `up` gives you something to view right away.
 #
 #   docker compose \
 #     -f deploy/docker-compose.prod.yml -f deploy/docker-compose.demo.yml \
@@ -29,10 +29,12 @@ services:
       STORAGE_FS_ROOT: /data/storage
       SEED_EMAIL: ${SEED_EMAIL:-owner@acme.test}
       SEED_PASSWORD: ${SEED_PASSWORD:-devpassword123}
-      # Also upload the real FZK-Haus IFC through the API (needs internet on first run),
-      # so the 3D viewer shows an actual building instead of the placeholder's empty
-      # scene. Override with SEED_SAMPLE_MODEL=false (run-desktop.sh --no-model).
+      # Upload a matched IFC + portable wexBIM pair through the API (needs internet
+      # on first run), so every supported desktop can render the building. Override
+      # both URLs together when using another prepared pair.
       SEED_SAMPLE_MODEL: ${SEED_SAMPLE_MODEL:-true}
+      SEED_SAMPLE_MODEL_URL: ${SEED_SAMPLE_MODEL_URL:-}
+      SEED_SAMPLE_MODEL_GEOMETRY_URL: ${SEED_SAMPLE_MODEL_GEOMETRY_URL:-}
     volumes:
       - blobstore:/data/storage
     # The seed runs in-process against its own loopback server (same image, `seed` arg):

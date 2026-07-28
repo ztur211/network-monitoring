@@ -24,4 +24,8 @@
     <ProjectReference Include="../../src/NodeScope.Desktop/NodeScope.Desktop.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures/wall.ifc" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

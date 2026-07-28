@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -29,6 +30,11 @@ internal static partial class DemoSeeder
 {
     private const string OrgName = "Acme Networks";
     private const string SuperAdminEmail = "admin@nodescope.test";
+    private const string DefaultSampleModelUrl =
+        "https://raw.githubusercontent.com/xBimTeam/XbimEssentials/e3c877712aeff39813219b9dd13383c266d07055/Tests/TestFiles/SampleHouse4.ifc";
+    private const string DefaultSampleGeometryUrl =
+        "https://raw.githubusercontent.com/xBimTeam/XbimWebUI/57a4785f31920dbc291cab417137d66a16860853/tests/data/SampleHouse.wexbim";
+    private const int WexBimMagicNumber = 94_132_117;
     private static readonly byte[] PlaceholderIfc =
         Encoding.ASCII.GetBytes("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n");
 
@@ -53,17 +59,19 @@ internal static partial class DemoSeeder
 
         var connectionString = app.Services.GetRequiredService<DatabaseConnectionString>().Value;
         using var db = new MigrationsDbContext(MigrationsDbContextOptions.Create(connectionString));
+        var storage = app.Services.GetRequiredService<IObjectStorage>();
 
         var org = await EnsureOrganizationAsync(db, logger).ConfigureAwait(false);
         await EnsureSuperAdminAsync(db, logger).ConfigureAwait(false);
         var ownerId = await EnsureOwnerAsync(db, http, ownerEmail, password, logger).ConfigureAwait(false);
         await EnsureMembershipAsync(db, org.Id, ownerId, logger).ConfigureAwait(false);
         await SeedNetworkDataAsync(db, org.Id, ownerId, logger).ConfigureAwait(false);
-        await SeedBuildingModelAsync(db, app.Services.GetRequiredService<IObjectStorage>(), org.Id, logger).ConfigureAwait(false);
+        await SeedBuildingModelAsync(db, storage, org.Id, logger).ConfigureAwait(false);
 
         if (string.Equals(configuration["SEED_SAMPLE_MODEL"], "true", StringComparison.OrdinalIgnoreCase))
         {
-            await UploadSampleModelAsync(http, configuration, ownerEmail, password, logger).ConfigureAwait(false);
+            await UploadSampleModelAsync(
+                db, storage, org.Id, http, configuration, ownerEmail, password, logger).ConfigureAwait(false);
         }
 
         await app.StopAsync().ConfigureAwait(false);
@@ -352,31 +360,92 @@ internal static partial class DemoSeeder
     }
 
     /// <summary>
-    /// The load-sample-model.mjs port: put a REAL IFC behind "Main Building" through the
-    /// product upload API, so the 3D viewer renders actual geometry instead of the
-    /// placeholder's empty scene. Needs internet on the first run (the FZK-Haus test house).
+    /// Puts a real IFC and its matched portable wexBIM geometry behind "Main Building"
+    /// through the product API, so every supported desktop can render the sample. Needs
+    /// internet on the first run.
     /// </summary>
     private static async Task UploadSampleModelAsync(
-        HttpClient http, IConfiguration configuration, string email, string password, ILogger logger)
+        MigrationsDbContext db,
+        IObjectStorage storage,
+        string organizationId,
+        HttpClient http,
+        IConfiguration configuration,
+        string email,
+        string password,
+        ILogger logger)
     {
-        var sampleUrl = configuration["SEED_SAMPLE_MODEL_URL"]
-            ?? "https://raw.githubusercontent.com/ThatOpen/engine_web-ifc/main/tests/ifcfiles/public/AC20-FZK-Haus.ifc";
-        var cache = Path.Combine(Path.GetTempPath(), "nodescope-samples", Path.GetFileName(new Uri(sampleUrl).LocalPath));
-        byte[] bytes;
-        if (File.Exists(cache))
+        var configuredModelUrl = NullIfWhiteSpace(configuration["SEED_SAMPLE_MODEL_URL"]);
+        var configuredGeometryUrl = NullIfWhiteSpace(configuration["SEED_SAMPLE_MODEL_GEOMETRY_URL"]);
+        if ((configuredModelUrl is null) != (configuredGeometryUrl is null))
         {
-            bytes = await File.ReadAllBytesAsync(cache).ConfigureAwait(false);
-        }
-        else
-        {
-            bytes = await http.GetByteArrayAsync(new Uri(sampleUrl)).ConfigureAwait(false);
-            Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
-            await File.WriteAllBytesAsync(cache, bytes).ConfigureAwait(false);
+            throw new InvalidOperationException(
+                "SEED_SAMPLE_MODEL_URL and SEED_SAMPLE_MODEL_GEOMETRY_URL must be set together");
         }
 
-        if (!Encoding.ASCII.GetString(bytes, 0, Math.Min(13, bytes.Length)).StartsWith("ISO-10303-21", StringComparison.Ordinal))
+        var sampleUri = RequireSampleUri(configuredModelUrl ?? DefaultSampleModelUrl, "sample model");
+        var geometryUri = RequireSampleUri(
+            configuredGeometryUrl ?? DefaultSampleGeometryUrl,
+            "sample geometry");
+        var sampleFileName = Path.GetFileName(sampleUri.LocalPath);
+
+        var buildingModel = await db.BuildingModel
+            .Where(model => model.OrganizationId == organizationId)
+            .Join(
+                db.Property.Where(property =>
+                    property.OrganizationId == organizationId
+                    && property.Name == "Main Building"
+                    && property.Type == PropertyType.Building),
+                model => model.PropertyId,
+                property => property.Id,
+                (model, property) => new
+                {
+                    ModelId = model.Id,
+                    PropertyId = property.Id,
+                })
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Main Building model not found; did the seed run?");
+
+        var existingVersion = await db.BuildingModelVersion
+            .Where(version =>
+                version.OrganizationId == organizationId
+                && version.BuildingModelId == buildingModel.ModelId
+                && version.FileName == sampleFileName)
+            .OrderByDescending(version => version.VersionNumber)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+        var geometryAlreadyExists = existingVersion is not null
+            && await storage.ExistsAsync(
+                StorageKeys.BuildingModelGeometry(
+                    organizationId,
+                    buildingModel.PropertyId,
+                    existingVersion.Id),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (geometryAlreadyExists)
         {
-            throw new InvalidOperationException($"{sampleUrl} does not look like an IFC (missing ISO-10303-21 header)");
+            LogSkipped(logger, "sample model with portable geometry");
+            return;
+        }
+
+        byte[]? modelBytes = null;
+        if (existingVersion is null)
+        {
+            modelBytes = await DownloadSampleAsync(http, sampleUri).ConfigureAwait(false);
+            if (!Encoding.ASCII.GetString(modelBytes, 0, Math.Min(13, modelBytes.Length))
+                .StartsWith("ISO-10303-21", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"{sampleUri} does not look like an IFC (missing ISO-10303-21 header)");
+            }
+        }
+
+        var geometryBytes = await DownloadSampleAsync(http, geometryUri).ConfigureAwait(false);
+        if (geometryBytes.Length < sizeof(int) + sizeof(byte)
+            || BinaryPrimitives.ReadInt32LittleEndian(geometryBytes) != WexBimMagicNumber
+            || geometryBytes[sizeof(int)] is < 1 or > 4)
+        {
+            throw new InvalidOperationException($"{geometryUri} does not look like a supported wexBIM file");
         }
 
         using var signInBody = JsonContent.Create(new { email, password });
@@ -393,30 +462,73 @@ internal static partial class DemoSeeder
 
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sessionToken);
 
-        using var propertiesResponse = await http.GetAsync(new Uri("/api/v1/properties", UriKind.Relative)).ConfigureAwait(false);
-        propertiesResponse.EnsureSuccessStatusCode();
-        using var properties = JsonDocument.Parse(await propertiesResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
-        var buildingId = properties.RootElement.GetProperty("data").EnumerateArray()
-            .Where(p => p.GetProperty("name").GetString() == "Main Building" && p.GetProperty("type").GetString() == "BUILDING")
-            .Select(p => p.GetProperty("id").GetString())
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException("Main Building not found; did the seed run?");
+        var buildingId = Uri.EscapeDataString(buildingModel.PropertyId);
+        var versionId = existingVersion?.Id;
+        if (versionId is null)
+        {
+            using var upload = new ByteArrayContent(modelBytes!);
+            upload.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            using var uploadResponse = await http.PostAsync(
+                new Uri(
+                    $"/api/v1/buildings/{buildingId}/model/versions"
+                    + $"?fileName={Uri.EscapeDataString(sampleFileName)}&activate=false",
+                    UriKind.Relative),
+                upload).ConfigureAwait(false);
+            uploadResponse.EnsureSuccessStatusCode();
+            using var uploaded = JsonDocument.Parse(
+                await uploadResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+            versionId = uploaded.RootElement.GetProperty("data").GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("Sample-model upload returned no version id");
+        }
 
-        using var upload = new ByteArrayContent(bytes);
-        upload.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        using var uploadResponse = await http.PostAsync(
-            new Uri($"/api/v1/buildings/{buildingId}/model/versions?fileName=AC20-FZK-Haus.ifc", UriKind.Relative),
-            upload).ConfigureAwait(false);
-        uploadResponse.EnsureSuccessStatusCode();
-        using var uploaded = JsonDocument.Parse(await uploadResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
-        var uploadedVersionId = uploaded.RootElement.GetProperty("data").GetProperty("id").GetString();
+        using var geometry = new ByteArrayContent(geometryBytes);
+        geometry.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.xbim.wexbim");
+        using var geometryResponse = await http.PutAsync(
+            new Uri(
+                $"/api/v1/buildings/{buildingId}/model/versions/{Uri.EscapeDataString(versionId)}/geometry",
+                UriKind.Relative),
+            geometry).ConfigureAwait(false);
+        geometryResponse.EnsureSuccessStatusCode();
 
-        using var activateBody = JsonContent.Create(new { versionId = uploadedVersionId });
+        using var activateBody = JsonContent.Create(new { versionId });
         using var activateResponse = await http.PutAsync(
             new Uri($"/api/v1/buildings/{buildingId}/model/active", UriKind.Relative), activateBody).ConfigureAwait(false);
         activateResponse.EnsureSuccessStatusCode();
-        var summary = $"sample model uploaded and activated ({bytes.Length} bytes)";
+        var summary = existingVersion is null
+            ? $"sample model and portable geometry uploaded and activated ({modelBytes!.Length} IFC bytes, {geometryBytes.Length} wexBIM bytes)"
+            : $"sample model geometry repaired and activated ({geometryBytes.Length} wexBIM bytes)";
         LogCreated(logger, summary);
+    }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static Uri RequireSampleUri(string value, string description)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || string.IsNullOrWhiteSpace(Path.GetFileName(uri.LocalPath)))
+        {
+            throw new InvalidOperationException($"{value} has no {description} file name");
+        }
+
+        return uri;
+    }
+
+    private static async Task<byte[]> DownloadSampleAsync(HttpClient http, Uri uri)
+    {
+        var cache = Path.Combine(
+            Path.GetTempPath(),
+            "nodescope-samples",
+            Path.GetFileName(uri.LocalPath));
+        if (File.Exists(cache))
+        {
+            return await File.ReadAllBytesAsync(cache).ConfigureAwait(false);
+        }
+
+        var bytes = await http.GetByteArrayAsync(uri).ConfigureAwait(false);
+        Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
+        await File.WriteAllBytesAsync(cache, bytes).ConfigureAwait(false);
+        return bytes;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Seeded: {What}")]

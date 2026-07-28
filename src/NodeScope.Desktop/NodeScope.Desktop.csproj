@@ -28,7 +28,7 @@
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <!-- Decision 15: the map view. Natives pinned for Linux - see Directory.Packages.props. -->
-    <PackageReference Include="Mapsui.Avalonia" />
+    <PackageReference Include="Mapsui.Avalonia12" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" />
     <PackageReference Include="Silk.NET.OpenGL" />

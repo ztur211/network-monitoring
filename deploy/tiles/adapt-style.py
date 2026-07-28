@@ -24,6 +24,10 @@ Transforms, and why each one:
     its own color at z14+; here both layers get the override color, and the
     no-buildings variant hides both, so the toggle is consistent at every
     zoom - a deliberate fix of the web behavior, not a regression.
+  - Pedestrian areas: replace the high-contrast diagonal sprite with its light
+    background color. Pre-rasterizing that 1px pattern produces severe moire
+    bands at street-level zooms in tileserver-gl, while the solid fill remains
+    legible beneath the native device overlays.
 """
 
 import copy
@@ -34,6 +38,7 @@ from pathlib import Path
 BUILDING_FILL = "hsl(35,12%,78%)"
 BUILDING_OUTLINE = "hsl(35,15%,55%)"
 BUILDING_LAYERS = ("building", "building-3d")
+PEDESTRIAN_AREA_FILL = "#e3e3f1"
 
 
 def adapt(upstream: dict) -> dict:
@@ -51,6 +56,10 @@ def adapt(upstream: dict) -> dict:
     building["paint"]["fill-color"] = BUILDING_FILL
     building["paint"]["fill-outline-color"] = BUILDING_OUTLINE
     by_id["building-3d"]["paint"]["fill-extrusion-color"] = BUILDING_FILL
+
+    pedestrian_area = by_id["road_area_pattern"]
+    del pedestrian_area["paint"]["fill-pattern"]
+    pedestrian_area["paint"]["fill-color"] = PEDESTRIAN_AREA_FILL
     return style
 
 

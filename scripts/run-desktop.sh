@@ -13,7 +13,7 @@
 # Usage:
 #   ./scripts/run-desktop.sh                # full bring-up, then open the desktop
 #   ./scripts/run-desktop.sh --reset        # wipe the stack's volumes first (fresh DB)
-#   ./scripts/run-desktop.sh --no-model     # skip the FZK-Haus sample-model upload
+#   ./scripts/run-desktop.sh --no-model     # skip the Sample House model upload
 #   ./scripts/run-desktop.sh --desktop-only # backend already up elsewhere; just open the app
 #   ./scripts/run-desktop.sh --backend-only # bring the appliance up, no GUI
 #   ./scripts/run-desktop.sh --stop         # stop the appliance stack (volumes kept)
@@ -42,7 +42,7 @@ for a in "$@"; do case "$a" in
   --no-model) export SEED_SAMPLE_MODEL=false;;
   --desktop-only) DO_BACKEND=0;;
   --backend-only) DO_DESKTOP=0;;
-  --stop) [ -f "$ENV_FILE" ] || die "no $ENV_FILE - nothing this script started"; "${COMPOSE[@]}" down; exit 0;;
+  --stop) [ -f "$ENV_FILE" ] || die "no $ENV_FILE - nothing this script started"; "${COMPOSE[@]}" down --remove-orphans; exit 0;;
   -h|--help) grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
   *) die "unknown arg: $a (try --help)";;
 esac; done
@@ -71,7 +71,7 @@ if [ "$DO_BACKEND" = 1 ]; then
   if [ "$RESET" = 1 ]; then log "resetting the stack (volumes wiped) ..."; "${COMPOSE[@]}" down -v; fi
 
   log "building + starting the appliance (db -> api -> web); the first build takes a while ..."
-  "${COMPOSE[@]}" up -d --build --wait db api web
+  "${COMPOSE[@]}" up -d --build --wait --remove-orphans db api web
 
   log "seeding demo data (org, devices, building model${SEED_SAMPLE_MODEL:+, sample model=$SEED_SAMPLE_MODEL}) ..."
   "${COMPOSE[@]}" run --rm demo-seed

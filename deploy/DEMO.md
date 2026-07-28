@@ -17,8 +17,8 @@ On Windows PowerShell:
 .\scripts\run-desktop.ps1
 ```
 
-The script builds the appliance, seeds the public FZK-Haus IFC, and opens the
-native client.
+The script builds the appliance, seeds the public xBIM Sample House IFC with its
+portable wexBIM geometry, and opens the native client.
 
 ## Manual appliance start
 
@@ -68,11 +68,18 @@ In the sign-in view:
 
 The expected demo:
 
-- FZK-Haus renders in the native 3D viewport.
-- Selecting an element opens its IFC properties.
+- Sample House renders in the native 3D viewport on every supported desktop.
+- Model elements can be selected, hidden, isolated, and sectioned.
 - Network devices can be placed and inspected in model space.
 - BCF issues preserve camera, visibility, and selection state.
 - Live device health and metrics update through SignalR.
+
+The public sample geometry does not include NodeScope's IFC identity index, so
+element-to-device linking is disabled for this model. IFC files imported from
+the Windows client include both portable geometry and the identity index.
+
+To seed another prepared model, set both `SEED_SAMPLE_MODEL_URL` and
+`SEED_SAMPLE_MODEL_GEOMETRY_URL` to a matched IFC and wexBIM pair.
 
 ## Reset or stop
 
