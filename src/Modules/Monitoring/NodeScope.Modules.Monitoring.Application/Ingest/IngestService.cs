@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using NodeScope.Modules.Monitoring.Domain;
 using NodeScope.Platform.Abstractions;
 
@@ -26,12 +27,21 @@ public sealed class IngestService
     private readonly IMonitoringRepository _repo;
     private readonly IRealtimeService _realtime;
     private readonly IngestThresholds _thresholds;
+    private readonly IReadOnlyList<IMonitoringAlertSink> _alertSinks;
+    private readonly ILogger<IngestService>? _logger;
 
-    public IngestService(IMonitoringRepository repo, IRealtimeService realtime, IngestThresholds thresholds)
+    public IngestService(
+        IMonitoringRepository repo,
+        IRealtimeService realtime,
+        IngestThresholds thresholds,
+        IEnumerable<IMonitoringAlertSink>? alertSinks = null,
+        ILogger<IngestService>? logger = null)
     {
         _repo = repo;
         _realtime = realtime;
         _thresholds = thresholds;
+        _alertSinks = alertSinks?.ToList() ?? [];
+        _logger = logger;
     }
 
     /// <summary>Single-check write path (the embedded prober). Same semantics as a 1-check batch.</summary>
@@ -77,8 +87,8 @@ public sealed class IngestService
         }
 
         var owned = await _repo.ListOwnedDevicesAsync(organizationId, deviceIds, cancellationToken);
-        var propertyByDevice = owned.ToDictionary(d => d.Id, d => d.PropertyId, StringComparer.Ordinal);
-        if (deviceIds.Any(id => !propertyByDevice.ContainsKey(id)))
+        var ownedByDevice = owned.ToDictionary(d => d.Id, StringComparer.Ordinal);
+        if (deviceIds.Any(id => !ownedByDevice.ContainsKey(id)))
         {
             throw new ApiException("ORG_008", "CROSS_ORG_ACCESS_DENIED", 404);
         }
@@ -91,7 +101,7 @@ public sealed class IngestService
 
         var metricRows = new List<MetricRow>();
         var eventRows = new List<StatusEventRow>();
-        var emits = new List<(string PropertyId, object Payload)>();
+        var emits = new List<(string PropertyId, object Payload, MonitoringStatusTransition Transition)>();
         var upsertByDevice = new Dictionary<string, StatusUpsert>(StringComparer.Ordinal);
 
         foreach (var check in checks)
@@ -126,15 +136,28 @@ public sealed class IngestService
 
             if (changed)
             {
+                var at = DateTime.UtcNow;
+                var device = ownedByDevice[deviceId];
                 eventRows.Add(new StatusEventRow(organizationId, deviceId, derived.State, source));
-                emits.Add((propertyByDevice[deviceId], new
-                {
-                    deviceId,
-                    state = DeviceStatusStateLabel.Of(derived.State),
-                    latencyMs = check.LatencyMs,
-                    at = DateTime.UtcNow,
-                    timestamp = IsoTimestamp.Now(),
-                }));
+                emits.Add((
+                    device.PropertyId,
+                    new
+                    {
+                        deviceId,
+                        state = DeviceStatusStateLabel.Of(derived.State),
+                        latencyMs = check.LatencyMs,
+                        at,
+                        timestamp = IsoTimestamp.Of(at),
+                    },
+                    new MonitoringStatusTransition(
+                        organizationId,
+                        deviceId,
+                        device.NetworkId,
+                        device.PropertyId,
+                        before is null ? null : DeviceStatusStateLabel.Of(before.State),
+                        DeviceStatusStateLabel.Of(derived.State),
+                        check.LatencyMs,
+                        at)));
             }
         }
 
@@ -151,10 +174,39 @@ public sealed class IngestService
         await _repo.InsertMetricsAsync(metricRows, cancellationToken);
         await _repo.InsertStatusEventsAsync(eventRows, cancellationToken);
 
-        foreach (var (propertyId, payload) in emits)
+        foreach (var (propertyId, payload, transition) in emits)
         {
             // Fire-and-forget, like the Node emitter: a realtime failure never fails the ingest.
             _ = _realtime.EmitScopedAsync(organizationId, propertyId, DeviceStatusEvent, payload, CancellationToken.None);
+
+            foreach (var sink in _alertSinks)
+            {
+                try
+                {
+                    await sink.OnStatusChangedAsync(transition, cancellationToken);
+                }
+                catch (Exception failure) when (
+                    failure is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    if (_logger is not null)
+                    {
+                        IngestLog.AlertSinkFailed(_logger, sink.GetType().Name, deviceId: transition.DeviceId, failure);
+                    }
+                }
+            }
         }
     }
+}
+
+internal static partial class IngestLog
+{
+    [LoggerMessage(
+        EventId = 1,
+        Level = LogLevel.Error,
+        Message = "Alert sink {Sink} failed for device {DeviceId}")]
+    public static partial void AlertSinkFailed(
+        ILogger logger,
+        string sink,
+        string deviceId,
+        Exception exception);
 }

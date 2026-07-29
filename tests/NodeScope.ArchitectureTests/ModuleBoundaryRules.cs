@@ -26,7 +26,7 @@ namespace NodeScope.ArchitectureTests;
 public class ModuleBoundaryRules
 {
     private static readonly string[] Modules =
-        ["Identity", "Inventory", "Monitoring", "Assistant", "Realtime"];
+        ["Identity", "Inventory", "Monitoring", "Assistant", "Realtime", "Alerting"];
 
     /// <summary>Persistence and web stacks that must not reach the inner layers.</summary>
     private static readonly string[] OuterLayerOnly =

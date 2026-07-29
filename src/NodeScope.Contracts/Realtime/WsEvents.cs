@@ -16,6 +16,8 @@ public static class WsEvents
     public const string DeviceUpdated = "v1:device:updated";
     public const string DeviceDeleted = "v1:device:deleted";
     public const string DeviceStatus = "v1:device:status";
+    public const string AlertFired = "v1:alert:fired";
+    public const string AlertResolved = "v1:alert:resolved";
     public const string CircuitUpdated = "v1:circuit:updated";
     public const string CircuitDeleted = "v1:circuit:deleted";
     public const string FiberRunUpdated = "v1:fiber-run:updated";

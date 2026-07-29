@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Modules.Alerting.Domain/NodeScope.Modules.Alerting.Domain.csproj" />
+    <ProjectReference Include="../../../NodeScope.Platform.Abstractions/NodeScope.Platform.Abstractions.csproj" />
+    <ProjectReference Include="../../../NodeScope.Contracts/NodeScope.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+</Project>

@@ -37,10 +37,34 @@ public sealed class AssistantViewModelTests : IDisposable
 
     private static AiCompleteEvent Complete(
         string content,
-        string conversationId = "conv-1",
+        string conversationId,
         string providerStatus = "ok",
         string? usageWarning = null) =>
         new(content, conversationId, 12, 99_988, usageWarning, providerStatus, "2026-07-25T12:00:00.000Z");
+
+    private static BimDevice Device(string id = "device-1", string name = "Core Switch") =>
+        new(
+            id,
+            "network-1",
+            "property-1",
+            null,
+            "user-1",
+            name,
+            "SWITCH",
+            null,
+            null,
+            2,
+            "Second floor",
+            null,
+            null,
+            null,
+            null,
+            "10.0.0.10",
+            null,
+            null,
+            1,
+            DateTime.UtcNow,
+            DateTime.UtcNow);
 
     [Fact]
     public async Task Opening_loads_the_usage_counters()
@@ -73,9 +97,10 @@ public sealed class AssistantViewModelTests : IDisposable
 
         await viewModel.SendCommand.ExecuteAsync(null);
 
-        var (content, conversationId) = Assert.Single(_realtime.SentMessages);
+        var (content, conversationId, deviceId) = Assert.Single(_realtime.SentMessages);
         Assert.Equal("Is my network healthy?", content);
-        Assert.Null(conversationId);
+        Assert.True(Guid.TryParse(conversationId, out _));
+        Assert.Null(deviceId);
         Assert.Equal("", viewModel.Input);
         Assert.True(viewModel.IsStreaming);
         Assert.Equal(2, viewModel.Transcript.Count);
@@ -89,13 +114,17 @@ public sealed class AssistantViewModelTests : IDisposable
         var viewModel = await CreateAsync();
         viewModel.Input = "hello";
         await viewModel.SendCommand.ExecuteAsync(null);
+        var conversationId = RequiredConversationId();
 
-        _realtime.RaiseToken(new AiTokenEvent("Every", "conv-1"));
-        _realtime.RaiseToken(new AiTokenEvent("thing is fine.", "conv-1"));
+        _realtime.RaiseToken(new AiTokenEvent("Every", conversationId));
+        _realtime.RaiseToken(new AiTokenEvent("thing is fine.", conversationId));
         var entry = Assert.IsType<AssistantChatEntry>(viewModel.Transcript[1]);
         Assert.Equal("Everything is fine.", entry.Content);
 
-        _realtime.RaiseComplete(Complete("Everything is fine.", usageWarning: "80% of budget used"));
+        _realtime.RaiseComplete(Complete(
+            "Everything is fine.",
+            conversationId,
+            usageWarning: "80% of budget used"));
         Assert.False(entry.IsStreaming);
         Assert.Equal("Everything is fine.", entry.Content);
         Assert.Equal("80% of budget used", entry.UsageWarning);
@@ -106,7 +135,7 @@ public sealed class AssistantViewModelTests : IDisposable
         // The follow-up rides the conversation the completion named.
         viewModel.Input = "and the switches?";
         await viewModel.SendCommand.ExecuteAsync(null);
-        Assert.Equal("conv-1", _realtime.SentMessages[1].ConversationId);
+        Assert.Equal(conversationId, _realtime.SentMessages[1].ConversationId);
     }
 
     [Fact]
@@ -115,8 +144,12 @@ public sealed class AssistantViewModelTests : IDisposable
         var viewModel = await CreateAsync();
         viewModel.Input = "hello";
         await viewModel.SendCommand.ExecuteAsync(null);
+        var conversationId = RequiredConversationId();
 
-        _realtime.RaiseComplete(Complete("Fallback summary.", providerStatus: "unavailable"));
+        _realtime.RaiseComplete(Complete(
+            "Fallback summary.",
+            conversationId,
+            providerStatus: "unavailable"));
 
         var entry = Assert.IsType<AssistantChatEntry>(viewModel.Transcript[1]);
         Assert.True(entry.ProviderUnavailable);
@@ -127,16 +160,77 @@ public sealed class AssistantViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Focusing_an_inventory_device_starts_a_fresh_device_scoped_exchange()
+    {
+        var viewModel = await CreateAsync();
+
+        await viewModel.FocusDeviceAsync(Device());
+
+        Assert.Equal(
+            new FocusedAssistantDevice("device-1", "Core Switch", "Switch"),
+            viewModel.FocusedDevice);
+        Assert.Equal("Ask about Core Switch…", viewModel.InputPlaceholder);
+        var sent = Assert.Single(_realtime.SentMessages);
+        Assert.Contains("Troubleshoot Core Switch", sent.Content, StringComparison.Ordinal);
+        Assert.True(Guid.TryParse(sent.ConversationId, out _));
+        Assert.Equal("device-1", sent.DeviceId);
+        Assert.Equal(2, viewModel.Transcript.Count);
+
+        _realtime.RaiseComplete(Complete("Focused summary.", sent.ConversationId!));
+        viewModel.Input = "What should I check next?";
+        await viewModel.SendCommand.ExecuteAsync(null);
+        Assert.Equal(sent.ConversationId, _realtime.SentMessages[1].ConversationId);
+        Assert.Equal("device-1", _realtime.SentMessages[1].DeviceId);
+    }
+
+    [Fact]
+    public async Task Clearing_focus_forgets_its_conversation_and_returns_to_generic_chat()
+    {
+        var viewModel = await CreateAsync();
+        await viewModel.FocusDeviceAsync(Device());
+        var conversationId = RequiredConversationId();
+        _realtime.RaiseComplete(Complete("Focused summary.", conversationId));
+
+        await viewModel.ClearFocusCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.FocusedDevice);
+        Assert.Empty(viewModel.Transcript);
+        Assert.Equal("Ask about your network…", viewModel.InputPlaceholder);
+        Assert.Equal(conversationId, Assert.Single(_client.DeletedConversations));
+    }
+
+    [Fact]
     public async Task A_token_with_no_streaming_answer_has_nowhere_to_land()
     {
         var viewModel = await CreateAsync();
         viewModel.Input = "hello";
         await viewModel.SendCommand.ExecuteAsync(null);
-        _realtime.RaiseComplete(Complete("Done."));
+        var conversationId = RequiredConversationId();
+        _realtime.RaiseComplete(Complete("Done.", conversationId));
 
         _realtime.RaiseToken(new AiTokenEvent("stray", "conv-other"));
 
         Assert.Equal("Done.", Assert.IsType<AssistantChatEntry>(viewModel.Transcript[1]).Content);
+    }
+
+    [Fact]
+    public async Task Events_for_another_conversation_do_not_corrupt_the_active_answer()
+    {
+        var viewModel = await CreateAsync();
+        viewModel.Input = "hello";
+        await viewModel.SendCommand.ExecuteAsync(null);
+        var conversationId = RequiredConversationId();
+
+        _realtime.RaiseToken(new AiTokenEvent("wrong", "conv-other"));
+        _realtime.RaiseComplete(Complete("Wrong answer.", "conv-other"));
+
+        var entry = Assert.IsType<AssistantChatEntry>(viewModel.Transcript[1]);
+        Assert.True(entry.IsStreaming);
+        Assert.Empty(entry.Content);
+
+        _realtime.RaiseComplete(Complete("Right answer.", conversationId));
+        Assert.False(entry.IsStreaming);
+        Assert.Equal("Right answer.", entry.Content);
     }
 
     [Fact]
@@ -155,7 +249,7 @@ public sealed class AssistantViewModelTests : IDisposable
         _realtime.SendFailure = null;
         await viewModel.RetryCommand.ExecuteAsync(null);
 
-        var (content, _) = Assert.Single(_realtime.SentMessages);
+        var (content, _, _) = Assert.Single(_realtime.SentMessages);
         Assert.Equal(user.Content, content);
         Assert.Null(viewModel.Error);
         Assert.True(viewModel.IsStreaming);
@@ -195,18 +289,20 @@ public sealed class AssistantViewModelTests : IDisposable
         var viewModel = await CreateAsync();
         viewModel.Input = "hello";
         await viewModel.SendCommand.ExecuteAsync(null);
-        _realtime.RaiseComplete(Complete("Done."));
+        var conversationId = RequiredConversationId();
+        _realtime.RaiseComplete(Complete("Done.", conversationId));
 
         await viewModel.ClearConversationCommand.ExecuteAsync(null);
 
-        Assert.Equal("conv-1", Assert.Single(_client.DeletedConversations));
+        Assert.Equal(conversationId, Assert.Single(_client.DeletedConversations));
         Assert.Empty(viewModel.Transcript);
         Assert.False(viewModel.HasMessages);
 
         // A fresh conversation starts from scratch.
         viewModel.Input = "again";
         await viewModel.SendCommand.ExecuteAsync(null);
-        Assert.Null(_realtime.SentMessages[^1].ConversationId);
+        Assert.NotEqual(conversationId, _realtime.SentMessages[^1].ConversationId);
+        Assert.True(Guid.TryParse(_realtime.SentMessages[^1].ConversationId, out _));
     }
 
     [Fact]
@@ -215,7 +311,8 @@ public sealed class AssistantViewModelTests : IDisposable
         var viewModel = await CreateAsync();
         viewModel.Input = "hello";
         await viewModel.SendCommand.ExecuteAsync(null);
-        _realtime.RaiseComplete(Complete("Done."));
+        var conversationId = RequiredConversationId();
+        _realtime.RaiseComplete(Complete("Done.", conversationId));
         _client.AssistantFailure = new HttpRequestException("gone");
 
         await viewModel.ClearConversationCommand.ExecuteAsync(null);
@@ -276,5 +373,12 @@ public sealed class AssistantViewModelTests : IDisposable
         Assert.Empty(_realtime.SentMessages);
         Assert.Empty(viewModel.Transcript);
         Assert.Contains("2000", viewModel.Error, StringComparison.Ordinal);
+    }
+
+    private string RequiredConversationId(int index = 0)
+    {
+        var conversationId = _realtime.SentMessages[index].ConversationId;
+        Assert.True(Guid.TryParse(conversationId, out _));
+        return conversationId!;
     }
 }

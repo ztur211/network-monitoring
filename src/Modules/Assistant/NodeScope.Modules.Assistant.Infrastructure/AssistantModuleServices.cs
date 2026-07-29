@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodeScope.Modules.Assistant.Application;
 using NodeScope.Platform.Abstractions;
 
@@ -20,6 +21,8 @@ public static class AssistantModuleServices
         services.AddSingleton(new AiLimits(configuration));
         services.AddSingleton<IAiUsageCounters, MemoryAiUsageCounters>();
         services.AddSingleton<IAiConversationStore, MemoryAiConversationStore>();
+        services.TryAddScoped<IAssistantDeviceContextProvider, EmptyDeviceContextProvider>();
+        services.TryAddScoped<IAssistantTelemetryContextProvider, EmptyTelemetryContextProvider>();
         services.AddScoped<AiService>();
         services.AddScoped<IAssistantResponder, AssistantResponder>();
 
@@ -32,6 +35,24 @@ public static class AssistantModuleServices
         AiEndpoints.Map(app);
         return app;
     }
+}
+
+internal sealed class EmptyDeviceContextProvider : IAssistantDeviceContextProvider
+{
+    public Task<AssistantDeviceContext?> FindVisibleAsync(
+        OrgMemberContext member,
+        string deviceId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<AssistantDeviceContext?>(null);
+}
+
+internal sealed class EmptyTelemetryContextProvider : IAssistantTelemetryContextProvider
+{
+    public Task<AssistantTelemetryContext> GetAsync(
+        string organizationId,
+        string deviceId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new AssistantTelemetryContext("UNKNOWN", null, null, [], []));
 }
 
 /// <summary>

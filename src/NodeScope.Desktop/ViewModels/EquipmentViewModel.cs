@@ -87,6 +87,7 @@ internal sealed partial class EquipmentViewModel : IDisposable
 
     private readonly ApplianceSession _session;
     private readonly ILogger _logger;
+    private readonly Func<BimDevice, Task>? _troubleshoot;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<BimDevice> _devices = [];
     private readonly HashSet<string> _categoryFilter = new(StringComparer.Ordinal);
@@ -127,10 +128,15 @@ internal sealed partial class EquipmentViewModel : IDisposable
     private string? _loadedAtLabel;
 
     public EquipmentViewModel(
-        ApplianceSession session, IRealtimeConnection realtime, ILogger logger, TimeProvider? time = null)
+        ApplianceSession session,
+        IRealtimeConnection realtime,
+        ILogger logger,
+        TimeProvider? time = null,
+        Func<BimDevice, Task>? troubleshoot = null)
     {
         _session = session;
         _logger = logger;
+        _troubleshoot = troubleshoot;
         Time = time ?? TimeProvider.System;
         CategoryChips = [.. CategoryGroups.Select(group => new CategoryFilterChip(group.Label, group.Categories))];
         CategoryChips[0].IsActive = true;
@@ -303,6 +309,10 @@ internal sealed partial class EquipmentViewModel : IDisposable
             SubmitEditAsync,
             close: () => Form = null);
     }
+
+    [RelayCommand]
+    private Task TroubleshootAsync(DeviceRow row) =>
+        _troubleshoot?.Invoke(row.Device) ?? Task.CompletedTask;
 
     /// <summary>First press arms the row ("Confirm?"), second press deletes - no dialog.</summary>
     [RelayCommand]

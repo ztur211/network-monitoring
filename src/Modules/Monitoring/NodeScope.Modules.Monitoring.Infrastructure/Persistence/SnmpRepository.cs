@@ -142,7 +142,7 @@ internal sealed class SnmpRepository : ISnmpRepository
         CancellationToken cancellationToken) =>
         await _db.Devices.AsNoTracking()
             .Where(d => d.Id == deviceId && d.OrganizationId == organizationId)
-            .Select(d => new OwnedDevice(d.Id, d.PropertyId))
+            .Select(d => new OwnedDevice(d.Id, d.NetworkId, d.PropertyId))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<bool> NetworkExistsAsync(string organizationId, string networkId, CancellationToken cancellationToken) =>

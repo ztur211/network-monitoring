@@ -19,7 +19,11 @@ internal interface IRealtimeConnection : IDisposable
     /// <c>v1:ai:token</c> then <c>v1:ai:complete</c> events, not as a return value.
     /// </summary>
     /// <exception cref="RealtimeUnavailableException">The message could not be delivered.</exception>
-    public Task SendAiMessageAsync(string content, string? conversationId, CancellationToken cancellationToken);
+    public Task SendAiMessageAsync(
+        string content,
+        string? conversationId,
+        string? deviceId,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Submits one collector sample (<c>MetricsSubmit</c>). Fire-and-store: the server
@@ -51,6 +55,10 @@ internal interface IRealtimeConnection : IDisposable
     public IDisposable OnCircuitDeleted(Action<CircuitDeletedEvent> handler);
 
     public IDisposable OnMetricsUpdate(Action<MetricsUpdateEvent> handler);
+
+    public IDisposable OnAlertFired(Action<AlertRealtimeEvent> handler);
+
+    public IDisposable OnAlertResolved(Action<AlertRealtimeEvent> handler);
 
     /// <summary>
     /// Fires after automatic reconnect restores a dropped connection - never for the

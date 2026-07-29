@@ -3,12 +3,16 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using NodeScope.Desktop.Api;
+using NodeScope.Desktop.Map;
 using NodeScope.Desktop.Realtime;
 
 namespace NodeScope.Desktop.ViewModels;
 
 /// <summary>The operator's sent line of the chat transcript.</summary>
 internal sealed record UserChatEntry(string Content, DateTimeOffset Timestamp);
+
+/// <summary>The inventory device whose live context accompanies assistant messages.</summary>
+internal sealed record FocusedAssistantDevice(string Id, string Name, string Category);
 
 /// <summary>
 /// An assistant answer: streams token by token, then the complete event finalizes it
@@ -78,6 +82,9 @@ internal sealed partial class AssistantViewModel : IDisposable
     [ObservableProperty]
     private bool _providerAvailable = true;
 
+    [ObservableProperty]
+    private FocusedAssistantDevice? _focusedDevice;
+
     public AssistantViewModel(
         ApplianceSession session,
         IRealtimeConnection realtime,
@@ -117,7 +124,11 @@ internal sealed partial class AssistantViewModel : IDisposable
         && (usage.HourlyUsed >= usage.HourlyLimit || usage.DailyUsed >= usage.DailyLimit);
 
     public string InputPlaceholder =>
-        IsLimitReached ? "Message limit reached" : "Ask about your network…";
+        IsLimitReached
+            ? "Message limit reached"
+            : FocusedDevice is { } device
+                ? $"Ask about {device.Name}…"
+                : "Ask about your network…";
 
     public string? UsageSummary => Usage is { } usage
         ? $"{usage.HourlyUsed}/{usage.HourlyLimit} messages this hour"
@@ -243,23 +254,72 @@ internal sealed partial class AssistantViewModel : IDisposable
             return;
         }
 
-        if (_conversationId is { } conversationId)
+        await ForgetConversationAsync();
+        Transcript.Clear();
+        Error = null;
+    }
+
+    /// <summary>Starts a fresh, device-scoped troubleshooting exchange from Inventory.</summary>
+    public async Task FocusDeviceAsync(BimDevice device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        if (IsStreaming || IsLimitReached)
         {
-            try
-            {
-                await _session.Client.DeleteAiConversationAsync(
-                    _session.Token, conversationId, _lifetime.Token);
-            }
-            catch (Exception failure) when (failure is ApplianceApiException or HttpRequestException)
-            {
-                // Already gone is fine; the point is the fresh start.
-                AssistantLog.ClearFailed(_logger, failure);
-            }
+            return;
         }
 
+        await ForgetConversationAsync();
         Transcript.Clear();
-        _conversationId = null;
         Error = null;
+        FocusedDevice = new FocusedAssistantDevice(
+            device.Id,
+            device.Name,
+            DeviceCategories.Resolve(device.Category).DisplayName);
+        var prompt = $"Troubleshoot {device.Name}. Summarize its current status, recent telemetry, and documented connections.";
+        Transcript.Add(new UserChatEntry(prompt, _time.GetLocalNow()));
+        await StreamAnswerAsync(prompt);
+    }
+
+    [RelayCommand]
+    private async Task ClearFocusAsync()
+    {
+        if (IsStreaming)
+        {
+            return;
+        }
+
+        await ForgetConversationAsync();
+        FocusedDevice = null;
+        Transcript.Clear();
+        Error = null;
+    }
+
+    private async Task ForgetConversationAsync()
+    {
+        if (_conversationId is not { } conversationId)
+        {
+            return;
+        }
+
+        try
+        {
+            await _session.Client.DeleteAiConversationAsync(
+                _session.Token,
+                conversationId,
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception failure) when (
+            failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
+        {
+            AssistantLog.ClearFailed(_logger, failure);
+        }
+        finally
+        {
+            _conversationId = null;
+        }
     }
 
     private async Task StreamAnswerAsync(string content)
@@ -268,12 +328,34 @@ internal sealed partial class AssistantViewModel : IDisposable
         var pending = new AssistantChatEntry(_time.GetLocalNow());
         Transcript.Add(pending);
         IsStreaming = true;
+        var startsConversation = _conversationId is null;
+        var conversationId = _conversationId ?? Guid.NewGuid().ToString();
+        _conversationId = conversationId;
         try
         {
-            await _realtime.SendAiMessageAsync(content, _conversationId, _lifetime.Token);
+            await _realtime.SendAiMessageAsync(
+                content,
+                conversationId,
+                FocusedDevice?.Id,
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            if (startsConversation)
+            {
+                _conversationId = null;
+            }
+
+            Transcript.Remove(pending);
+            IsStreaming = false;
         }
         catch (RealtimeUnavailableException failure)
         {
+            if (startsConversation)
+            {
+                _conversationId = null;
+            }
+
             AssistantLog.SendFailed(_logger, failure);
             Transcript.Remove(pending);
             IsStreaming = false;
@@ -285,7 +367,8 @@ internal sealed partial class AssistantViewModel : IDisposable
     {
         // Only the answer being streamed right now grows; a token echoed to this client
         // for a conversation driven from another window has nowhere to land, like the web.
-        if (Transcript.LastOrDefault() is AssistantChatEntry { IsStreaming: true } entry)
+        if (received.ConversationId == _conversationId
+            && Transcript.LastOrDefault() is AssistantChatEntry { IsStreaming: true } entry)
         {
             entry.Content += received.Token;
         }
@@ -293,6 +376,11 @@ internal sealed partial class AssistantViewModel : IDisposable
 
     private void OnAiComplete(AiCompleteEvent received)
     {
+        if (received.ConversationId != _conversationId)
+        {
+            return;
+        }
+
         foreach (var entry in Transcript.OfType<AssistantChatEntry>().Where(e => e.IsStreaming))
         {
             entry.Content = received.Content;
@@ -343,6 +431,9 @@ internal sealed partial class AssistantViewModel : IDisposable
         {
             Usage = await _session.Client.GetAiUsageAsync(_session.Token, _lifetime.Token);
         }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
         catch (Exception failure) when (
             failure is ApplianceApiException or HttpRequestException or TaskCanceledException)
         {
@@ -360,6 +451,9 @@ internal sealed partial class AssistantViewModel : IDisposable
     partial void OnIsLoadingUsageChanged(bool value) => OnPropertyChanged(nameof(UsageSummary));
 
     partial void OnProviderAvailableChanged(bool value) => NotifyDerivedState();
+
+    partial void OnFocusedDeviceChanged(FocusedAssistantDevice? value) =>
+        OnPropertyChanged(nameof(InputPlaceholder));
 
     partial void OnInputChanged(string value) => OnPropertyChanged(nameof(CanSend));
 

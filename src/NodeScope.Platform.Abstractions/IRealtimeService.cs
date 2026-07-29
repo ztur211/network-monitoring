@@ -34,6 +34,9 @@ public interface IRealtimeService
     /// <summary>Emits to every socket in the org room (all members, unscoped).</summary>
     public Task PushToOrgAsync(string organizationId, string eventName, object payload, CancellationToken cancellationToken);
 
+    /// <summary>Emits only to OWNER and ADMIN sockets in the organization.</summary>
+    public Task PushToAdminsAsync(string organizationId, string eventName, object payload, CancellationToken cancellationToken);
+
     /// <summary>Emits to the user's own room (all of their sockets).</summary>
     public Task PushToUserAsync(string userId, string eventName, object payload, CancellationToken cancellationToken);
 
@@ -96,8 +99,10 @@ public interface IAssistantResponder
     /// </summary>
     public Task<AssistantAnswer> AnswerAsync(
         string userId,
+        OrgMemberContext? member,
         string? conversationId,
         string message,
+        string? focusDeviceId,
         Func<string, string, Task> onToken,
         CancellationToken cancellationToken);
 }

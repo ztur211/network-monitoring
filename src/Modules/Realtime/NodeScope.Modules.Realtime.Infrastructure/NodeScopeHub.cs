@@ -63,6 +63,14 @@ public sealed class NodeScopeHub : Hub
         if (member is not null)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeGroups.Org(member.OrganizationId));
+            if (member.HasRole(OrgRoleNames.Owner, OrgRoleNames.Admin))
+            {
+                await Groups.AddToGroupAsync(
+                    Context.ConnectionId,
+                    RealtimeGroups.Admin(member.OrganizationId),
+                    Context.ConnectionAborted);
+            }
+
             await SubscribeScopeAsync(member);
         }
 
@@ -142,11 +150,14 @@ public sealed class NodeScopeHub : Hub
             return;
         }
 
+        var member = await _members.ForUserAsync(userId, Context.ConnectionAborted);
         var group = Clients.Group(RealtimeGroups.User(userId));
         var answer = await _assistant.AnswerAsync(
             userId,
+            member,
             message.ConversationId,
             content,
+            message.DeviceId,
             async (token, conversationId) => await group.SendAsync(
                 WsEvents.AiToken,
                 new { token, conversationId },
@@ -208,6 +219,8 @@ public static class RealtimeGroups
 
     public static string Owner(string organizationId) => $"owner:{organizationId}";
 
+    public static string Admin(string organizationId) => $"admin:{organizationId}";
+
     public static string Scope(string rootPropertyId) => $"scope:{rootPropertyId}";
 }
 
@@ -219,4 +232,4 @@ public sealed record MetricsSubmission(
     string? ConnectionQuality);
 
 /// <summary>Payload of the client's <c>v1:ai:message</c>.</summary>
-public sealed record AssistantMessage(string? Content, string? ConversationId);
+public sealed record AssistantMessage(string? Content, string? ConversationId, string? DeviceId);

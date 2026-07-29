@@ -22,6 +22,12 @@ public interface IDeviceRepository
         IReadOnlyCollection<string>? scope,
         CancellationToken cancellationToken);
 
+    public Task<IReadOnlyList<DeviceRecord>> ListByIdsAsync(
+        string organizationId,
+        IReadOnlyCollection<string> deviceIds,
+        IReadOnlyCollection<string>? scope,
+        CancellationToken cancellationToken);
+
     public Task<DeviceRecord> CreateAsync(NewDevice device, CancellationToken cancellationToken);
 
     /// <summary>

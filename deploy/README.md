@@ -48,6 +48,12 @@ Skip the initial map extract when bringing up the rest of the product first:
 ./deploy/nodescope.sh install --no-tiles
 ```
 
+Install systemd boot and backup units during setup:
+
+```bash
+sudo ./deploy/nodescope.sh install --enable-boot --enable-backups
+```
+
 ## Claiming the first organization
 
 The bootstrap credential is not an alternate sign-in password. It authorizes one
@@ -103,6 +109,17 @@ rules, approval behavior, and error meanings.
 ./deploy/nodescope.sh smoke [--no-tiles]
 ./deploy/nodescope.sh reconfigure [--origin URL]
 ./deploy/nodescope.sh tiles [--rebuild]
+./deploy/nodescope.sh backup [directory]
+./deploy/nodescope.sh restore <bundle-directory>
+./deploy/nodescope.sh update [version]
+./deploy/nodescope.sh rollback [bundle-directory]
+./deploy/nodescope.sh offsite-keygen
+./deploy/nodescope.sh offsite-push [bundle-directory]
+./deploy/nodescope.sh offsite-list
+./deploy/nodescope.sh offsite-pull <name> [destination] --identity <file>
+./deploy/nodescope.sh offsite-restore <name> --identity <file>
+sudo ./deploy/nodescope.sh enable-boot
+sudo ./deploy/nodescope.sh enable-backups
 ```
 
 `reconfigure` changes the public origin without rebuilding images. Run `smoke`
@@ -156,7 +173,18 @@ Important values:
 | `TRUST_PROXY` | Number of trusted proxy hops in front of the API |
 | `STORAGE_DRIVER` | `fs` by default, or `s3` |
 | `MONITORING_PROBER_ENABLED` | Enables the embedded single-node prober |
+| `ALERT_EVAL_INTERVAL_SECONDS` | Metric-rule evaluation cadence, default 60 |
+| `ALERT_DELIVER_INTERVAL_SECONDS` | Delivery queue cadence, default 15 |
+| `ALERT_MAX_ATTEMPTS` | Delivery attempts before a terminal failure, default 10 |
+| `ALERT_HEARTBEAT_URL` | Optional external dead-man endpoint; empty disables it |
+| `ALERT_HEARTBEAT_INTERVAL_SECONDS` | External heartbeat cadence, default 60 |
 | `NODESCOPE_VERSION` | Image tag to run, default `latest` |
+| `BACKUP_KEEP` | Number of complete local bundles retained, default 7 |
+| `BACKUP_DIR` | Optional absolute local bundle directory |
+| `OFFSITE_BACKUP_PUBKEY` | Public encryption key; empty disables offsite backup |
+| `OFFSITE_S3_*` | Dedicated S3-compatible recovery target and credentials |
+| `OFFSITE_KEEP` | Number of encrypted remote bundles retained, default 7 |
+| `OFFSITE_INCLUDE_BLOBS` | Include models and BCF blobs, default true |
 | `TILES_AREA` | Geofabrik area slug used by Planetiler |
 | `TILES_BBOX` | Optional region bounding box |
 
@@ -170,6 +198,19 @@ openssl rand -base64 24
 
 Use the first output for `POSTGRES_PASSWORD`, the second for
 `SECRET_ENCRYPTION_KEY`, and the third for `BOOTSTRAP_TOKEN`.
+
+## Alerts
+
+OWNER and ADMIN users configure in-app, webhook, and SMTP channels plus state or
+latency rules from the native Alerts workspace. Alert events and pending
+deliveries are durable in PostgreSQL. Failed webhook and SMTP deliveries retry
+with bounded exponential backoff, so a notification can leave after WAN service
+returns.
+
+For detection when the complete appliance or site link is unavailable, point
+`ALERT_HEARTBEAT_URL` at an external dead-man service that accepts HTTP POSTs.
+NodeScope sends only the appliance name, device-state counts, and timestamp.
+The heartbeat is optional and independent from local alert evaluation.
 
 ## Map tiles
 
@@ -192,17 +233,130 @@ Rebuild after changing the area or bounding box:
 See [tiles/README.md](tiles/README.md) for region selection, storage sizing, and
 asset provenance.
 
-## Backups
+## Appliance lifecycle
 
-Create a compressed PostgreSQL dump:
+Enable automatic startup after Docker and the network are ready:
 
 ```bash
-./deploy/backup.sh /var/backups/nodescope
+sudo ./deploy/nodescope.sh enable-boot
 ```
 
-Copy backups off the appliance host and test restores regularly. Database dumps
-do not include the `blobstore` or `tiledata` volumes, so back up required blob
-content separately. The map region can be regenerated.
+Disable it with `disable-boot`. The command installs a rendered systemd unit
+that points at this checkout, so move the checkout only after disabling and
+re-enabling the unit.
+
+Create a complete local backup:
+
+```bash
+./deploy/nodescope.sh backup
+```
+
+Each timestamped bundle contains:
+
+- `db.sql.gz`, a PostgreSQL dump
+- `blobs.tar.gz`, the filesystem object store
+- `manifest.txt`, the image version, migration, and timestamp
+
+The command prunes only complete `nodescope-*` bundle directories beyond
+`BACKUP_KEEP`. Set `BACKUP_DIR` in `deploy/.env`, or pass a directory explicitly:
+
+```bash
+./deploy/nodescope.sh backup /var/backups/nodescope
+```
+
+Enable the daily 03:00 systemd timer with:
+
+```bash
+sudo ./deploy/nodescope.sh enable-backups
+```
+
+The timer is persistent, so a missed run starts after the host returns. On a
+non-systemd host, schedule `nodescope.sh backup` with the platform scheduler.
+
+Restore a bundle with:
+
+```bash
+./deploy/nodescope.sh restore /var/backups/nodescope/nodescope-YYYYMMDD-HHMMSS
+```
+
+Restore stops the API, recreates the database, restores TimescaleDB data and
+blobs, and then waits for the full stack to become healthy. The map extract is
+not included because it can be regenerated.
+
+Update to a published image tag with:
+
+```bash
+./deploy/nodescope.sh update 1.2.3
+```
+
+Update creates a backup first, pins the requested tag, starts the migrated
+stack, and runs the real-origin smoke test. Rollback restores both the prior
+image pin and its pre-update data:
+
+```bash
+./deploy/nodescope.sh rollback
+```
+
+Database migrations are forward-only. Rollback therefore restores a complete
+backup rather than attempting a schema downgrade.
+
+## Encrypted offsite backup
+
+Offsite backup is optional and uses a dedicated S3-compatible target. NodeScope
+encrypts the complete bundle before upload. The provider receives only a
+versioned authenticated ciphertext object.
+
+Generate an identity:
+
+```bash
+./deploy/nodescope.sh offsite-keygen
+```
+
+This stores only the RSA public key in `deploy/.env` and writes the matching
+recovery identity to `deploy/offsite-identity.key`. Copy that identity to secure
+storage outside the appliance, verify the copy, and remove the appliance copy.
+The appliance can continue encrypting new backups with the public key, but it
+cannot decrypt existing backups without the off-box identity.
+
+Configure the dedicated target in `deploy/.env`:
+
+```dotenv
+OFFSITE_S3_ENDPOINT=https://s3.example.com
+OFFSITE_S3_REGION=us-east-1
+OFFSITE_S3_BUCKET=nodescope-recovery
+OFFSITE_S3_ACCESS_KEY=...
+OFFSITE_S3_SECRET_KEY=...
+OFFSITE_S3_PREFIX=nodescope
+OFFSITE_KEEP=7
+OFFSITE_INCLUDE_BLOBS=true
+```
+
+The daily backup unit runs `offsite-push` after a successful local backup.
+When offsite settings are absent, that second step exits successfully without
+network access. Run it manually or inspect the remote inventory with:
+
+```bash
+./deploy/nodescope.sh offsite-push
+./deploy/nodescope.sh offsite-list
+```
+
+The `NSOB2` format uses RSA-OAEP with SHA-256 to wrap a random AES-256 key.
+Bundle data is split into bounded AES-GCM frames. Header changes, reordered
+frames, truncation, corruption, and the wrong recovery identity all fail
+authentication.
+
+For disaster recovery, install NodeScope on a fresh host, configure the same
+`OFFSITE_S3_*` target, transfer the recovery identity temporarily, then run:
+
+```bash
+./deploy/nodescope.sh offsite-list
+./deploy/nodescope.sh offsite-restore \
+  nodescope-YYYYMMDD-HHMMSS \
+  --identity /secure/offsite-identity.key
+```
+
+If `OFFSITE_INCLUDE_BLOBS=false`, recovery restores the database and clears the
+blob volume because models and BCF files were intentionally not uploaded.
 
 ## Remote access
 

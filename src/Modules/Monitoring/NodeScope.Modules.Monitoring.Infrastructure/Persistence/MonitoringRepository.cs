@@ -27,7 +27,7 @@ internal sealed class MonitoringRepository : IMonitoringRepository
         CancellationToken cancellationToken) =>
         await _db.Devices.AsNoTracking()
             .Where(d => d.OrganizationId == organizationId && deviceIds.Contains(d.Id))
-            .Select(d => new OwnedDevice(d.Id, d.PropertyId))
+            .Select(d => new OwnedDevice(d.Id, d.NetworkId, d.PropertyId))
             .ToListAsync(cancellationToken);
 
     public async Task<DeviceStatusRecord?> GetStatusAsync(
@@ -202,7 +202,7 @@ internal sealed class MonitoringRepository : IMonitoringRepository
         CancellationToken cancellationToken) =>
         await _db.Devices.AsNoTracking()
             .Where(d => d.Id == deviceId && d.OrganizationId == organizationId)
-            .Select(d => new OwnedDevice(d.Id, d.PropertyId))
+            .Select(d => new OwnedDevice(d.Id, d.NetworkId, d.PropertyId))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<string>> ListDeviceIdsUnderPropertiesAsync(

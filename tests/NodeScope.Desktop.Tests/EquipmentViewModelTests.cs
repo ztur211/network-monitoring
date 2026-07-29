@@ -79,6 +79,28 @@ public sealed class EquipmentViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Troubleshoot_is_available_for_a_read_only_visible_device()
+    {
+        _client.AccessToReturn = new AccessSummary("MEMBER", [], false);
+        var device = AddDevice("d1", "Core Router");
+        BimDevice? requested = null;
+        using var viewModel = new EquipmentViewModel(
+            new ApplianceSession(_client, "token-1"),
+            _realtime,
+            NullLogger.Instance,
+            troubleshoot: selected =>
+            {
+                requested = selected;
+                return Task.CompletedTask;
+            });
+        await viewModel.Initialization;
+
+        await viewModel.TroubleshootCommand.ExecuteAsync(Assert.Single(viewModel.Rows));
+
+        Assert.Same(device, requested);
+    }
+
+    [Fact]
     public async Task A_scoped_admin_configures_only_inside_the_assigned_subtree()
     {
         _client.AccessToReturn = new AccessSummary("ADMIN", ["site-1"], false);

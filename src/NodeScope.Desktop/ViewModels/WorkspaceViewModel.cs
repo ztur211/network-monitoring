@@ -27,6 +27,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     private readonly BimViewerViewModel _bimViewer;
     private readonly InventoryViewModel _inventory;
     private readonly AssistantViewModel _assistant;
+    private readonly AlertsViewModel _alerts;
     private readonly SettingsViewModel _settings;
     private readonly CancellationTokenSource _lifetime = new();
 
@@ -58,9 +59,17 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             session,
             loggers.CreateLogger<BimViewerViewModel>(),
             tessellator);
-        _inventory = new InventoryViewModel(session, realtime, loggers);
         _assistant = new AssistantViewModel(
             session, realtime, loggers.CreateLogger<AssistantViewModel>());
+        _inventory = new InventoryViewModel(
+            session,
+            realtime,
+            loggers,
+            TroubleshootDeviceAsync);
+        _alerts = new AlertsViewModel(
+            session,
+            realtime,
+            loggers.CreateLogger<AlertsViewModel>());
         _settings = new SettingsViewModel(
             session, user, settingsStore, loggers.CreateLogger<SettingsViewModel>());
 
@@ -70,6 +79,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
             new("3D Viewer", "Loading the native BIM viewer.", _bimViewer),
             new("Inventory", "Loading equipment, circuits and clients.", _inventory),
             new("Assistant", "Loading the assistant.", _assistant),
+            new("Alerts", "Loading alerts.", _alerts),
             new("Settings", "Loading settings.", _settings),
         ];
         _selectedSection = Sections[0];
@@ -103,6 +113,7 @@ internal sealed partial class WorkspaceViewModel : IDisposable
         _bimViewer.Dispose();
         _inventory.Dispose();
         _assistant.Dispose();
+        _alerts.Dispose();
         _settings.Dispose();
         _realtime.Dispose();
         Wizard?.Dispose();
@@ -142,6 +153,12 @@ internal sealed partial class WorkspaceViewModel : IDisposable
     {
         Wizard?.Dispose();
         Wizard = null;
+    }
+
+    private async Task TroubleshootDeviceAsync(BimDevice device)
+    {
+        SelectedSection = Sections.Single(section => ReferenceEquals(section.Content, _assistant));
+        await _assistant.FocusDeviceAsync(device);
     }
 }
 

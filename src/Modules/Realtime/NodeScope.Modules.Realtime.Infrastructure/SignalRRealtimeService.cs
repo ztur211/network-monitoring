@@ -80,6 +80,13 @@ internal sealed partial class SignalRRealtimeService : IRealtimeService
         CancellationToken cancellationToken) =>
         SendAsync(_hub.Clients.Group(RealtimeGroups.Org(organizationId)), eventName, payload, cancellationToken);
 
+    public Task PushToAdminsAsync(
+        string organizationId,
+        string eventName,
+        object payload,
+        CancellationToken cancellationToken) =>
+        SendAsync(_hub.Clients.Group(RealtimeGroups.Admin(organizationId)), eventName, payload, cancellationToken);
+
     public Task PushToUserAsync(string userId, string eventName, object payload, CancellationToken cancellationToken) =>
         SendAsync(_hub.Clients.Group(RealtimeGroups.User(userId)), eventName, payload, cancellationToken);
 

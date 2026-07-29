@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NodeScope.Desktop.Api;
 
 namespace NodeScope.Desktop.Realtime;
@@ -48,6 +49,16 @@ internal sealed record CircuitDeletedEvent(string CircuitId);
 /// arrival implies freshness at push time.
 /// </summary>
 internal sealed record MetricsUpdateEvent(ClientMetrics Metrics, IReadOnlyList<string> SourceTypes);
+
+/// <summary>An admin-only live alert notification.</summary>
+internal sealed record AlertRealtimeEvent(
+    string Id,
+    string? RuleId,
+    string RuleName,
+    string? DeviceId,
+    string Severity,
+    JsonElement Detail,
+    DateTime At);
 
 /// <summary>
 /// One collector cycle's readings for the <c>MetricsSubmit</c> hub method. Every field is

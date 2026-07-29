@@ -250,6 +250,28 @@ public class RealtimeContractTests
     }
 
     [Fact]
+    public async Task Role_change_evicts_the_affected_socket_so_group_membership_is_rebuilt()
+    {
+        var org = await _fixture.ProvisionOrgAsync();
+        var admin = await OrgProvisioning.AddMemberAsync(_api, org, role: "ADMIN");
+
+        await using var adminSocket = await RealtimeScaffold.ConnectReadyAsync(admin.AsBearer());
+
+        var patch = await _api.PatchAsync(
+            $"v1/organizations/me/members/{admin.UserId}",
+            new { role = "MEMBER" },
+            org.OwnerAuth);
+        Assert.Equal(HttpStatusCode.OK, patch.Status);
+
+        var evt = await adminSocket.WaitForEventAsync(
+            "v1:org:member:updated",
+            payload => UserIdIs(payload, admin.UserId));
+        Assert.Equal("MEMBER", evt.GetProperty("role").GetString());
+        await adminSocket.WaitForDisconnectAsync(TimeSpan.FromSeconds(5));
+        Assert.False(adminSocket.Connected);
+    }
+
+    [Fact]
     public async Task Owner_socket_receives_member_removed_when_a_member_is_removed()
     {
         var org = await _fixture.ProvisionOrgAsync();

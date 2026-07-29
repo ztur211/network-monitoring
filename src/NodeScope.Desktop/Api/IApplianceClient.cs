@@ -367,6 +367,45 @@ internal interface IApplianceClient : IDisposable
     public Task<SnmpAssignment> AssignSnmpAsync(
         string bearerToken, SnmpAssignment assignment, CancellationToken cancellationToken);
 
+    // --- alerts -----------------------------------------------------------
+
+    public Task<IReadOnlyList<AlertChannel>> GetAlertChannelsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    public Task<AlertChannel> CreateAlertChannelAsync(
+        string bearerToken,
+        CreateAlertChannel channel,
+        CancellationToken cancellationToken);
+
+    public Task DeleteAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken);
+
+    public Task TestAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<AlertRule>> GetAlertRulesAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
+    public Task<AlertRule> CreateAlertRuleAsync(
+        string bearerToken,
+        CreateAlertRule rule,
+        CancellationToken cancellationToken);
+
+    public Task DeleteAlertRuleAsync(
+        string bearerToken,
+        string ruleId,
+        CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<AlertEvent>> GetAlertEventsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken);
+
     // --- assistant ----------------------------------------------------------
 
     /// <summary><c>GET /api/v1/ai/usage</c>: the caller's quota counters and limits.</summary>

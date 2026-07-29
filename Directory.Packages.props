@@ -64,9 +64,9 @@
       archives, MinIO on the appliance. The AWS SDK is the only maintained S3 client for
       .NET; AWSSDK.S3 pulls in AWSSDK.Core alone.
     -->
-    <PackageVersion Include="AWSSDK.S3" Version="4.0.101.4" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.101.5" />
     <!-- Pinned explicitly: the version AWSSDK.S3 resolves transitively carries GHSA-9cvc-h2w8-phrp. -->
-    <PackageVersion Include="AWSSDK.Core" Version="4.0.100.8" />
+    <PackageVersion Include="AWSSDK.Core" Version="4.0.100.9" />
 
     <!--
       Argon2id for native credential hashing. Account.password values migrated from
@@ -135,6 +135,9 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
 
+    <!-- Maintained cross-platform SMTP client for alert delivery. -->
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+
     <!--
       DPAPI for the desktop token vault (Decision 17: OS-keychain behind an
       interface, DPAPI first). Windows-only at runtime; the Linux dev vault is a
@@ -142,7 +145,7 @@
     -->
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
 
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <!--
       Avalonia.Headless.XUnit 12.x integrates with xunit v3 (not v2), so the
@@ -150,7 +153,7 @@
       2.9.3; the 3.x visualstudio runner drives both generations.
     -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
 
     <!--
       The contract suite's single, deliberate non-HTTP dependency: it runs one

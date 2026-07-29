@@ -1252,6 +1252,148 @@ internal sealed class FakeApplianceClient(Uri baseUrl) : IApplianceClient
         return Task.FromResult(assignment);
     }
 
+    // --- alerts ------------------------------------------------------------
+
+    public List<AlertChannel> AlertChannels { get; } = [];
+
+    public List<AlertRule> AlertRules { get; } = [];
+
+    public List<AlertEvent> AlertEvents { get; } = [];
+
+    public List<CreateAlertChannel> CreatedAlertChannels { get; } = [];
+
+    public List<CreateAlertRule> CreatedAlertRules { get; } = [];
+
+    public List<string> TestedAlertChannelIds { get; } = [];
+
+    public Exception? AlertFailure { get; set; }
+
+    public Task<IReadOnlyList<AlertChannel>> GetAlertChannelsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AlertFailure is null
+            ? Task.FromResult<IReadOnlyList<AlertChannel>>([.. AlertChannels])
+            : Task.FromException<IReadOnlyList<AlertChannel>>(AlertFailure);
+
+    public Task<AlertChannel> CreateAlertChannelAsync(
+        string bearerToken,
+        CreateAlertChannel channel,
+        CancellationToken cancellationToken)
+    {
+        if (AlertFailure is not null)
+        {
+            return Task.FromException<AlertChannel>(AlertFailure);
+        }
+
+        CreatedAlertChannels.Add(channel);
+        var now = DateTime.UtcNow;
+        var created = new AlertChannel(
+            Guid.NewGuid().ToString(),
+            "org-1",
+            channel.Type,
+            channel.Name,
+            channel.Enabled,
+            channel.Config,
+            1,
+            now,
+            now);
+        AlertChannels.Add(created);
+        return Task.FromResult(created);
+    }
+
+    public Task DeleteAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken)
+    {
+        if (AlertFailure is not null)
+        {
+            return Task.FromException(AlertFailure);
+        }
+
+        _ = AlertChannels.RemoveAll(channel =>
+            string.Equals(channel.Id, channelId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task TestAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken)
+    {
+        if (AlertFailure is not null)
+        {
+            return Task.FromException(AlertFailure);
+        }
+
+        TestedAlertChannelIds.Add(channelId);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AlertRule>> GetAlertRulesAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AlertFailure is null
+            ? Task.FromResult<IReadOnlyList<AlertRule>>([.. AlertRules])
+            : Task.FromException<IReadOnlyList<AlertRule>>(AlertFailure);
+
+    public Task<AlertRule> CreateAlertRuleAsync(
+        string bearerToken,
+        CreateAlertRule rule,
+        CancellationToken cancellationToken)
+    {
+        if (AlertFailure is not null)
+        {
+            return Task.FromException<AlertRule>(AlertFailure);
+        }
+
+        CreatedAlertRules.Add(rule);
+        var now = DateTime.UtcNow;
+        var created = new AlertRule(
+            Guid.NewGuid().ToString(),
+            "org-1",
+            rule.Name,
+            rule.Enabled,
+            rule.Trigger,
+            rule.Scope,
+            rule.TargetStates,
+            rule.Metric,
+            rule.Op,
+            rule.Threshold,
+            rule.ForSeconds,
+            rule.Severity,
+            rule.ChannelIds,
+            rule.CooldownSeconds,
+            rule.NotifyOnRecovery,
+            1,
+            now,
+            now);
+        AlertRules.Add(created);
+        return Task.FromResult(created);
+    }
+
+    public Task DeleteAlertRuleAsync(
+        string bearerToken,
+        string ruleId,
+        CancellationToken cancellationToken)
+    {
+        if (AlertFailure is not null)
+        {
+            return Task.FromException(AlertFailure);
+        }
+
+        _ = AlertRules.RemoveAll(rule =>
+            string.Equals(rule.Id, ruleId, StringComparison.Ordinal));
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AlertEvent>> GetAlertEventsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        AlertFailure is null
+            ? Task.FromResult<IReadOnlyList<AlertEvent>>([.. AlertEvents])
+            : Task.FromException<IReadOnlyList<AlertEvent>>(AlertFailure);
+
     // --- assistant ----------------------------------------------------------
 
     public AiUsage UsageToReturn { get; set; } =

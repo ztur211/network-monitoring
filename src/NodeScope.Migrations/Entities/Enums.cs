@@ -38,3 +38,13 @@ public enum SnmpPrivProtocol { Des, Aes, Aes256 }
 public enum SnmpSecurityLevel { NoAuthNoPriv, AuthNoPriv, AuthPriv }
 
 public enum SnmpVersion { V2c, V3 }
+
+public enum AlertChannelType { Webhook, Email, Inapp }
+
+public enum AlertTrigger { StateTransition, MetricThreshold }
+
+public enum AlertSeverity { Info, Warning, Critical }
+
+public enum AlertEventKind { Firing, Resolved }
+
+public enum AlertDeliveryStatus { Pending, Failed, Sent, GaveUp }

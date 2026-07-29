@@ -1,0 +1,17 @@
+[Unit]
+Description=NodeScope appliance
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__DEPLOY_DIR__
+ExecStart=__DEPLOY_DIR__/nodescope.sh up
+ExecStop=__DEPLOY_DIR__/nodescope.sh down
+TimeoutStartSec=10min
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target

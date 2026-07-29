@@ -25,6 +25,11 @@ namespace NodeScope.Migrations.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AccountTier", new[] { "PERSONAL_FREE", "PERSONAL_PAID", "MULTI_PROPERTY", "ENTERPRISE" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AgentStatus", new[] { "PENDING", "APPROVED", "REVOKED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AlertChannelType", new[] { "WEBHOOK", "EMAIL", "INAPP" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AlertDeliveryStatus", new[] { "PENDING", "FAILED", "SENT", "GAVE_UP" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AlertEventKind", new[] { "FIRING", "RESOLVED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AlertSeverity", new[] { "INFO", "WARNING", "CRITICAL" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "AlertTrigger", new[] { "STATE_TRANSITION", "METRIC_THRESHOLD" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ChangeAction", new[] { "CREATE", "UPDATE", "DELETE" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ConnectionType", new[] { "ETHERNET", "FIBER", "WIFI", "LOGICAL" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "DeviceCategory", new[] { "RAD", "ONT", "DSLAM", "ROUTER", "MODEM", "FIBER_MEDIA_CONVERTER", "FIREWALL", "SWITCH", "ACCESS_POINT", "WIFI_EXTENDER", "WIRELESS_BRIDGE", "SERVER_RACK", "PATCH_PANEL", "UPS", "COMPUTER", "PHONE", "TABLET", "PRINTER", "IOT_DEVICE", "CUSTOM" });
@@ -216,6 +221,348 @@ namespace NodeScope.Migrations.Migrations
                     b.HasIndex(new[] { "OrganizationId" }, "AgentEnrollmentCode_organizationId_idx");
 
                     b.ToTable("AgentEnrollmentCode");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertChannel", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Config")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("config")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("Enabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("organizationId");
+
+                    b.Property<string>("SecretEnc")
+                        .HasColumnType("text")
+                        .HasColumnName("secretEnc");
+
+                    b.Property<AlertChannelType>("Type")
+                        .HasColumnType("\"AlertChannelType\"")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("AlertChannel_pkey");
+
+                    b.HasIndex(new[] { "OrganizationId" }, "AlertChannel_organizationId_idx");
+
+                    b.HasIndex(new[] { "OrganizationId", "Name" }, "AlertChannel_organizationId_name_key")
+                        .IsUnique();
+
+                    b.ToTable("AlertChannel");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertDelivery", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AlertEventId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("alertEventId");
+
+                    b.Property<int>("Attempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("text")
+                        .HasColumnName("channelId");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("lastAttemptAt");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("lastError");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("nextAttemptAt");
+
+                    b.Property<AlertDeliveryStatus>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("\"AlertDeliveryStatus\"")
+                        .HasDefaultValue(AlertDeliveryStatus.Pending)
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("AlertDelivery_pkey");
+
+                    b.HasIndex(new[] { "AlertEventId", "ChannelId" }, "AlertDelivery_alertEventId_channelId_key")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "ChannelId" }, "AlertDelivery_channelId_idx");
+
+                    b.HasIndex(new[] { "Status", "NextAttemptAt" }, "AlertDelivery_status_nextAttemptAt_idx");
+
+                    b.ToTable("AlertDelivery");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertEvent", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("dedupKey");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("detail");
+
+                    b.Property<string>("DeviceId")
+                        .HasColumnType("text")
+                        .HasColumnName("deviceId");
+
+                    b.Property<AlertEventKind>("Kind")
+                        .HasColumnType("\"AlertEventKind\"")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("organizationId");
+
+                    b.Property<string>("RuleId")
+                        .HasColumnType("text")
+                        .HasColumnName("ruleId");
+
+                    b.Property<string>("RuleName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ruleName");
+
+                    b.Property<AlertSeverity>("Severity")
+                        .HasColumnType("\"AlertSeverity\"")
+                        .HasColumnName("severity");
+
+                    b.HasKey("Id")
+                        .HasName("AlertEvent_pkey");
+
+                    b.HasIndex(new[] { "DedupKey" }, "AlertEvent_dedupKey_idx");
+
+                    b.HasIndex(new[] { "OrganizationId", "CreatedAt" }, "AlertEvent_organizationId_createdAt_idx");
+
+                    b.ToTable("AlertEvent");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertIncident", b =>
+                {
+                    b.Property<string>("DedupKey")
+                        .HasColumnType("text")
+                        .HasColumnName("dedupKey");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("deviceId");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("isOpen");
+
+                    b.Property<DateTime?>("LastFiredAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("lastFiredAt");
+
+                    b.Property<DateTime?>("LastResolvedAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("lastResolvedAt");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("organizationId");
+
+                    b.Property<string>("RuleId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ruleId");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("DedupKey")
+                        .HasName("AlertIncident_pkey");
+
+                    b.HasIndex(new[] { "OrganizationId" }, "AlertIncident_organizationId_idx");
+
+                    b.ToTable("AlertIncident");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertRule", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<int>("CooldownSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("cooldownSeconds");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("Enabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("enabled");
+
+                    b.Property<int?>("ForSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("forSeconds");
+
+                    b.Property<string>("Metric")
+                        .HasColumnType("text")
+                        .HasColumnName("metric");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("NotifyOnRecovery")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("notifyOnRecovery");
+
+                    b.Property<string>("Op")
+                        .HasColumnType("text")
+                        .HasColumnName("op");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("organizationId");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("scope");
+
+                    b.Property<AlertSeverity>("Severity")
+                        .HasColumnType("\"AlertSeverity\"")
+                        .HasColumnName("severity");
+
+                    b.PrimitiveCollection<string[]>("TargetStates")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("targetStates")
+                        .HasDefaultValueSql("ARRAY[]::text[]");
+
+                    b.Property<double?>("Threshold")
+                        .HasColumnType("double precision")
+                        .HasColumnName("threshold");
+
+                    b.Property<AlertTrigger>("Trigger")
+                        .HasColumnType("\"AlertTrigger\"")
+                        .HasColumnName("trigger");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp(3) without time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("AlertRule_pkey");
+
+                    b.HasIndex(new[] { "Enabled", "Trigger" }, "AlertRule_enabled_trigger_idx");
+
+                    b.HasIndex(new[] { "OrganizationId" }, "AlertRule_organizationId_idx");
+
+                    b.HasIndex(new[] { "OrganizationId", "Name" }, "AlertRule_organizationId_name_key")
+                        .IsUnique();
+
+                    b.ToTable("AlertRule");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertRuleChannel", b =>
+                {
+                    b.Property<string>("RuleId")
+                        .HasColumnType("text")
+                        .HasColumnName("ruleId");
+
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("text")
+                        .HasColumnName("channelId");
+
+                    b.HasKey("RuleId", "ChannelId")
+                        .HasName("AlertRuleChannel_pkey");
+
+                    b.HasIndex(new[] { "ChannelId" }, "AlertRuleChannel_channelId_idx");
+
+                    b.ToTable("AlertRuleChannel");
                 });
 
             modelBuilder.Entity("NodeScope.Migrations.Entities.BcfComment", b =>
@@ -2181,6 +2528,104 @@ namespace NodeScope.Migrations.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertChannel", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertChannel_organizationId_fkey");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertDelivery", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.AlertEvent", "AlertEvent")
+                        .WithMany("AlertDelivery")
+                        .HasForeignKey("AlertEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertDelivery_alertEventId_fkey");
+
+                    b.HasOne("NodeScope.Migrations.Entities.AlertChannel", "Channel")
+                        .WithMany("AlertDelivery")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("AlertDelivery_channelId_fkey");
+
+                    b.Navigation("AlertEvent");
+
+                    b.Navigation("Channel");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertEvent", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertEvent_organizationId_fkey");
+
+                    b.HasOne("NodeScope.Migrations.Entities.AlertRule", "Rule")
+                        .WithMany("AlertEvent")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("AlertEvent_ruleId_fkey");
+
+                    b.Navigation("Rule");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertIncident", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertIncident_organizationId_fkey");
+
+                    b.HasOne("NodeScope.Migrations.Entities.AlertRule", "Rule")
+                        .WithMany("AlertIncident")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertIncident_ruleId_fkey");
+
+                    b.Navigation("Rule");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertRule", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertRule_organizationId_fkey");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertRuleChannel", b =>
+                {
+                    b.HasOne("NodeScope.Migrations.Entities.AlertChannel", "Channel")
+                        .WithMany("AlertRuleChannel")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("AlertRuleChannel_channelId_fkey");
+
+                    b.HasOne("NodeScope.Migrations.Entities.AlertRule", "Rule")
+                        .WithMany("AlertRuleChannel")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("AlertRuleChannel_ruleId_fkey");
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Rule");
+                });
+
             modelBuilder.Entity("NodeScope.Migrations.Entities.BcfComment", b =>
                 {
                     b.HasOne("NodeScope.Migrations.Entities.BcfTopic", "Topic")
@@ -2798,6 +3243,27 @@ namespace NodeScope.Migrations.Migrations
                     b.Navigation("Property");
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertChannel", b =>
+                {
+                    b.Navigation("AlertDelivery");
+
+                    b.Navigation("AlertRuleChannel");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertEvent", b =>
+                {
+                    b.Navigation("AlertDelivery");
+                });
+
+            modelBuilder.Entity("NodeScope.Migrations.Entities.AlertRule", b =>
+                {
+                    b.Navigation("AlertEvent");
+
+                    b.Navigation("AlertIncident");
+
+                    b.Navigation("AlertRuleChannel");
                 });
 
             modelBuilder.Entity("NodeScope.Migrations.Entities.BcfTopic", b =>

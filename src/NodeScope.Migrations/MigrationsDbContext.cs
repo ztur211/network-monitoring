@@ -18,6 +18,18 @@ public partial class MigrationsDbContext : DbContext
 
     public virtual DbSet<AgentEnrollmentCode> AgentEnrollmentCode { get; set; }
 
+    public virtual DbSet<AlertChannel> AlertChannel { get; set; }
+
+    public virtual DbSet<AlertDelivery> AlertDelivery { get; set; }
+
+    public virtual DbSet<AlertEvent> AlertEvent { get; set; }
+
+    public virtual DbSet<AlertIncident> AlertIncident { get; set; }
+
+    public virtual DbSet<AlertRule> AlertRule { get; set; }
+
+    public virtual DbSet<AlertRuleChannel> AlertRuleChannel { get; set; }
+
     public virtual DbSet<BcfComment> BcfComment { get; set; }
 
     public virtual DbSet<BcfTopic> BcfTopic { get; set; }
@@ -93,6 +105,11 @@ public partial class MigrationsDbContext : DbContext
         modelBuilder
             .HasPostgresEnum("AccountTier", new[] { "PERSONAL_FREE", "PERSONAL_PAID", "MULTI_PROPERTY", "ENTERPRISE" })
             .HasPostgresEnum("AgentStatus", new[] { "PENDING", "APPROVED", "REVOKED" })
+            .HasPostgresEnum("AlertChannelType", new[] { "WEBHOOK", "EMAIL", "INAPP" })
+            .HasPostgresEnum("AlertDeliveryStatus", new[] { "PENDING", "FAILED", "SENT", "GAVE_UP" })
+            .HasPostgresEnum("AlertEventKind", new[] { "FIRING", "RESOLVED" })
+            .HasPostgresEnum("AlertSeverity", new[] { "INFO", "WARNING", "CRITICAL" })
+            .HasPostgresEnum("AlertTrigger", new[] { "STATE_TRANSITION", "METRIC_THRESHOLD" })
             .HasPostgresEnum("ChangeAction", new[] { "CREATE", "UPDATE", "DELETE" })
             .HasPostgresEnum("ConnectionType", new[] { "ETHERNET", "FIBER", "WIFI", "LOGICAL" })
             .HasPostgresEnum("DeviceCategory", new[] { "RAD", "ONT", "DSLAM", "ROUTER", "MODEM", "FIBER_MEDIA_CONVERTER", "FIREWALL", "SWITCH", "ACCESS_POINT", "WIFI_EXTENDER", "WIRELESS_BRIDGE", "SERVER_RACK", "PATCH_PANEL", "UPS", "COMPUTER", "PHONE", "TABLET", "PRINTER", "IOT_DEVICE", "CUSTOM" })
@@ -1369,6 +1386,196 @@ public partial class MigrationsDbContext : DbContext
                 .HasColumnName("updatedAt");
             entity.Property(e => e.Value).HasColumnName("value");
         });
+
+        modelBuilder.Entity<AlertChannel>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("AlertChannel_pkey");
+            entity.HasIndex(e => e.OrganizationId, "AlertChannel_organizationId_idx");
+            entity.HasIndex(e => new { e.OrganizationId, e.Name }, "AlertChannel_organizationId_name_key")
+                .IsUnique();
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organizationId");
+            entity.Property(e => e.Type).HasColumnName("type");
+            entity.Property(e => e.Name).HasColumnName("name");
+            entity.Property(e => e.Enabled).HasDefaultValue(true).HasColumnName("enabled");
+            entity.Property(e => e.Config)
+                .HasDefaultValueSql("'{}'::jsonb")
+                .HasColumnType("jsonb")
+                .HasColumnName("config");
+            entity.Property(e => e.SecretEnc).HasColumnName("secretEnc");
+            entity.Property(e => e.Version).HasDefaultValue(1).HasColumnName("version");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("updatedAt");
+
+            entity.HasOne<Organization>().WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertChannel_organizationId_fkey");
+        });
+
+        modelBuilder.Entity<AlertRule>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("AlertRule_pkey");
+            entity.HasIndex(e => e.OrganizationId, "AlertRule_organizationId_idx");
+            entity.HasIndex(e => new { e.OrganizationId, e.Name }, "AlertRule_organizationId_name_key")
+                .IsUnique();
+            entity.HasIndex(e => new { e.Enabled, e.Trigger }, "AlertRule_enabled_trigger_idx");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organizationId");
+            entity.Property(e => e.Name).HasColumnName("name");
+            entity.Property(e => e.Enabled).HasDefaultValue(true).HasColumnName("enabled");
+            entity.Property(e => e.Trigger).HasColumnName("trigger");
+            entity.Property(e => e.Scope)
+                .HasColumnType("jsonb")
+                .HasColumnName("scope");
+            entity.Property(e => e.TargetStates)
+                .HasDefaultValueSql("ARRAY[]::text[]")
+                .HasColumnName("targetStates");
+            entity.Property(e => e.Metric).HasColumnName("metric");
+            entity.Property(e => e.Op).HasColumnName("op");
+            entity.Property(e => e.Threshold).HasColumnName("threshold");
+            entity.Property(e => e.ForSeconds).HasColumnName("forSeconds");
+            entity.Property(e => e.Severity).HasColumnName("severity");
+            entity.Property(e => e.CooldownSeconds).HasDefaultValue(0).HasColumnName("cooldownSeconds");
+            entity.Property(e => e.NotifyOnRecovery).HasDefaultValue(true).HasColumnName("notifyOnRecovery");
+            entity.Property(e => e.Version).HasDefaultValue(1).HasColumnName("version");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("updatedAt");
+
+            entity.HasOne<Organization>().WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertRule_organizationId_fkey");
+        });
+
+        modelBuilder.Entity<AlertRuleChannel>(entity =>
+        {
+            entity.HasKey(e => new { e.RuleId, e.ChannelId }).HasName("AlertRuleChannel_pkey");
+            entity.HasIndex(e => e.ChannelId, "AlertRuleChannel_channelId_idx");
+            entity.Property(e => e.RuleId).HasColumnName("ruleId");
+            entity.Property(e => e.ChannelId).HasColumnName("channelId");
+
+            entity.HasOne(e => e.Rule).WithMany(e => e.AlertRuleChannel)
+                .HasForeignKey(e => e.RuleId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertRuleChannel_ruleId_fkey");
+            entity.HasOne(e => e.Channel).WithMany(e => e.AlertRuleChannel)
+                .HasForeignKey(e => e.ChannelId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("AlertRuleChannel_channelId_fkey");
+        });
+
+        modelBuilder.Entity<AlertEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("AlertEvent_pkey");
+            entity.HasIndex(e => new { e.OrganizationId, e.CreatedAt }, "AlertEvent_organizationId_createdAt_idx");
+            entity.HasIndex(e => e.DedupKey, "AlertEvent_dedupKey_idx");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organizationId");
+            entity.Property(e => e.RuleId).HasColumnName("ruleId");
+            entity.Property(e => e.RuleName).HasColumnName("ruleName");
+            entity.Property(e => e.DeviceId).HasColumnName("deviceId");
+            entity.Property(e => e.Kind).HasColumnName("kind");
+            entity.Property(e => e.Severity).HasColumnName("severity");
+            entity.Property(e => e.Detail)
+                .HasColumnType("jsonb")
+                .HasColumnName("detail");
+            entity.Property(e => e.DedupKey).HasColumnName("dedupKey");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("createdAt");
+
+            entity.HasOne<Organization>().WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertEvent_organizationId_fkey");
+            entity.HasOne(e => e.Rule).WithMany(e => e.AlertEvent)
+                .HasForeignKey(e => e.RuleId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("AlertEvent_ruleId_fkey");
+        });
+
+        modelBuilder.Entity<AlertIncident>(entity =>
+        {
+            entity.HasKey(e => e.DedupKey).HasName("AlertIncident_pkey");
+            entity.HasIndex(e => e.OrganizationId, "AlertIncident_organizationId_idx");
+
+            entity.Property(e => e.DedupKey).HasColumnName("dedupKey");
+            entity.Property(e => e.OrganizationId).HasColumnName("organizationId");
+            entity.Property(e => e.RuleId).HasColumnName("ruleId");
+            entity.Property(e => e.DeviceId).HasColumnName("deviceId");
+            entity.Property(e => e.IsOpen).HasColumnName("isOpen");
+            entity.Property(e => e.LastFiredAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("lastFiredAt");
+            entity.Property(e => e.LastResolvedAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("lastResolvedAt");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("updatedAt");
+
+            entity.HasOne<Organization>().WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertIncident_organizationId_fkey");
+            entity.HasOne(e => e.Rule).WithMany(e => e.AlertIncident)
+                .HasForeignKey(e => e.RuleId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertIncident_ruleId_fkey");
+        });
+
+        modelBuilder.Entity<AlertDelivery>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("AlertDelivery_pkey");
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAt }, "AlertDelivery_status_nextAttemptAt_idx");
+            entity.HasIndex(e => new { e.AlertEventId, e.ChannelId }, "AlertDelivery_alertEventId_channelId_key")
+                .IsUnique();
+            entity.HasIndex(e => e.ChannelId, "AlertDelivery_channelId_idx");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.AlertEventId).HasColumnName("alertEventId");
+            entity.Property(e => e.ChannelId).HasColumnName("channelId");
+            entity.Property(e => e.Status)
+                .HasDefaultValue(AlertDeliveryStatus.Pending)
+                .HasColumnName("status");
+            entity.Property(e => e.Attempts).HasDefaultValue(0).HasColumnName("attempts");
+            entity.Property(e => e.LastAttemptAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("lastAttemptAt");
+            entity.Property(e => e.NextAttemptAt)
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("nextAttemptAt");
+            entity.Property(e => e.LastError).HasColumnName("lastError");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp(3) without time zone")
+                .HasColumnName("createdAt");
+
+            entity.HasOne(e => e.AlertEvent).WithMany(e => e.AlertDelivery)
+                .HasForeignKey(e => e.AlertEventId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("AlertDelivery_alertEventId_fkey");
+            entity.HasOne(e => e.Channel).WithMany(e => e.AlertDelivery)
+                .HasForeignKey(e => e.ChannelId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("AlertDelivery_channelId_fkey");
+        });
+
         OnModelCreatingPartial(modelBuilder);
     }
 

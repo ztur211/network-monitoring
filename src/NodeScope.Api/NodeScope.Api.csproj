@@ -17,6 +17,7 @@
     <ProjectReference Include="../Modules/Monitoring/NodeScope.Modules.Monitoring.Infrastructure/NodeScope.Modules.Monitoring.Infrastructure.csproj" />
     <ProjectReference Include="../Modules/Assistant/NodeScope.Modules.Assistant.Infrastructure/NodeScope.Modules.Assistant.Infrastructure.csproj" />
     <ProjectReference Include="../Modules/Realtime/NodeScope.Modules.Realtime.Infrastructure/NodeScope.Modules.Realtime.Infrastructure.csproj" />
+    <ProjectReference Include="../Modules/Alerting/NodeScope.Modules.Alerting.Infrastructure/NodeScope.Modules.Alerting.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

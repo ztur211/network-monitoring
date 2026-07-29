@@ -26,6 +26,9 @@ internal sealed class NoopRealtimeService : IRealtimeService
     public Task PushToOrgAsync(string organizationId, string eventName, object payload, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 
+    public Task PushToAdminsAsync(string organizationId, string eventName, object payload, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public Task PushToUserAsync(string userId, string eventName, object payload, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 

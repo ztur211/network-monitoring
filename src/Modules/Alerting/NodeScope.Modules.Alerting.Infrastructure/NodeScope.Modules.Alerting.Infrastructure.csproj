@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../NodeScope.Modules.Alerting.Application/NodeScope.Modules.Alerting.Application.csproj" />
+    <ProjectReference Include="../../../NodeScope.Platform/NodeScope.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" />
+  </ItemGroup>
+
+</Project>

@@ -22,6 +22,9 @@ SEED_PASSWORD=devpassword123 scripts/run-csharp-host.sh seed
 scripts/run-csharp-host.sh
 ```
 
+The test host script uses one-second alert evaluation and delivery cycles so
+metric-duration and durable-delivery contracts remain deterministic and fast.
+
 In another terminal:
 
 ```bash

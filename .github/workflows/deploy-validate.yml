@@ -59,14 +59,92 @@ jobs:
       - name: Smoke-test same-origin routes
         run: ./deploy/nodescope.sh smoke --origin http://localhost:8080 --no-tiles
 
-      - name: Verify database backup
+      - name: Verify backup and restore round-trip
         shell: bash
         run: |
-          backup_dir="$(mktemp -d)"
-          deploy/backup.sh "$backup_dir"
-          backup="$(find "$backup_dir" -maxdepth 1 -name '*.sql.gz' -print -quit)"
-          test -n "$backup"
-          gunzip --stdout "$backup" | grep --quiet "PostgreSQL database dump"
+          backup_dir="/tmp/nodescope-backups"
+          mkdir -p "$backup_dir"
+          compose=(docker compose --file deploy/docker-compose.prod.yml --env-file deploy/.env)
+
+          "${compose[@]}" exec -T db psql -U nodescope nodescope \
+            -c "CREATE TABLE restore_probe(value text); INSERT INTO restore_probe VALUES ('sentinel-42');"
+          "${compose[@]}" run --rm --no-deps --entrypoint sh api \
+            -c 'printf "%s" "blob-sentinel" > /data/storage/_restore_probe'
+
+          deploy/nodescope.sh backup "$backup_dir"
+          bundle="$(find "$backup_dir" -mindepth 1 -maxdepth 1 -type d -name 'nodescope-*' | sort | tail -n1)"
+          test -s "$bundle/db.sql.gz"
+          test -s "$bundle/blobs.tar.gz"
+          test -s "$bundle/manifest.txt"
+          gunzip --stdout "$bundle/db.sql.gz" | grep --quiet "PostgreSQL database dump"
+
+          "${compose[@]}" exec -T db psql -U nodescope nodescope -c "DROP TABLE restore_probe;"
+          "${compose[@]}" run --rm --no-deps --entrypoint sh api \
+            -c 'rm -f /data/storage/_restore_probe'
+
+          deploy/nodescope.sh restore "$bundle"
+
+          database_value="$("${compose[@]}" exec -T db psql -tAqX -U nodescope nodescope \
+            -c 'SELECT value FROM restore_probe')"
+          test "$(printf '%s' "$database_value" | tr -d '[:space:]')" = "sentinel-42"
+          blob_value="$("${compose[@]}" run --rm --no-deps --entrypoint sh api \
+            -c 'cat /data/storage/_restore_probe')"
+          test "$blob_value" = "blob-sentinel"
+
+          ./deploy/nodescope.sh smoke --origin http://localhost:8080 --no-tiles
+
+      - name: Verify encrypted offsite recovery round-trip
+        shell: bash
+        run: |
+          compose=(docker compose --file deploy/docker-compose.prod.yml --env-file deploy/.env)
+          api_container="$("${compose[@]}" ps -q api)"
+          network="$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' "$api_container" | head -n1)"
+
+          docker rm --force nodescope-offsite-minio >/dev/null 2>&1 || true
+          docker run --detach \
+            --name nodescope-offsite-minio \
+            --network "$network" \
+            --env MINIO_ROOT_USER=offsiteadmin \
+            --env MINIO_ROOT_PASSWORD=offsite-password \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z \
+            server /data
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if docker run --rm --network "$network" --entrypoint sh \
+              minio/mc:RELEASE.2025-08-13T08-35-41Z \
+              -c 'mc alias set recovery http://nodescope-offsite-minio:9000 offsiteadmin offsite-password && mc mb --ignore-existing recovery/backups' \
+              >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+
+          ./deploy/nodescope.sh offsite-keygen
+          cat >>deploy/.env <<'ENV'
+          OFFSITE_S3_ENDPOINT=http://nodescope-offsite-minio:9000
+          OFFSITE_S3_REGION=us-east-1
+          OFFSITE_S3_BUCKET=backups
+          OFFSITE_S3_ACCESS_KEY=offsiteadmin
+          OFFSITE_S3_SECRET_KEY=offsite-password
+          OFFSITE_S3_PREFIX=nodescope
+          OFFSITE_KEEP=7
+          OFFSITE_INCLUDE_BLOBS=true
+          ENV
+
+          bundle="$(find /tmp/nodescope-backups -mindepth 1 -maxdepth 1 -type d -name 'nodescope-*' | sort | tail -n1)"
+          name="$(basename "$bundle")"
+          ./deploy/nodescope.sh offsite-push "$bundle"
+          ./deploy/nodescope.sh offsite-list | grep --fixed-strings --line-regexp "$name"
+
+          ./deploy/nodescope.sh offsite-pull \
+            "$name" \
+            /tmp/nodescope-offsite-recovered \
+            --identity deploy/offsite-identity.key
+          cmp "$bundle/db.sql.gz" /tmp/nodescope-offsite-recovered/db.sql.gz
+          cmp "$bundle/blobs.tar.gz" /tmp/nodescope-offsite-recovered/blobs.tar.gz
 
       - name: Print container logs on failure
         if: failure()
@@ -81,10 +159,10 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: >-
-          docker compose
-          --file deploy/docker-compose.prod.yml
-          --file deploy/docker-compose.build.yml
-          --env-file deploy/.env
-          down
-          --volumes
+        run: |
+          docker rm --force nodescope-offsite-minio >/dev/null 2>&1 || true
+          docker compose \
+            --file deploy/docker-compose.prod.yml \
+            --file deploy/docker-compose.build.yml \
+            --env-file deploy/.env \
+            down --volumes

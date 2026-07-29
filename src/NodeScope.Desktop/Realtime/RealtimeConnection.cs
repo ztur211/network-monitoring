@@ -83,11 +83,17 @@ internal sealed class RealtimeConnection : IRealtimeConnection
     }
 
     public async Task SendAiMessageAsync(
-        string content, string? conversationId, CancellationToken cancellationToken)
+        string content,
+        string? conversationId,
+        string? deviceId,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await _hub.InvokeAsync(AiMessageMethod, new { content, conversationId }, cancellationToken);
+            await _hub.InvokeAsync(
+                AiMessageMethod,
+                new { content, conversationId, deviceId },
+                cancellationToken);
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
@@ -160,6 +166,12 @@ internal sealed class RealtimeConnection : IRealtimeConnection
 
     public IDisposable OnMetricsUpdate(Action<MetricsUpdateEvent> handler) =>
         Subscribe(WsEvents.MetricsUpdate, handler);
+
+    public IDisposable OnAlertFired(Action<AlertRealtimeEvent> handler) =>
+        Subscribe(WsEvents.AlertFired, handler);
+
+    public IDisposable OnAlertResolved(Action<AlertRealtimeEvent> handler) =>
+        Subscribe(WsEvents.AlertResolved, handler);
 
     public IDisposable OnReconnected(Action handler)
     {

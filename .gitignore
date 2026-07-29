@@ -55,3 +55,7 @@ demo/
 
 # run-desktop.sh runtime logs + pid files
 .run/
+
+# Appliance backup material contains customer data and recovery credentials.
+deploy/backups/
+deploy/offsite-identity.key

@@ -17,7 +17,8 @@ WORKDIR /source
 # so the image build fails on exactly what a dev build fails on.
 COPY Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src ./src
-RUN dotnet publish src/NodeScope.Api -c Release -o /app
+RUN dotnet publish src/NodeScope.Api -c Release -o /app \
+ && dotnet publish src/NodeScope.Backup -c Release -o /backup
 
 # ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
@@ -26,13 +27,15 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 # unprivileged ICMP sockets are unavailable, and without a ping binary every
 # ICMP-only device reads DOWN - a broken image masquerading as a fleet-wide
 # outage (the node:*-slim lesson, deliberately carried over).
-# curl backs the image/compose healthchecks.
+# curl backs the image/compose healthchecks. tar is used by the appliance's
+# streamed blob backup and restore path.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends iputils-ping curl \
+ && apt-get install -y --no-install-recommends iputils-ping curl tar \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /app .
+COPY --from=build /backup /opt/nodescope-backup
 # FS storage mode (the appliance default) writes blobs here; pre-create it owned
 # by the image's non-root `app` user so a mounted volume at this path is writable.
 RUN mkdir -p /data/storage && chown -R app:app /data/storage

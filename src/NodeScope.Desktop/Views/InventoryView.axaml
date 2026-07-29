@@ -133,20 +133,26 @@
                           <StackPanel DockPanel.Dock="Right"
                                       Orientation="Horizontal"
                                       Spacing="6"
-                                      VerticalAlignment="Top"
-                                      IsVisible="{Binding CanConfigure}">
-                            <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).BeginEditCommand}"
+                                      VerticalAlignment="Top">
+                            <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).TroubleshootCommand}"
                                     CommandParameter="{Binding}"
-                                    Content="Edit" />
-                            <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
-                                    CommandParameter="{Binding}"
-                                    IsVisible="{Binding !ConfirmingDelete}"
-                                    Content="Delete" />
-                            <Button Classes="accent"
-                                    Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
-                                    CommandParameter="{Binding}"
-                                    IsVisible="{Binding ConfirmingDelete}"
-                                    Content="Confirm delete?" />
+                                    Content="Troubleshoot" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="6"
+                                        IsVisible="{Binding CanConfigure}">
+                              <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).BeginEditCommand}"
+                                      CommandParameter="{Binding}"
+                                      Content="Edit" />
+                              <Button Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
+                                      CommandParameter="{Binding}"
+                                      IsVisible="{Binding !ConfirmingDelete}"
+                                      Content="Delete" />
+                              <Button Classes="accent"
+                                      Command="{Binding #EquipmentRoot.((vm:EquipmentViewModel)DataContext).DeleteCommand}"
+                                      CommandParameter="{Binding}"
+                                      IsVisible="{Binding ConfirmingDelete}"
+                                      Content="Confirm delete?" />
+                            </StackPanel>
                           </StackPanel>
                           <StackPanel Spacing="2">
                             <TextBlock FontWeight="SemiBold" Text="{Binding Device.Name}" />

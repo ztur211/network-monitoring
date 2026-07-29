@@ -59,6 +59,7 @@ public static class MonitoringModuleServices
         services.AddScoped<IngestTokenService>();
         services.AddScoped<IngestService>();
         services.AddScoped<MonitoringReadService>();
+        services.AddScoped<IAssistantTelemetryContextProvider, AssistantTelemetryContextProvider>();
         services.AddHostedService<MonitoringCaggInitializer>();
 
         // The embedded prober (registered always, no-op unless MONITORING_PROBER_ENABLED=true).

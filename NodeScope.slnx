@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/NodeScope.Agent/NodeScope.Agent.csproj" />
     <Project Path="src/NodeScope.Api/NodeScope.Api.csproj" />
+    <Project Path="src/NodeScope.Backup/NodeScope.Backup.csproj" />
     <Project Path="src/NodeScope.Contracts/NodeScope.Contracts.csproj" />
     <Project Path="src/NodeScope.Desktop/NodeScope.Desktop.csproj" />
     <Project Path="src/NodeScope.Migrations/NodeScope.Migrations.csproj" />
@@ -9,6 +10,11 @@
     <Project Path="src/NodeScope.Platform/NodeScope.Platform.csproj" />
   </Folder>
   <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Alerting/">
+    <Project Path="src/Modules/Alerting/NodeScope.Modules.Alerting.Application/NodeScope.Modules.Alerting.Application.csproj" />
+    <Project Path="src/Modules/Alerting/NodeScope.Modules.Alerting.Domain/NodeScope.Modules.Alerting.Domain.csproj" />
+    <Project Path="src/Modules/Alerting/NodeScope.Modules.Alerting.Infrastructure/NodeScope.Modules.Alerting.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Assistant/">
     <Project Path="src/Modules/Assistant/NodeScope.Modules.Assistant.Application/NodeScope.Modules.Assistant.Application.csproj" />
     <Project Path="src/Modules/Assistant/NodeScope.Modules.Assistant.Domain/NodeScope.Modules.Assistant.Domain.csproj" />
@@ -36,7 +42,9 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NodeScope.Agent.Tests/NodeScope.Agent.Tests.csproj" />
+    <Project Path="tests/NodeScope.Alerting.Tests/NodeScope.Alerting.Tests.csproj" />
     <Project Path="tests/NodeScope.ArchitectureTests/NodeScope.ArchitectureTests.csproj" />
+    <Project Path="tests/NodeScope.Backup.Tests/NodeScope.Backup.Tests.csproj" />
     <Project Path="tests/NodeScope.ContractTests/NodeScope.ContractTests.csproj" />
     <Project Path="tests/NodeScope.Desktop.Tests/NodeScope.Desktop.Tests.csproj" />
     <Project Path="tests/NodeScope.Inventory.Tests/NodeScope.Inventory.Tests.csproj" />

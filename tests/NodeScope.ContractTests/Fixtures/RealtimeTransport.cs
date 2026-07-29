@@ -30,6 +30,7 @@ public static class RealtimeTransport
         "v1:buildingModel:versionUploaded", "v1:buildingModel:activated", "v1:buildingModel:deleted",
         "v1:buildingModel:georeference",
         "v1:bcf:topic:created", "v1:bcf:topic:updated", "v1:bcf:comment:added",
+        "v1:alert:fired", "v1:alert:resolved",
     ];
 
     /// <summary>A client event name mapped to the hub method serving it.</summary>

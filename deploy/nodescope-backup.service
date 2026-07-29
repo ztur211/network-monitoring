@@ -1,0 +1,11 @@
+[Unit]
+Description=NodeScope appliance backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__DEPLOY_DIR__
+ExecStart=__DEPLOY_DIR__/nodescope.sh backup
+ExecStart=__DEPLOY_DIR__/nodescope.sh offsite-push
+TimeoutStartSec=2h

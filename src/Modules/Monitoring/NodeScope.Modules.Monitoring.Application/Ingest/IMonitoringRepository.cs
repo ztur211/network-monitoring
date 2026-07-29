@@ -40,8 +40,8 @@ public sealed record StatusEventRow(
     DeviceStatusState State,
     string Source);
 
-/// <summary>A device-ownership row: id plus the property it sits on (the emit scope).</summary>
-public sealed record OwnedDevice(string Id, string PropertyId);
+/// <summary>A device-ownership row with the coordinates needed for scoped notifications.</summary>
+public sealed record OwnedDevice(string Id, string NetworkId, string PropertyId);
 
 /// <summary>
 /// The monitoring write/read persistence surface over <c>DeviceStatus</c> (EF-managed) and the

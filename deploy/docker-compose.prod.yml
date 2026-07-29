@@ -109,6 +109,12 @@ services:
       MONITORING_PROBE_CONCURRENCY: ${MONITORING_PROBE_CONCURRENCY:-20}
       MONITORING_PROBE_TIMEOUT_MS: ${MONITORING_PROBE_TIMEOUT_MS:-2000}
       MONITORING_PROBE_PORTS: ${MONITORING_PROBE_PORTS:-443,80,22}
+      # Durable alert evaluation/delivery and optional external dead-man heartbeat.
+      ALERT_EVAL_INTERVAL_SECONDS: ${ALERT_EVAL_INTERVAL_SECONDS:-60}
+      ALERT_DELIVER_INTERVAL_SECONDS: ${ALERT_DELIVER_INTERVAL_SECONDS:-15}
+      ALERT_MAX_ATTEMPTS: ${ALERT_MAX_ATTEMPTS:-10}
+      ALERT_HEARTBEAT_URL: ${ALERT_HEARTBEAT_URL:-}
+      ALERT_HEARTBEAT_INTERVAL_SECONDS: ${ALERT_HEARTBEAT_INTERVAL_SECONDS:-60}
       # Single-node appliance default: blobs on the local blobstore volume (no
       # MinIO/S3 to run). To use S3/MinIO instead, set STORAGE_DRIVER=s3 in
       # deploy/.env and add the STORAGE_ENDPOINT/…/SECRET_KEY env here.
@@ -198,7 +204,7 @@ services:
   # Enable with `--profile tunnel`. In the Cloudflare dashboard, route your
   # hostname to http://web:80; paste the tunnel token into deploy/.env.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.7.3
     profiles: ["tunnel"]
     restart: unless-stopped
     logging: *default-logging

@@ -29,7 +29,12 @@ public static class MigrationsDbContextOptions
                 .MapEnum<SnmpAuthProtocol>("SnmpAuthProtocol", nameTranslator: ConstantCaseNameTranslator.Instance)
                 .MapEnum<SnmpPrivProtocol>("SnmpPrivProtocol", nameTranslator: ConstantCaseNameTranslator.Instance)
                 .MapEnum<SnmpSecurityLevel>("SnmpSecurityLevel", nameTranslator: ConstantCaseNameTranslator.Instance)
-                .MapEnum<SnmpVersion>("SnmpVersion", nameTranslator: ConstantCaseNameTranslator.Instance))
+                .MapEnum<SnmpVersion>("SnmpVersion", nameTranslator: ConstantCaseNameTranslator.Instance)
+                .MapEnum<AlertChannelType>("AlertChannelType", nameTranslator: ConstantCaseNameTranslator.Instance)
+                .MapEnum<AlertTrigger>("AlertTrigger", nameTranslator: ConstantCaseNameTranslator.Instance)
+                .MapEnum<AlertSeverity>("AlertSeverity", nameTranslator: ConstantCaseNameTranslator.Instance)
+                .MapEnum<AlertEventKind>("AlertEventKind", nameTranslator: ConstantCaseNameTranslator.Instance)
+                .MapEnum<AlertDeliveryStatus>("AlertDeliveryStatus", nameTranslator: ConstantCaseNameTranslator.Instance))
             .Options;
 }
 

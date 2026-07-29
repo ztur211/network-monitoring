@@ -13,9 +13,17 @@ namespace NodeScope.Desktop.ViewModels;
 [INotifyPropertyChanged]
 internal sealed partial class InventoryViewModel : IDisposable
 {
-    public InventoryViewModel(ApplianceSession session, IRealtimeConnection realtime, ILoggerFactory loggers)
+    public InventoryViewModel(
+        ApplianceSession session,
+        IRealtimeConnection realtime,
+        ILoggerFactory loggers,
+        Func<BimDevice, Task>? troubleshoot = null)
     {
-        Equipment = new EquipmentViewModel(session, realtime, loggers.CreateLogger<EquipmentViewModel>());
+        Equipment = new EquipmentViewModel(
+            session,
+            realtime,
+            loggers.CreateLogger<EquipmentViewModel>(),
+            troubleshoot: troubleshoot);
         Circuits = new CircuitsViewModel(session, realtime, loggers.CreateLogger<CircuitsViewModel>());
         Clients = new ClientsViewModel(session, realtime, loggers.CreateLogger<ClientsViewModel>());
     }

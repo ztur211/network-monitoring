@@ -5,6 +5,7 @@
 // this file composes them. Business logic does not live here.
 
 using NodeScope.Api;
+using NodeScope.Modules.Alerting.Infrastructure;
 using NodeScope.Modules.Assistant.Infrastructure;
 using NodeScope.Modules.Identity.Infrastructure;
 using NodeScope.Modules.Inventory.Infrastructure;
@@ -37,6 +38,7 @@ builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddMonitoringModule(builder.Configuration);
 builder.Services.AddRealtimeModule(builder.Configuration);
 builder.Services.AddAssistantModule(builder.Configuration);
+builder.Services.AddAlertingModule(builder.Configuration);
 
 var app = builder.Build();
 
@@ -65,6 +67,7 @@ app.MapInventoryEndpoints();
 app.MapMonitoringEndpoints();
 app.MapRealtimeEndpoints();
 app.MapAssistantEndpoints();
+app.MapAlertingEndpoints();
 app.MapIdentityEndpoints();
 
 // Seed mode (`dotnet NodeScope.Api.dll seed`): the dev/demo dataset instead of serving.

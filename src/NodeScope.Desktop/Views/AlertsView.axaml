@@ -1,0 +1,388 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NodeScope.Desktop.ViewModels"
+             x:Class="NodeScope.Desktop.Views.AlertsView"
+             x:DataType="vm:AlertsViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.62" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.error">
+      <Setter Property="Foreground" Value="{DynamicResource SystemErrorTextColor}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <DockPanel Grid.Row="0" Margin="16,12,16,8">
+      <Button DockPanel.Dock="Right"
+              Command="{Binding LoadCommand}"
+              IsEnabled="{Binding !IsLoading}"
+              Content="Refresh" />
+      <StackPanel Spacing="2">
+        <TextBlock FontSize="22" FontWeight="SemiBold" Text="Alerts" />
+        <TextBlock Classes="hint"
+                   Text="Durable notifications for device state and sustained latency." />
+      </StackPanel>
+    </DockPanel>
+
+    <StackPanel Grid.Row="1" Margin="16,0,16,8" Spacing="6">
+      <ProgressBar Height="3" IsIndeterminate="True" IsVisible="{Binding IsLoading}" />
+      <TextBlock Classes="error"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+      <TextBlock Foreground="#15803d"
+                 IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Status}" />
+    </StackPanel>
+
+    <Border Grid.Row="2"
+            Name="AccessCard"
+            Margin="16"
+            Padding="24"
+            CornerRadius="12"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsVisible="{Binding !CanManage}"
+            BorderThickness="1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel MaxWidth="420" Spacing="6">
+        <TextBlock HorizontalAlignment="Center"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Text="Admin access required" />
+        <TextBlock HorizontalAlignment="Center"
+                   TextAlignment="Center"
+                   Classes="hint"
+                   Text="{Binding AccessMessage}" />
+      </StackPanel>
+    </Border>
+
+    <TabControl Grid.Row="2"
+                Name="AlertsTabs"
+                Margin="12,0,12,12"
+                IsVisible="{Binding CanManage}">
+
+      <TabItem Header="Feed">
+        <Grid>
+          <StackPanel HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Spacing="5"
+                      IsVisible="{Binding !HasEvents}">
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="No alerts yet" />
+            <TextBlock Classes="hint"
+                       TextAlignment="Center"
+                       Text="Firing and recovered conditions will appear here in real time." />
+          </StackPanel>
+
+          <ScrollViewer IsVisible="{Binding HasEvents}">
+            <ItemsControl Name="AlertFeed" ItemsSource="{Binding Events}" Margin="4,8,12,12">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AlertEventRow">
+                  <Border Classes="card" Margin="0,0,0,8">
+                    <Grid ColumnDefinitions="6,12,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                      <Border Grid.RowSpan="3"
+                              Grid.Column="0"
+                              CornerRadius="3"
+                              Background="{Binding SeverityColor}" />
+                      <TextBlock Grid.Column="2"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding Title}" />
+                      <Border Grid.Column="3"
+                              Padding="8,2"
+                              CornerRadius="10"
+                              BorderThickness="1"
+                              BorderBrush="{Binding KindColor}">
+                        <TextBlock FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{Binding KindColor}"
+                                   Text="{Binding Event.Kind}" />
+                      </Border>
+                      <StackPanel Grid.Row="1"
+                                  Grid.Column="2"
+                                  Grid.ColumnSpan="2"
+                                  Orientation="Horizontal"
+                                  Spacing="8">
+                        <TextBlock FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{Binding SeverityColor}"
+                                   Text="{Binding Event.Severity}" />
+                        <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                        <TextBlock Classes="hint" Text="{Binding DeviceLine}" />
+                      </StackPanel>
+                      <TextBlock Grid.Row="2"
+                                 Grid.Column="2"
+                                 Grid.ColumnSpan="2"
+                                 Classes="hint"
+                                 Margin="0,3,0,0"
+                                 Text="{Binding Timestamp}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Channels">
+        <ScrollViewer>
+          <StackPanel Margin="4,10,12,16"
+                      Spacing="12"
+                      Width="760"
+                      HorizontalAlignment="Left">
+            <StackPanel Spacing="3">
+              <TextBlock Classes="sectionTitle" Text="Notification channels" />
+              <TextBlock Classes="hint"
+                         Text="Secrets are write-only and encrypted by the appliance." />
+            </StackPanel>
+
+            <ItemsControl Name="AlertChannelList"
+                          ItemsSource="{Binding Channels}"
+                          IsVisible="{Binding HasChannels}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AlertChannelRow">
+                  <Border Classes="card" Margin="0,0,0,8">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right"
+                                  Orientation="Horizontal"
+                                  VerticalAlignment="Center"
+                                  Spacing="6">
+                        <Button Command="{Binding $parent[UserControl].((vm:AlertsViewModel)DataContext).TestChannelCommand}"
+                                CommandParameter="{Binding}"
+                                Content="Test" />
+                        <Button Command="{Binding $parent[UserControl].((vm:AlertsViewModel)DataContext).DeleteChannelCommand}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding !ConfirmingDelete}"
+                                Content="Delete" />
+                        <Button Classes="accent"
+                                Command="{Binding $parent[UserControl].((vm:AlertsViewModel)DataContext).DeleteChannelCommand}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding ConfirmingDelete}"
+                                Content="Confirm delete?" />
+                      </StackPanel>
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Channel.Name}" />
+                        <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                        <TextBlock FontSize="12"
+                                   Foreground="#15803d"
+                                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Text="{Binding Status}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Add channel" />
+                <Grid ColumnDefinitions="180,8,*">
+                  <ComboBox Grid.Column="0"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{x:Static vm:AlertsViewModel.ChannelTypes}"
+                            SelectedItem="{Binding ChannelType}" />
+                  <TextBox Grid.Column="2"
+                           PlaceholderText="Channel name"
+                           Text="{Binding ChannelName}" />
+                </Grid>
+
+                <StackPanel Spacing="6" IsVisible="{Binding IsWebhook}">
+                  <TextBox PlaceholderText="https://hooks.example.com/..."
+                           Text="{Binding WebhookUrl}" />
+                  <TextBox PlaceholderText="Optional bearer/HMAC secret"
+                           PasswordChar="•"
+                           Text="{Binding ChannelSecret}" />
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding IsEmail}">
+                  <Grid ColumnDefinitions="*,8,120">
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="SMTP host"
+                             Text="{Binding EmailHost}" />
+                    <TextBox Grid.Column="2"
+                             PlaceholderText="Port"
+                             Text="{Binding EmailPort}" />
+                  </Grid>
+                  <TextBox PlaceholderText="Sender address"
+                           Text="{Binding EmailFrom}" />
+                  <TextBox PlaceholderText="Recipients, comma separated"
+                           Text="{Binding EmailRecipients}" />
+                  <Grid ColumnDefinitions="*,8,*">
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="Optional username"
+                             Text="{Binding EmailUsername}" />
+                    <TextBox Grid.Column="2"
+                             PlaceholderText="Optional password"
+                             PasswordChar="•"
+                             Text="{Binding ChannelSecret}" />
+                  </Grid>
+                </StackPanel>
+
+                <TextBlock Classes="hint"
+                           IsVisible="{Binding IsInApp}"
+                           Text="In-app alerts are delivered live to organization owners and admins." />
+
+                <Button Classes="accent"
+                        HorizontalAlignment="Left"
+                        Command="{Binding CreateChannelCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        Content="Create channel" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Rules">
+        <ScrollViewer>
+          <StackPanel Margin="4,10,12,16"
+                      Spacing="12"
+                      Width="760"
+                      HorizontalAlignment="Left">
+            <StackPanel Spacing="3">
+              <TextBlock Classes="sectionTitle" Text="Alert rules" />
+              <TextBlock Classes="hint"
+                         Text="State transitions fire immediately. Latency must remain beyond its threshold for the full duration." />
+            </StackPanel>
+
+            <ItemsControl Name="AlertRuleList"
+                          ItemsSource="{Binding Rules}"
+                          IsVisible="{Binding HasRules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AlertRuleRow">
+                  <Border Classes="card" Margin="0,0,0,8">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right"
+                                  Orientation="Horizontal"
+                                  VerticalAlignment="Center">
+                        <Button Command="{Binding $parent[UserControl].((vm:AlertsViewModel)DataContext).DeleteRuleCommand}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding !ConfirmingDelete}"
+                                Content="Delete" />
+                        <Button Classes="accent"
+                                Command="{Binding $parent[UserControl].((vm:AlertsViewModel)DataContext).DeleteRuleCommand}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding ConfirmingDelete}"
+                                Content="Confirm delete?" />
+                      </StackPanel>
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Rule.Name}" />
+                        <TextBlock Classes="hint" Text="{Binding DetailLine}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="card">
+              <StackPanel Spacing="9">
+                <TextBlock FontWeight="SemiBold" Text="Add rule" />
+                <TextBox PlaceholderText="Rule name" Text="{Binding RuleName}" />
+                <Grid ColumnDefinitions="*,8,*">
+                  <ComboBox Grid.Column="0"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{x:Static vm:AlertsViewModel.RuleTriggers}"
+                            SelectedItem="{Binding RuleTrigger}" />
+                  <ComboBox Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{x:Static vm:AlertsViewModel.Severities}"
+                            SelectedItem="{Binding RuleSeverity}" />
+                </Grid>
+
+                <StackPanel Spacing="5" IsVisible="{Binding IsStateRule}">
+                  <TextBlock FontSize="12" FontWeight="Medium" Text="Fire when state becomes" />
+                  <StackPanel Orientation="Horizontal" Spacing="16">
+                    <CheckBox IsChecked="{Binding TargetDown}" Content="DOWN" />
+                    <CheckBox IsChecked="{Binding TargetWarning}" Content="WARNING" />
+                  </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding IsMetricRule}">
+                  <TextBlock FontSize="12" FontWeight="Medium" Text="Sustained latency threshold" />
+                  <Grid ColumnDefinitions="140,8,*,8,*">
+                    <ComboBox Grid.Column="0"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{x:Static vm:AlertsViewModel.Operators}"
+                              SelectedItem="{Binding MetricOperator}" />
+                    <TextBox Grid.Column="2"
+                             PlaceholderText="Milliseconds"
+                             Text="{Binding MetricThreshold}" />
+                    <TextBox Grid.Column="4"
+                             PlaceholderText="Duration seconds"
+                             Text="{Binding ForSeconds}" />
+                  </Grid>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="180,8,*">
+                  <ComboBox Grid.Column="0"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{x:Static vm:AlertsViewModel.ScopeKinds}"
+                            SelectedItem="{Binding ScopeKind}" />
+                  <TextBox Grid.Column="2"
+                           IsVisible="{Binding ScopeNeedsIds}"
+                           PlaceholderText="Comma-separated UUIDs"
+                           Text="{Binding ScopeIds}" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,8,*">
+                  <StackPanel Grid.Column="0" Spacing="3">
+                    <TextBlock FontSize="12" FontWeight="Medium" Text="Cooldown seconds" />
+                    <TextBox Text="{Binding CooldownSeconds}" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="2"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,7"
+                            IsChecked="{Binding NotifyOnRecovery}"
+                            Content="Notify on recovery" />
+                </Grid>
+
+                <StackPanel Spacing="5">
+                  <TextBlock FontSize="12" FontWeight="Medium" Text="Deliver through" />
+                  <TextBlock Classes="hint"
+                             IsVisible="{Binding !HasChannels}"
+                             Text="Create a channel before adding a rule." />
+                  <ItemsControl ItemsSource="{Binding Channels}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:AlertChannelRow">
+                        <CheckBox Margin="0,0,14,5"
+                                  IsChecked="{Binding Selected}"
+                                  Content="{Binding Channel.Name}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <Button Classes="accent"
+                        HorizontalAlignment="Left"
+                        Command="{Binding CreateRuleCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        Content="Create rule" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</UserControl>

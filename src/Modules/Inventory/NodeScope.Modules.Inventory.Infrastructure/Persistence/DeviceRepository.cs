@@ -46,6 +46,24 @@ internal sealed class DeviceRepository : IDeviceRepository
         return row is null ? null : ToRecord(row);
     }
 
+    public async Task<IReadOnlyList<DeviceRecord>> ListByIdsAsync(
+        string organizationId,
+        IReadOnlyCollection<string> deviceIds,
+        IReadOnlyCollection<string>? scope,
+        CancellationToken cancellationToken)
+    {
+        if (deviceIds.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await ScopedQuery(organizationId, scope)
+            .Where(device => deviceIds.Contains(device.Id))
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        return [.. rows.Select(ToRecord)];
+    }
+
     public async Task<DeviceRecord> CreateAsync(NewDevice device, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(device);

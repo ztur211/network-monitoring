@@ -17,9 +17,11 @@ internal sealed class FakeRealtimeConnection : IRealtimeConnection
     private readonly List<Action<CircuitUpdatedEvent>> _circuitUpdatedHandlers = [];
     private readonly List<Action<CircuitDeletedEvent>> _circuitDeletedHandlers = [];
     private readonly List<Action<MetricsUpdateEvent>> _metricsHandlers = [];
+    private readonly List<Action<AlertRealtimeEvent>> _alertFiredHandlers = [];
+    private readonly List<Action<AlertRealtimeEvent>> _alertResolvedHandlers = [];
     private readonly List<Action> _reconnectedHandlers = [];
 
-    public List<(string Content, string? ConversationId)> SentMessages { get; } = [];
+    public List<(string Content, string? ConversationId, string? DeviceId)> SentMessages { get; } = [];
 
     public List<MetricsSubmission> SubmittedMetrics { get; } = [];
 
@@ -34,14 +36,18 @@ internal sealed class FakeRealtimeConnection : IRealtimeConnection
 
     public void Start() => StartCalls++;
 
-    public Task SendAiMessageAsync(string content, string? conversationId, CancellationToken cancellationToken)
+    public Task SendAiMessageAsync(
+        string content,
+        string? conversationId,
+        string? deviceId,
+        CancellationToken cancellationToken)
     {
         if (SendFailure is not null)
         {
             return Task.FromException(Unavailable(SendFailure));
         }
 
-        SentMessages.Add((content, conversationId));
+        SentMessages.Add((content, conversationId, deviceId));
         return Task.CompletedTask;
     }
 
@@ -77,6 +83,10 @@ internal sealed class FakeRealtimeConnection : IRealtimeConnection
 
     public IDisposable OnMetricsUpdate(Action<MetricsUpdateEvent> handler) => Track(_metricsHandlers, handler);
 
+    public IDisposable OnAlertFired(Action<AlertRealtimeEvent> handler) => Track(_alertFiredHandlers, handler);
+
+    public IDisposable OnAlertResolved(Action<AlertRealtimeEvent> handler) => Track(_alertResolvedHandlers, handler);
+
     public IDisposable OnReconnected(Action handler)
     {
         _reconnectedHandlers.Add(handler);
@@ -98,6 +108,10 @@ internal sealed class FakeRealtimeConnection : IRealtimeConnection
     public void RaiseCircuitDeleted(CircuitDeletedEvent received) => Raise(_circuitDeletedHandlers, received);
 
     public void RaiseMetricsUpdate(MetricsUpdateEvent received) => Raise(_metricsHandlers, received);
+
+    public void RaiseAlertFired(AlertRealtimeEvent received) => Raise(_alertFiredHandlers, received);
+
+    public void RaiseAlertResolved(AlertRealtimeEvent received) => Raise(_alertResolvedHandlers, received);
 
     public void RaiseReconnected()
     {

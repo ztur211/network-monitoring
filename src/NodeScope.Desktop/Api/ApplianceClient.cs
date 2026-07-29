@@ -782,6 +782,68 @@ internal sealed class ApplianceClient(HttpClient http, Uri baseUrl) : IAppliance
         SendJsonAsync<SnmpAssignment, SnmpAssignment>(
             HttpMethod.Post, "api/v1/snmp/assign", bearerToken, assignment, cancellationToken);
 
+    public Task<IReadOnlyList<AlertChannel>> GetAlertChannelsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<AlertChannel>("api/v1/alerts/channels", bearerToken, cancellationToken);
+
+    public Task<AlertChannel> CreateAlertChannelAsync(
+        string bearerToken,
+        CreateAlertChannel channel,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateAlertChannel, AlertChannel>(
+            HttpMethod.Post, "api/v1/alerts/channels", bearerToken, channel, cancellationToken);
+
+    public Task DeleteAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Delete,
+            $"api/v1/alerts/channels/{Uri.EscapeDataString(channelId)}",
+            bearerToken,
+            null,
+            cancellationToken);
+
+    public Task TestAlertChannelAsync(
+        string bearerToken,
+        string channelId,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Post,
+            $"api/v1/alerts/channels/{Uri.EscapeDataString(channelId)}/test",
+            bearerToken,
+            null,
+            cancellationToken);
+
+    public Task<IReadOnlyList<AlertRule>> GetAlertRulesAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<AlertRule>("api/v1/alerts/rules", bearerToken, cancellationToken);
+
+    public Task<AlertRule> CreateAlertRuleAsync(
+        string bearerToken,
+        CreateAlertRule rule,
+        CancellationToken cancellationToken) =>
+        SendJsonAsync<CreateAlertRule, AlertRule>(
+            HttpMethod.Post, "api/v1/alerts/rules", bearerToken, rule, cancellationToken);
+
+    public Task DeleteAlertRuleAsync(
+        string bearerToken,
+        string ruleId,
+        CancellationToken cancellationToken) =>
+        SendForNoDataAsync(
+            HttpMethod.Delete,
+            $"api/v1/alerts/rules/{Uri.EscapeDataString(ruleId)}",
+            bearerToken,
+            null,
+            cancellationToken);
+
+    public Task<IReadOnlyList<AlertEvent>> GetAlertEventsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken) =>
+        GetDataListAsync<AlertEvent>("api/v1/alerts/events?limit=200", bearerToken, cancellationToken);
+
     public Task<OnboardingTurn> SendOnboardingTurnAsync(
         string bearerToken,
         string? chipChoice,

@@ -17,6 +17,7 @@
   <ItemGroup>
     <!-- Configuration abstractions only: the quota caps are env-tunable, as in Node. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 
 </Project>

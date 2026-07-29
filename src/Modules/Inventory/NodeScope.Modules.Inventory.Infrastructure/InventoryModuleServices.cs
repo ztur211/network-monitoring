@@ -42,6 +42,8 @@ public static class InventoryModuleServices
 
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IDeviceRepository, DeviceRepository>();
+        services.AddScoped<IAlertInventoryScope, AlertInventoryScopeProvider>();
+        services.AddScoped<IAssistantDeviceContextProvider, AssistantDeviceContextProvider>();
         services.AddScoped<IOrgNamingPolicyReader, OrgNamingPolicyReader>();
         services.AddScoped<IBuildingModelRepository, BuildingModelRepository>();
         services.AddScoped<IBcfRepository, BcfRepository>();

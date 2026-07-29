@@ -119,6 +119,7 @@ public sealed class OrganizationsService
             WsEvents.OrgMemberUpdated,
             new { userId = targetUserId, role = nextRole, timestamp = IsoTimestamp.Now() },
             cancellationToken);
+        await _realtime.EvictOrgMemberAsync(actor.OrganizationId, targetUserId, cancellationToken);
     }
 
     public async Task RemoveMemberAsync(

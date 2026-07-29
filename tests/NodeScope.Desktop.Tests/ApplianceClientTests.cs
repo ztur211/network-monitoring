@@ -736,6 +736,69 @@ public sealed class ApplianceClientTests : IDisposable
             _lastRequestBody);
     }
 
+    [Fact]
+    public async Task Alert_client_maps_channels_rules_events_and_native_routes()
+    {
+        _respond = request => request.RequestUri!.AbsolutePath switch
+        {
+            "/sub/api/v1/alerts/channels" when request.Method == HttpMethod.Get => Envelope(
+                HttpStatusCode.OK,
+                """{"success":true,"data":[{"id":"c1","organizationId":"o1","type":"INAPP","name":"Desktop","enabled":true,"config":{},"version":1,"createdAt":"2026-07-29T05:00:00Z","updatedAt":"2026-07-29T05:00:00Z"}],"timestamp":"t"}"""),
+            "/sub/api/v1/alerts/rules" => Envelope(
+                HttpStatusCode.OK,
+                """{"success":true,"data":[{"id":"r1","organizationId":"o1","name":"Device down","enabled":true,"trigger":"STATE_TRANSITION","scope":{"all":true},"targetStates":["DOWN"],"metric":null,"op":null,"threshold":null,"forSeconds":null,"severity":"CRITICAL","channelIds":["c1"],"cooldownSeconds":60,"notifyOnRecovery":true,"version":1,"createdAt":"2026-07-29T05:00:00Z","updatedAt":"2026-07-29T05:00:00Z"}],"timestamp":"t"}"""),
+            "/sub/api/v1/alerts/events" => Envelope(
+                HttpStatusCode.OK,
+                """{"success":true,"data":[{"id":"e1","organizationId":"o1","ruleId":"r1","ruleName":"Device down","deviceId":"d1","kind":"FIRING","severity":"CRITICAL","detail":{"state":"DOWN"},"dedupKey":"r1:d1","createdAt":"2026-07-29T05:00:00Z"}],"timestamp":"t"}"""),
+            _ => Envelope(HttpStatusCode.OK, """{"success":true,"data":{"sent":true},"timestamp":"t"}"""),
+        };
+
+        Assert.Equal("Desktop", Assert.Single(
+            await _client.GetAlertChannelsAsync("tok", TestContext.Current.CancellationToken)).Name);
+        Assert.Equal("Device down", Assert.Single(
+            await _client.GetAlertRulesAsync("tok", TestContext.Current.CancellationToken)).Name);
+        Assert.Equal("FIRING", Assert.Single(
+            await _client.GetAlertEventsAsync("tok", TestContext.Current.CancellationToken)).Kind);
+
+        await _client.TestAlertChannelAsync("tok", "c1", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpMethod.Post, _lastRequest!.Method);
+        Assert.EndsWith(
+            "/api/v1/alerts/channels/c1/test",
+            _lastRequest.RequestUri!.AbsoluteUri,
+            StringComparison.Ordinal);
+        Assert.Equal("Bearer tok", _lastRequest.Headers.Authorization!.ToString());
+    }
+
+    [Fact]
+    public async Task Alert_rule_create_serializes_scope_conditions_and_channels()
+    {
+        _respond = _ => Envelope(
+            HttpStatusCode.Created,
+            """{"success":true,"data":{"id":"r1","organizationId":"o1","name":"Device down","enabled":true,"trigger":"STATE_TRANSITION","scope":{"all":true},"targetStates":["DOWN"],"metric":null,"op":null,"threshold":null,"forSeconds":null,"severity":"CRITICAL","channelIds":["c1"],"cooldownSeconds":60,"notifyOnRecovery":true,"version":1,"createdAt":"2026-07-29T05:00:00Z","updatedAt":"2026-07-29T05:00:00Z"},"timestamp":"t"}""");
+        using var scope = System.Text.Json.JsonDocument.Parse("""{"all":true}""");
+
+        var created = await _client.CreateAlertRuleAsync(
+            "tok",
+            new CreateAlertRule(
+                "Device down",
+                "STATE_TRANSITION",
+                scope.RootElement.Clone(),
+                ["DOWN"],
+                null,
+                null,
+                null,
+                null,
+                "CRITICAL",
+                ["c1"],
+                60,
+                true),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("r1", created.Id);
+        Assert.Contains("\"scope\":{\"all\":true}", _lastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"channelIds\":[\"c1\"]", _lastRequestBody, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage Envelope(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
