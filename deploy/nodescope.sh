@@ -313,15 +313,18 @@ smoke_test() {
     || die "smoke: an unknown path should 404, not serve a catchall"
   log "  ✔ Unknown paths 404"
 
-  # Tileserver alive through the proxy; the style only registers once the
-  # region extract exists, so that check is skipped on --no-tiles installs.
-  curl -fsS "${origin}/tiles/health" >/dev/null \
-    || die "smoke: ${origin}/tiles/health is not answering"
-  log "  ✔ Tiles /tiles/health"
+  # A no-tiles bring-up intentionally omits the tiles service, as the desktop
+  # development loop does. Skip the whole route in that mode. With tiles
+  # enabled, prove both the proxy route and the configured product style.
   if [ "${tiles}" -eq 1 ]; then
+    curl -fsS "${origin}/tiles/health" >/dev/null \
+      || die "smoke: ${origin}/tiles/health is not answering"
+    log "  ✔ Tiles /tiles/health"
     curl -fsS "${origin}/tiles/styles/liberty/style.json" | grep -q "NodeScope Liberty" \
       || die "smoke: /tiles/styles/liberty/style.json did not serve the product style"
     log "  ✔ Tiles liberty style"
+  else
+    log "  ✔ Tile checks skipped (--no-tiles)"
   fi
 }
 

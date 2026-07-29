@@ -188,7 +188,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -199,6 +200,13 @@ services:
       API_UPSTREAM: api:3000
     ports:
       - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      # Exercise the real gateway route and its API upstream, not just Caddy's process.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
 
   # Optional: Cloudflare Tunnel (free TLS + hostname, no inbound ports).
   # Enable with `--profile tunnel`. In the Cloudflare dashboard, route your
@@ -222,7 +230,8 @@ services:
       # makes it exit with a clear error.
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
 volumes:
   pgdata:

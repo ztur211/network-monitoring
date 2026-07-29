@@ -123,7 +123,9 @@ sudo ./deploy/nodescope.sh enable-backups
 ```
 
 `reconfigure` changes the public origin without rebuilding images. Run `smoke`
-after proxy, DNS, or firewall changes.
+after proxy, DNS, or firewall changes. Pass `smoke --no-tiles` when the tiles
+service is intentionally absent, such as the lightweight desktop development
+loop.
 
 ## Architecture
 
@@ -148,6 +150,20 @@ migrations run.
 The default filesystem storage backend writes to the `blobstore` volume. Set
 `STORAGE_DRIVER=s3` and the S3-compatible variables when an external object store
 is required.
+
+### Availability boundary
+
+The supported appliance runs exactly one API replica. Do not use
+`docker compose --scale api=2`: rate-limit counters, agent request gates,
+onboarding turns, assistant state, and SignalR connection tracking are
+process-local by design. Multiple replicas would produce inconsistent limits and
+lose targeted realtime operations even if Caddy distributed requests between
+them.
+
+A future clustered deployment must first add a SignalR backplane and distributed
+implementations for every process-local coordination store. The current
+single-host reliability model is container restart, durable PostgreSQL and blob
+storage, complete local and offsite backups, and a tested restore path.
 
 ## Configuration
 
@@ -427,6 +443,9 @@ PEM signature verification.
 
 - `docker compose ... ps` should show every long-running service healthy.
 - `./deploy/nodescope.sh smoke` should pass through the public origin.
+- For the optional Cloudflare Tunnel, the public-origin smoke test is the
+  end-to-end health check. A running connector process alone does not prove that
+  the edge route reaches Caddy.
 - The appliance root should return 404 because there is no browser surface.
 - Container logs are size-limited by the Compose configuration.
 - Services use `restart: unless-stopped`.
